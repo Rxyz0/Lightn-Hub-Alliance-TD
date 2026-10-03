@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHT HUB v3.4
+-- LIGHT HUB v3.5
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -9,17 +9,23 @@ local CoreGui = game:GetService("CoreGui")
 local VirtualUser = game:GetService("VirtualUser")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "3.4"
+local VERSION = "3.5"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
 
-local WIN_W, WIN_H = 460, 320
+local WIN_W, WIN_H = 480, 320
 local HEADER_H, SIDEBAR_W = 34, 108
+
+-- Place ID dari log SPY: lobby dan match
+local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
+-- Auto Skip mengirim SkipWaveVote(wave + offset) dan (wave + offset + 1)
+local SKIP_WAVE_OFFSET = 0
 
 -- Warna: abu-abu dan hitam saja
 local C = {
@@ -45,10 +51,10 @@ local DELAY_OPTIONS = {
     { label = "0.2s", value = 0.2 },
     { label = "0.1s", value = 0.1 },
 }
+-- Nama map dari log JoinQueue("Endless", 1) dan JoinQueue("ToiletBunker", 1)
 local MAP_OPTIONS = {
-    { label = "Map 1", value = "Map 1" },
-    { label = "Map 2", value = "Map 2" },
-    { label = "Map 3", value = "Map 3" },
+    { label = "Endless", value = "Endless" },
+    { label = "Crazy (Toilet Bunker)", value = "ToiletBunker" },
 }
 local PLAYER_OPTIONS = {
     { label = "1", value = 1 },
@@ -59,11 +65,13 @@ local PLAYER_OPTIONS = {
 local SPEED_OPTIONS = {
     { label = "1.5x", value = 1.5 },
     { label = "2x", value = 2 },
+    { label = "2.5x", value = 2.5 },
 }
--- Game hanya punya harga untuk 1 dan 10 (BasePrices di SummonStateUpdated)
+-- Summon 1 / 10 / 25 (25 ditambah di update terbaru game)
 local SUMMON_OPTIONS = {
     { label = "1", value = 1 },
     { label = "10", value = 10 },
+    { label = "25", value = 25 },
 }
 local CRATE_AMOUNT_OPTIONS = {
     { label = "1", value = 1 },
@@ -100,13 +108,13 @@ local settings = {
     cheapestFirst = true,
     upgradeDelay = 0.5,
     claimEnabled = false,
-    skipCrateAnim = false,
-    skipSummonAnim = false,
-    skipSpinAnim = false,
+    skipAnim = false,
+    fluidBg = true,
+    rerun = false,
 }
 
 local FLAG_DEFAULTS = {
-    autoPlay = false, playMap = "", playPlayers = 0,
+    autoPlay = false, playMap = "", playPlayers = 1,
     autoSpeed = false, speedValue = 1.5,
     autoReplay = false,
     autoLobby = false,
@@ -188,9 +196,9 @@ local function saveSettings()
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
         claimEnabled = settings.claimEnabled,
-        skipCrateAnim = settings.skipCrateAnim,
-        skipSummonAnim = settings.skipSummonAnim,
-        skipSpinAnim = settings.skipSpinAnim,
+        skipAnim = settings.skipAnim,
+        fluidBg = settings.fluidBg,
+        rerun = settings.rerun,
         flags = flags,
     }
     pcall(function()
@@ -231,9 +239,13 @@ local function loadSettings()
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
-    if type(data.skipCrateAnim) == "boolean" then settings.skipCrateAnim = data.skipCrateAnim end
-    if type(data.skipSummonAnim) == "boolean" then settings.skipSummonAnim = data.skipSummonAnim end
-    if type(data.skipSpinAnim) == "boolean" then settings.skipSpinAnim = data.skipSpinAnim end
+    if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
+    -- v3.3: tiga toggle animasi lama digabung jadi satu
+    if data.skipCrateAnim == true or data.skipSummonAnim == true or data.skipSpinAnim == true then
+        settings.skipAnim = true
+    end
+    if type(data.fluidBg) == "boolean" then settings.fluidBg = data.fluidBg end
+    if type(data.rerun) == "boolean" then settings.rerun = data.rerun end
     if type(data.upgradeDelay) == "number" then
         for _, opt in ipairs(DELAY_OPTIONS) do
             if math.abs(opt.value - data.upgradeDelay) < 0.0001 then
@@ -255,6 +267,9 @@ local function loadSettings()
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.luckyAmount) then flags.luckyAmount = 1 end
     if flags.luckyType ~= "" and not inOptions(LUCKY_OPTIONS, flags.luckyType) then flags.luckyType = "" end
     if flags.potionType ~= "" and not inOptions(POTION_OPTIONS, flags.potionType) then flags.potionType = "" end
+    if not inOptions(SPEED_OPTIONS, flags.speedValue) then flags.speedValue = 1.5 end
+    if not inOptions(MAP_OPTIONS, flags.playMap) then flags.playMap = "" end
+    if not inOptions(PLAYER_OPTIONS, flags.playPlayers) then flags.playPlayers = 1 end
     for _, k in ipairs(SPEND_KEYS) do flags[k] = false end
 end
 
@@ -333,6 +348,19 @@ local function accepted(ok, res)
     return true
 end
 
+-- GuiObject benar-benar tampil: dirinya, semua ancestor, dan ScreenGui-nya.
+-- GUI Light Hub sendiri diabaikan (ada teks "Auto Replay", "Wave", dll).
+local function isShown(d)
+    local gui = d:FindFirstAncestorOfClass("ScreenGui")
+    if gui and (not gui.Enabled or gui.Name == GUI_NAME) then return false end
+    local p = d.Parent
+    while p and not p:IsA("LayerCollector") do
+        if p:IsA("GuiObject") and not p.Visible then return false end
+        p = p.Parent
+    end
+    return d.Visible
+end
+
 local function bindEvent(name, fn)
     task.spawn(function()
         local folder = ReplicatedStorage:WaitForChild("RemoteEvents", 20)
@@ -356,13 +384,72 @@ local ScreenGui = make("ScreenGui", {
 local MainFrame = make("Frame", {
     Size = UDim2.new(0, WIN_W, 0, WIN_H),
     Position = UDim2.new(0.5, -WIN_W / 2, 0, 24),
-    BackgroundColor3 = C.white,
+    BackgroundColor3 = Color3.fromRGB(10, 10, 11),
     BorderSizePixel = 0,
     Active = true,
     ClipsDescendants = true,
 }, ScreenGui)
-grad(MainFrame, Color3.fromRGB(30, 30, 32), Color3.fromRGB(12, 12, 13))
 make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, MainFrame)
+
+-- Latar bergerak pelan seperti tinta abu-abu/putih diaduk di air:
+-- dua lapisan gradient berputar dan bergeser dengan arah/kecepatan berbeda.
+local function fluidLayer(colors, alphas)
+    local layer = make("Frame", {
+        Size = UDim2.new(1.5, 0, 1.5, 0),
+        Position = UDim2.new(-0.25, 0, -0.25, 0),
+        BackgroundColor3 = C.white,
+        BorderSizePixel = 0,
+    }, MainFrame)
+    local g = make("UIGradient", {
+        Color = ColorSequence.new(colors),
+        Transparency = NumberSequence.new(alphas),
+    }, layer)
+    return layer, g
+end
+
+local fluid = { t = 0, acc = 0 }
+fluid.layerA, fluid.gradA = fluidLayer({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(205, 205, 209)),
+    ColorSequenceKeypoint.new(0.35, Color3.fromRGB(70, 70, 74)),
+    ColorSequenceKeypoint.new(0.65, Color3.fromRGB(150, 150, 155)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 33)),
+}, {
+    NumberSequenceKeypoint.new(0, 0.82),
+    NumberSequenceKeypoint.new(0.3, 0.55),
+    NumberSequenceKeypoint.new(0.55, 0.88),
+    NumberSequenceKeypoint.new(0.8, 0.6),
+    NumberSequenceKeypoint.new(1, 0.84),
+})
+fluid.layerB, fluid.gradB = fluidLayer({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 44)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(215, 215, 219)),
+    ColorSequenceKeypoint.new(0.7, Color3.fromRGB(90, 90, 95)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 190)),
+}, {
+    NumberSequenceKeypoint.new(0, 0.9),
+    NumberSequenceKeypoint.new(0.4, 0.66),
+    NumberSequenceKeypoint.new(0.7, 0.9),
+    NumberSequenceKeypoint.new(1, 0.7),
+})
+
+local function applyFluid()
+    fluid.layerA.Visible = settings.fluidBg
+    fluid.layerB.Visible = settings.fluidBg
+end
+applyFluid()
+
+table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+    if not settings.fluidBg then return end
+    fluid.acc = fluid.acc + dt
+    if fluid.acc < 0.04 then return end -- ~25 fps cukup untuk gerakan lambat
+    fluid.t = fluid.t + fluid.acc
+    fluid.acc = 0
+    local t = fluid.t
+    fluid.gradA.Rotation = (t * 4) % 360
+    fluid.gradA.Offset = Vector2.new(math.sin(t * 0.21) * 0.12, math.cos(t * 0.17) * 0.12)
+    fluid.gradB.Rotation = (120 - t * 3) % 360
+    fluid.gradB.Offset = Vector2.new(math.cos(t * 0.13) * 0.12, math.sin(t * 0.19) * 0.12)
+end))
 
 -- Loop latar belakang yang berhenti otomatis saat GUI dihancurkan
 local function runLoop(fn)
@@ -382,6 +469,7 @@ end
 local Header = make("Frame", {
     Size = UDim2.new(1, 0, 0, HEADER_H),
     BackgroundColor3 = C.white,
+    BackgroundTransparency = 0.18,
     BorderSizePixel = 0,
 }, MainFrame)
 grad(Header, Color3.fromRGB(22, 22, 24), Color3.fromRGB(8, 8, 9))
@@ -472,6 +560,7 @@ local Body = make("Frame", {
 local Sidebar = make("Frame", {
     Size = UDim2.new(0, SIDEBAR_W, 1, 0),
     BackgroundColor3 = C.white,
+    BackgroundTransparency = 0.2,
     BorderSizePixel = 0,
 }, Body)
 grad(Sidebar, Color3.fromRGB(16, 16, 17), Color3.fromRGB(9, 9, 10))
@@ -647,6 +736,7 @@ local function createCard(par, height)
     local card = make("Frame", {
         Size = UDim2.new(1, 0, 0, height),
         BackgroundColor3 = C.white,
+        BackgroundTransparency = 0.2,
         BorderSizePixel = 0,
         LayoutOrder = nextOrder(par),
     }, par)
@@ -743,7 +833,7 @@ local function createFeature(par, title, opts)
     local card = createCard(par, 34 + (bodyH > 0 and (bodyH + 10) or 0))
 
     local titleLabel = make("TextLabel", {
-        Size = UDim2.new(1, -120, 0, 34),
+        Size = UDim2.new(0, 150, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = title,
@@ -774,14 +864,15 @@ local function createFeature(par, title, opts)
     end
 
     local note = make("TextLabel", {
-        Size = UDim2.new(0, 70, 0, 34),
-        Position = UDim2.new(1, -124, 0, 0),
+        Size = UDim2.new(0, 190, 0, 34),
+        Position = UDim2.new(1, -244, 0, 0),
         BackgroundTransparency = 1,
         Text = "",
         TextColor3 = C.muted,
         TextSize = 10,
-        Font = Enum.Font.GothamBold,
+        Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Right,
+        TextTruncate = Enum.TextTruncate.AtEnd,
     }, card)
 
     local track = make("Frame", {
@@ -1100,12 +1191,18 @@ end
 -- =================================================================
 local statLabels = {}
 local stats = { sells = 0, upgrades = 0 }
+local waveNow = { cur = nil, max = nil } -- diisi oleh tracking wave
 
 -- =================================================================
--- Main (Speed & Replay aktif; Play/Lobby/Skip belum ada fungsi)
+-- Main: Play, Speed, Skip, Replay, Lobby
+-- Remote dari SPY:
+--   JoinQueue(map, jumlah)  SetGameSpeed(kecepatan)  SkipWaveVote(wave)
+--   ReplayVote()            ReplicatedStorage.ReturnToLobby()
 -- =================================================================
 do
     local page = tabs["Main"].page
+    local inLobby = (game.PlaceId == LOBBY_PLACE)
+    local inMatch = (game.PlaceId == MATCH_PLACE)
 
     local statCard = createCard(page, 50)
     local cells = createCells(statCard, {
@@ -1119,9 +1216,28 @@ do
     statLabels.sells = cells[3].value
     statLabels.upgrades = cells[4].value
 
-    visualFeature(page, "Auto Play - Map", "autoPlay", 28, function(body)
+    -- Remote Knit (versi paket bisa berubah, jadi dicari lewat nama)
+    local function knitRF(service, name)
+        local pk = ReplicatedStorage:FindFirstChild("Packages")
+        local idx = pk and pk:FindFirstChild("_Index")
+        if not idx then return nil end
+        for _, pkg in ipairs(idx:GetChildren()) do
+            if string.find(pkg.Name, "sleitnick_knit", 1, true) then
+                local k = pkg:FindFirstChild("knit")
+                local svc = k and k:FindFirstChild("Services")
+                local s = svc and svc:FindFirstChild(service)
+                local rf = s and s:FindFirstChild("RF")
+                local r = rf and rf:FindFirstChild(name)
+                if r then return r end
+            end
+        end
+        return nil
+    end
+
+    -- ---------------- Auto Play (hanya di lobby) ----------------
+    local fPlay = visualFeature(page, "Auto Play", "autoPlay", 28, function(body)
         createSelect(body, {
-            Size = UDim2.new(0.6, -4, 1, 0),
+            Size = UDim2.new(0.62, -4, 1, 0),
         }, {
             options = MAP_OPTIONS,
             initial = flags.playMap,
@@ -1129,19 +1245,55 @@ do
             onChange = function(v) setFlag("playMap", v) end,
         })
         createSelect(body, {
-            Size = UDim2.new(0.4, -4, 1, 0),
-            Position = UDim2.new(0.6, 4, 0, 0),
+            Size = UDim2.new(0.38, -4, 1, 0),
+            Position = UDim2.new(0.62, 4, 0, 0),
         }, {
             options = PLAYER_OPTIONS,
             initial = flags.playPlayers,
-            placeholder = "Players",
             prefix = "Players ",
             onChange = function(v) setFlag("playPlayers", v) end,
         })
-    end, true)
+    end)
 
-    -- Auto Speed: RemoteEvents.SetGameSpeed:FireServer(kecepatan)
-    -- Dikirim ulang tiap 4 detik supaya kecepatan tetap setelah ronde baru.
+    local lastJoin = 0
+    runLoop(function()
+        if not flags.autoPlay then
+            fPlay.setNote("")
+            lastJoin = 0
+            return 0.5
+        end
+        if not inLobby then
+            fPlay.setNote("Only works in the lobby", C.muted)
+            return 2
+        end
+        if flags.playMap == "" then
+            fPlay.setNote("Pick a map first", C.warn)
+            return 1
+        end
+        local remote = knitRF("MatchmakingService", "JoinQueue")
+        if not remote then
+            fPlay.setNote("Loading matchmaking...", C.warn)
+            return 1
+        end
+        -- Kalau teleport belum terjadi, coba lagi setelah 25 detik
+        if os.clock() - lastJoin < 25 then
+            fPlay.setNote("Joining match...", C.text)
+            return 1
+        end
+        lastJoin = os.clock()
+        local ok, res = pcall(function()
+            return remote:InvokeServer(flags.playMap, flags.playPlayers)
+        end)
+        if ok and res ~= false then
+            fPlay.setNote("Joining match...", C.text)
+        else
+            fPlay.setNote("Couldn't join the queue", C.warn)
+            lastJoin = os.clock() - 20
+        end
+        return 1
+    end)
+
+    -- ---------------- Auto Speed (hanya di match) ----------------
     local fSpeed
     local function sendSpeed()
         local ev = RE("SetGameSpeed")
@@ -1151,103 +1303,171 @@ do
 
     fSpeed = visualFeature(page, "Auto Speed", "autoSpeed", 28, function(body)
         createSegmented(body, {
-            Size = UDim2.new(0, 130, 1, 0),
+            Size = UDim2.new(0, 165, 1, 0),
         }, SPEED_OPTIONS, flags.speedValue, function(v)
             setFlag("speedValue", v)
             if flags.autoSpeed then sendSpeed() end
         end)
     end)
 
+    -- Dikirim ulang tiap 4 detik supaya kecepatan tetap setelah ronde baru
     runLoop(function()
         if not flags.autoSpeed then
             fSpeed.setNote("")
             return 0.5
         end
         if not RE("SetGameSpeed") then
-            fSpeed.setNote("NO MATCH", C.muted)
+            fSpeed.setNote("Only works in a match", C.muted)
             return 1.5
         end
         if sendSpeed() then
-            fSpeed.setNote("RUN", C.text)
+            fSpeed.setNote("Speed " .. tostring(flags.speedValue) .. "x", C.text)
         else
-            fSpeed.setNote("ERR", C.warn)
+            fSpeed.setNote("Couldn't change speed", C.warn)
         end
         return 4
     end)
 
-    -- Auto Replay: RemoteEvents.ReplayVote:FireServer()
-    -- Vote dikirim SEKALI saat layar akhir match (tombol/teks "Replay") muncul,
-    -- lalu menunggu layarnya hilang. Tidak di-spam, karena vote bisa jadi toggle.
-    local fReplay = visualFeature(page, "Auto Replay", "autoReplay", 0)
+    -- ---------------- Auto Skip Wave ----------------
+    -- Log: SkipWaveVote(1) lalu SkipWaveVote(2). Belum pasti apakah angkanya
+    -- wave yang tampil di HUD atau wave berikutnya, jadi keduanya dikirim
+    -- (yang tidak cocok diabaikan server). Atur SKIP_WAVE_OFFSET kalau perlu.
+    local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
 
-    local function replayUiVisible()
+    local lastSkipped = nil
+    runLoop(function()
+        if not flags.autoSkip then
+            fSkip.setNote("")
+            lastSkipped = nil
+            return 0.5
+        end
+        local ev = RE("SkipWaveVote")
+        if not ev then
+            fSkip.setNote("Only works in a match", C.muted)
+            return 1.5
+        end
+        local w = waveNow.cur
+        if not w then
+            fSkip.setNote("Reading wave number...", C.warn)
+            return 1
+        end
+        if w == lastSkipped then
+            fSkip.setNote("Voted to skip wave " .. w, C.text)
+            return 1
+        end
+        task.wait(1.2) -- beri waktu tombol skip muncul
+        if not flags.autoSkip then return 0.5 end
+        w = waveNow.cur or w
+        lastSkipped = w
+        for _, n in ipairs({ w + SKIP_WAVE_OFFSET, w + SKIP_WAVE_OFFSET + 1 }) do
+            if n >= 1 then
+                pcall(function() ev:FireServer(n) end)
+                task.wait(0.15)
+            end
+        end
+        fSkip.setNote("Voted to skip wave " .. w, C.text)
+        return 1
+    end)
+
+    -- ---------------- Auto Replay / Auto Lobby (layar akhir match) ----------------
+    -- Dianggap akhir match kalau tombol/teks "Replay" DAN "Lobby" sama-sama tampil.
+    -- Aksi dikirim sekali per layar akhir (vote bisa saja toggle). Replay dan
+    -- Lobby saling mematikan supaya tidak bentrok.
+    local fReplay, fLobby
+
+    fReplay = createFeature(page, "Auto Replay", {
+        initial = flags.autoReplay,
+        onToggle = function(v)
+            setFlag("autoReplay", v)
+            if v and flags.autoLobby then
+                setFlag("autoLobby", false)
+                fLobby.set(false)
+            end
+        end,
+    })
+    fLobby = createFeature(page, "Auto Lobby", {
+        initial = flags.autoLobby,
+        onToggle = function(v)
+            setFlag("autoLobby", v)
+            if v and flags.autoReplay then
+                setFlag("autoReplay", false)
+                fReplay.set(false)
+            end
+        end,
+    })
+
+    local function scanEndScreen()
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         if not pg then return false end
+        local hasR, hasL = false, false
         for _, d in ipairs(pg:GetDescendants()) do
-            if (d:IsA("TextButton") or d:IsA("ImageButton") or d:IsA("TextLabel")) and d.Visible then
-                local txt = d:IsA("ImageButton") and "" or string.lower(d.Text)
+            if d:IsA("GuiObject") and (d:IsA("TextButton") or d:IsA("TextLabel") or d:IsA("ImageButton")) then
+                local txt = (d:IsA("ImageButton") and "") or string.lower(d.Text)
                 local nm = string.lower(d.Name)
-                if string.find(txt, "replay", 1, true) or string.find(nm, "replay", 1, true) then
-                    local gui = d:FindFirstAncestorOfClass("ScreenGui")
-                    -- Abaikan GUI Light Hub sendiri (ada teks "Auto Replay")
-                    if (not gui or (gui.Enabled and gui.Name ~= GUI_NAME)) then
-                        local shown, p = true, d.Parent
-                        while p and p ~= pg do
-                            if p:IsA("GuiObject") and not p.Visible then
-                                shown = false
-                                break
-                            end
-                            p = p.Parent
-                        end
-                        if shown then return true end
-                    end
+                local r = string.find(txt, "replay", 1, true) or string.find(nm, "replay", 1, true)
+                local l = string.find(txt, "lobby", 1, true) or string.find(nm, "lobby", 1, true)
+                if (r or l) and isShown(d) then
+                    if r then hasR = true end
+                    if l then hasL = true end
+                    if hasR and hasL then return true end
                 end
             end
         end
         return false
     end
 
-    local voted = false
+    local acted = false
     runLoop(function()
-        if not flags.autoReplay then
+        local wantLobby = flags.autoLobby
+        local wantReplay = flags.autoReplay and not wantLobby
+        if not (wantLobby or wantReplay) then
             fReplay.setNote("")
-            voted = false
+            fLobby.setNote("")
+            acted = false
             return 0.5
         end
-        local ev = RE("ReplayVote")
+        local f = wantLobby and fLobby or fReplay
+        local other = wantLobby and fReplay or fLobby
+        other.setNote("")
+
+        if not inMatch then
+            f.setNote("Only works in a match", C.muted)
+            return 2
+        end
+        if not scanEndScreen() then
+            acted = false
+            f.setNote("Waiting for the match to end", C.muted)
+            return 1.5
+        end
+        if acted then
+            f.setNote(wantLobby and "Returning to lobby..." or "Replay vote sent", C.text)
+            return 1.5
+        end
+
+        task.wait(0.8) -- beri waktu tombol aktif
+        local ev = wantLobby and ReplicatedStorage:FindFirstChild("ReturnToLobby") or RE("ReplayVote")
         if not ev then
-            fReplay.setNote("NO MATCH", C.muted)
-            voted = false
-            return 1.5
+            f.setNote("Remote not found", C.warn)
+            return 2
         end
-        if not replayUiVisible() then
-            voted = false
-            fReplay.setNote("WAIT", C.muted)
-            return 1.5
-        end
-        if voted then
-            fReplay.setNote("VOTED", C.text)
-            return 1.5
-        end
-        task.wait(0.6)
-        if not flags.autoReplay then return 0.5 end
         local ok = pcall(function() ev:FireServer() end)
-        voted = ok
-        fReplay.setNote(ok and "VOTED" or "ERR", ok and C.text or C.warn)
+        acted = ok
+        if ok then
+            f.setNote(wantLobby and "Returning to lobby..." or "Replay vote sent", C.text)
+        else
+            f.setNote("Couldn't send the vote", C.warn)
+        end
         return 1.5
     end)
-    visualFeature(page, "Auto Lobby", "autoLobby", 0, nil, true)
-    visualFeature(page, "Auto Skip", "autoSkip", 0, nil, true)
 end
 
 -- =================================================================
--- Gacha: Summon, Spin, Crate, Potion (pakai remote dari log)
--- Argumen InvokeServer adalah tebakan dari pola log; kalau server
--- menolak 8x berturut-turut fitur otomatis mati dan ada notifikasi.
+-- Gacha: Summon, Spin, Crate, Lucky Block, Potion
+-- Argumen SummonUnits, OpenCrate, SpinWheel sudah dicocokkan dengan SPY.
+-- Pesan status memakai bahasa biasa; fitur berhenti mengirim remote
+-- saat stok / koin / tiket tidak cukup.
 -- =================================================================
-local counts = nil
-local summonPrices = nil
-local tickets = nil
+local counts, summonPrices, tickets = nil, nil, nil
 local boost = { inv = {}, rem = {}, at = nil }
 local BOOST_FIELD = {
     Money = "MoneyTimeRemaining", XP = "XPTimeRemaining",
@@ -1257,8 +1477,8 @@ local BOOST_FIELD = {
 local function stopFeature(f, key, why)
     setFlag(key, false)
     f.set(false)
-    f.setNote("OFF", C.muted)
-    notify("Stopped", why, 4)
+    f.setNote("Stopped", C.muted)
+    notify("Stopped", why, 5)
 end
 
 local function onBoost(t)
@@ -1299,10 +1519,11 @@ end
 
 do
     local page = tabs["Gacha"].page
+
     -- Auto Summon
     local fSummon = visualFeature(page, "Auto Summon", "autoSummon", 28, function(body)
         createSegmented(body, {
-            Size = UDim2.new(0, 110, 1, 0),
+            Size = UDim2.new(0, 150, 1, 0),
         }, SUMMON_OPTIONS, flags.summonAmount, function(v)
             setFlag("summonAmount", v)
         end)
@@ -1316,25 +1537,25 @@ do
             return 0.4
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fSummon.setNote("BUSY", C.warn)
+            fSummon.setNote("Waiting for animation", C.warn)
             return 1
         end
         local amount = flags.summonAmount
         local price = summonPrices and (summonPrices[amount] or summonPrices[tostring(amount)])
         if type(price) == "number" and getStat("Coins") < price then
-            fSummon.setNote("NO COIN", C.warn)
+            fSummon.setNote("Not enough coins", C.warn)
             return 1.5
         end
         local ok, res = invoke("SummonUnits", amount)
         if accepted(ok, res) then
             summonFails = 0
-            fSummon.setNote("RUN", C.text)
+            fSummon.setNote("Summoning...", C.text)
         else
             summonFails = summonFails + 1
-            fSummon.setNote("ERR " .. summonFails, C.warn)
+            fSummon.setNote("Server refused (" .. summonFails .. "/8)", C.warn)
             if summonFails >= 8 then
                 summonFails = 0
-                stopFeature(fSummon, "autoSummon", "SummonUnits ditolak 8x. Cek argumen remote.")
+                stopFeature(fSummon, "autoSummon", "Auto Summon stopped: the server kept refusing the request.")
             end
         end
         return amount >= 10 and 1.2 or 0.6
@@ -1350,21 +1571,45 @@ do
         end
         -- Dari log: 1 spin memakai 1 Ticket dan animasinya sekitar 7 detik
         if tickets and tickets <= 0 then
-            fSpin.setNote("NO TICKET", C.warn)
+            fSpin.setNote("Not enough tickets", C.warn)
             return 3
         end
         local ok, res = invoke("SpinWheel")
         if accepted(ok, res) then
-            fSpin.setNote("RUN", C.text)
-            return settings.skipSpinAnim and 1.5 or 7
+            fSpin.setNote("Spinning...", C.text)
+            return settings.skipAnim and 1.5 or 7
         end
-        fSpin.setNote("WAIT", C.warn)
+        fSpin.setNote("Spin isn't ready yet", C.warn)
         return 6
     end)
 end
 
 do
     local page = tabs["Gacha"].page
+
+    -- Cek stok crate / lucky block dari CratesUpdated.
+    -- Mengembalikan jumlah yang boleh dibuka, atau nil + pesan.
+    -- Item yang tidak ada di daftar stok dianggap kosong.
+    local noDataSince = nil
+    local function stockCheck(id, want, noun)
+        if not counts then
+            noDataSince = noDataSince or os.clock()
+            if os.clock() - noDataSince < 6 then
+                return nil, "Loading " .. noun .. " data..."
+            end
+            return want, nil, true -- data tidak pernah datang: coba saja
+        end
+        noDataSince = nil
+        local have = counts[id]
+        if type(have) ~= "number" or have <= 0 then
+            return nil, "You don't have this " .. noun
+        end
+        if have < want then
+            return nil, "Not enough " .. noun .. "s (" .. have .. "/" .. want .. ")"
+        end
+        return want
+    end
+
     -- Auto Open Crate (jumlah + jenis)
     local fCrate = visualFeature(page, "Auto Open Crate", "autoCrate", 28, function(body)
         createSegmented(body, {
@@ -1392,39 +1637,37 @@ do
         end
         local id = flags.crateType
         if id == "" then
-            fCrate.setNote("PICK", C.warn)
+            fCrate.setNote("Pick a crate first", C.warn)
             return 1
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fCrate.setNote("BUSY", C.warn)
+            fCrate.setNote("Waiting for animation", C.warn)
             return 1
         end
-        local amount = flags.crateAmount
-        local have = counts and counts[id]
-        if type(have) == "number" then
-            if have <= 0 then
-                fCrate.setNote("EMPTY", C.muted)
-                return 2
-            end
-            amount = math.min(amount, have)
+        local amount, why, blind = stockCheck(id, flags.crateAmount, "crate")
+        if not amount then
+            fCrate.setNote(why, C.muted)
+            return 1.5
         end
         local ok, res = invoke("OpenCrate", id, amount)
         if accepted(ok, res) then
             crateFails = 0
-            fCrate.setNote("RUN", C.text)
+            fCrate.setNote("Opening crates...", C.text)
         else
             crateFails = crateFails + 1
-            fCrate.setNote("ERR " .. crateFails, C.warn)
-            if crateFails >= 8 then
+            local limit = blind and 3 or 8
+            fCrate.setNote("Server refused (" .. crateFails .. "/" .. limit .. ")", C.warn)
+            if crateFails >= limit then
                 crateFails = 0
-                stopFeature(fCrate, "autoCrate", "OpenCrate ditolak 8x. Cek argumen remote.")
+                stopFeature(fCrate, "autoCrate", blind
+                    and "Auto Open Crate stopped: you probably don't have this crate."
+                    or "Auto Open Crate stopped: the server kept refusing the request.")
             end
         end
         return 1.5
     end)
 
     -- Auto Open Lucky Block (bukan crate; remote OpenLuckyBlock)
-    -- Argumen mengikuti pola OpenCrate: (id, jumlah). Stok dari CratesUpdated.
     local fLucky = visualFeature(page, "Auto Open Lucky Block", "autoLucky", 28, function(body)
         createSegmented(body, {
             Size = UDim2.new(0, 96, 1, 0),
@@ -1451,39 +1694,37 @@ do
         end
         local id = flags.luckyType
         if id == "" then
-            fLucky.setNote("PICK", C.warn)
+            fLucky.setNote("Pick a block first", C.warn)
             return 1
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fLucky.setNote("BUSY", C.warn)
+            fLucky.setNote("Waiting for animation", C.warn)
             return 1
         end
-        local amount = flags.luckyAmount
-        if counts then
-            -- Tingkat yang tidak ada di daftar stok dianggap kosong
-            local have = counts[id]
-            if type(have) ~= "number" or have <= 0 then
-                fLucky.setNote("EMPTY", C.muted)
-                return 2
-            end
-            amount = math.min(amount, have)
+        local amount, why, blind = stockCheck(id, flags.luckyAmount, "block")
+        if not amount then
+            fLucky.setNote(why, C.muted)
+            return 1.5
         end
         local ok, res = invoke("OpenLuckyBlock", id, amount)
         if accepted(ok, res) then
             luckyFails = 0
-            fLucky.setNote("RUN", C.text)
+            fLucky.setNote("Opening blocks...", C.text)
         else
             luckyFails = luckyFails + 1
-            fLucky.setNote("ERR " .. luckyFails, C.warn)
-            if luckyFails >= 8 then
+            local limit = blind and 3 or 8
+            fLucky.setNote("Server refused (" .. luckyFails .. "/" .. limit .. ")", C.warn)
+            if luckyFails >= limit then
                 luckyFails = 0
-                stopFeature(fLucky, "autoLucky", "OpenLuckyBlock ditolak 8x. Cek argumen remote.")
+                stopFeature(fLucky, "autoLucky", blind
+                    and "Auto Open Lucky Block stopped: you probably don't have this block."
+                    or "Auto Open Lucky Block stopped: the server kept refusing the request.")
             end
         end
         return 1.5
     end)
 
-    -- Auto Use Potion: dipakai lagi hanya saat efeknya hampir habis
+    -- Auto Use Potion: potion bisa di-stack, dipakai terus sampai stok habis
     local fPotion = visualFeature(page, "Auto Use Potion", "autoPotion", 28, function(body)
         createSelect(body, {
             Size = UDim2.new(1, 0, 1, 0),
@@ -1495,8 +1736,6 @@ do
         })
     end)
 
-    -- Potion bisa di-stack di game, jadi dipakai terus tanpa menunggu efek lama
-    -- habis. Berhenti sendiri saat stok 0, fitur dimatikan, atau ditolak 8x.
     local POTION_INTERVAL = 0.3
     local potionFails = 0
     runLoop(function()
@@ -1507,29 +1746,30 @@ do
         end
         local key = flags.potionType
         if key == "" then
-            fPotion.setNote("PICK", C.warn)
+            fPotion.setNote("Pick a potion first", C.warn)
             return 1
         end
         if not boost.at then
-            fPotion.setNote("LOAD", C.warn)
+            fPotion.setNote("Loading potion data...", C.warn)
             return 1
         end
-        if (boost.inv[key] or 0) <= 0 then
-            fPotion.setNote("EMPTY", C.muted)
+        local have = boost.inv[key] or 0
+        if have <= 0 then
+            fPotion.setNote("You don't have this potion", C.muted)
             return 2
         end
         local ok, res = invoke("UseBoost", key)
         if accepted(ok, res) then
             potionFails = 0
             local left = (boost.rem[key] or 0) - (os.clock() - boost.at)
-            fPotion.setNote(fmtTime(left), C.text)
+            fPotion.setNote("Active " .. fmtTime(left) .. " (" .. math.max(0, have - 1) .. " left)", C.text)
             return POTION_INTERVAL
         end
         potionFails = potionFails + 1
-        fPotion.setNote("ERR " .. potionFails, C.warn)
+        fPotion.setNote("Server refused (" .. potionFails .. "/8)", C.warn)
         if potionFails >= 8 then
             potionFails = 0
-            stopFeature(fPotion, "autoPotion", "UseBoost ditolak 8x. Mungkin batas stack tercapai.")
+            stopFeature(fPotion, "autoPotion", "Auto Use Potion stopped: the server refused it. You may have hit the stack limit.")
         end
         return 1
     end)
@@ -1617,19 +1857,19 @@ do
 
         local remote = RF("UpgradeTower")
         if not remote then
-            upg.setNote("NO MATCH", C.muted)
+            upg.setNote("Only works in a match", C.muted)
             return 1
         end
 
         local towers = getMyTowers()
         if #towers == 0 then
-            upg.setNote("NO TOWER", C.muted)
+            upg.setNote("No towers placed", C.muted)
             return 1
         end
 
         local target, reason = pickTarget(towers, getStat("Cash"))
         if target then
-            upg.setNote("RUN", C.text)
+            upg.setNote("Upgrading...", C.text)
             local sig = signature(target)
             local ok, res = pcall(function() return remote:InvokeServer(target) end)
 
@@ -1647,10 +1887,10 @@ do
             end
             return settings.upgradeDelay
         elseif reason == "MAX" then
-            upg.setNote("MAX", C.muted)
+            upg.setNote("All towers maxed", C.muted)
             return 1
         end
-        upg.setNote("WAIT", C.warn)
+        upg.setNote("Not enough cash", C.warn)
         return math.max(0.1, math.min(settings.upgradeDelay, 0.5))
     end)
 end
@@ -1672,7 +1912,7 @@ do
     local cells = createCells(feature.body, {
         { caption = "ID", value = "-----", weight = 1.15 },
         { caption = "GIFT", value = "0/9", weight = 0.9 },
-        { caption = "STATUS", value = "IDLE", weight = 1 },
+        { caption = "STATUS", value = "Idle", weight = 1 },
     }, 0, 0)
     local IdValueLabel = cells[1].value
     local GiftValueLabel = cells[2].value
@@ -1682,7 +1922,7 @@ do
         StatusValue.Text = text
         StatusValue.TextColor3 = color
     end
-    setStatus("IDLE", C.muted)
+    setStatus("Idle", C.muted)
 
     -- Jumlah bit yang menyala di bitmask PlaytimeGiftClaimed
     local function popcount(mask)
@@ -1708,9 +1948,9 @@ do
     applyClaimState = function(v, fromUser)
         run.claim = v
         if v then
-            setStatus("RUN", C.text)
+            setStatus("Claiming", C.text)
         else
-            setStatus("IDLE", C.muted)
+            setStatus("Idle", C.muted)
         end
         if fromUser then
             settings.claimEnabled = v
@@ -1731,9 +1971,11 @@ do
         if locked ~= lastLocked then
             lastLocked = locked
             if locked then
-                feature.setLocked(true, "loading")
+                feature.setLocked(true)
+                feature.setNote("Waiting for game data", C.warn)
             else
                 feature.setLocked(false)
+                feature.setNote("")
             end
         end
     end
@@ -1785,15 +2027,15 @@ do
 
         if not run.claim then return 1 end
         if not day then
-            setStatus("LOAD", C.warn)
+            setStatus("Loading", C.warn)
             return 1
         end
         if not remote then
-            setStatus("N/A", C.muted)
+            setStatus("Unavailable", C.muted)
             return 2
         end
         if claimedCount >= GIFT_COUNT then
-            setStatus("DONE", C.muted)
+            setStatus("All claimed", C.muted)
             return 1
         end
 
@@ -1802,7 +2044,7 @@ do
         local lastIdx = hasMask and startIdx or GIFT_COUNT
         local claimedAny = false
 
-        setStatus("RUN", C.text)
+        setStatus("Claiming", C.text)
         for giftIndex = startIdx, lastIdx do
             if not run.claim or not ScreenGui.Parent then break end
             -- Pastikan ID masih sama tepat sebelum klaim
@@ -1826,7 +2068,7 @@ do
         end
         if run.claim and claimedCount < GIFT_COUNT and readGameDay() == day then
             -- Gift berikutnya belum terbuka: tunggu, bangun lebih awal kalau ID berganti
-            setStatus("WAIT", C.warn)
+            setStatus("Waiting", C.warn)
             for _ = 1, backoff do
                 if not run.claim or not ScreenGui.Parent then break end
                 if readGameDay() ~= day then break end
@@ -1889,10 +2131,28 @@ end
 
 -- Pasang ulang berkala supaya handler baru yang dibuat game ikut dimatikan
 runLoop(function()
-    if settings.skipCrateAnim then applySkip("crate", true) end
-    if settings.skipSummonAnim then applySkip("summon", true) end
+    if settings.skipAnim then
+        applySkip("crate", true)
+        applySkip("summon", true)
+    end
     return 3
 end)
+
+-- Re-run otomatis setelah teleport (butuh script disimpan sebagai LightHub.lua
+-- di folder workspace executor dan dukungan queue_on_teleport)
+local RERUN_FILE = "LightHub.lua"
+
+local function queueRerun()
+    local q = queue_on_teleport
+        or (syn and syn.queue_on_teleport)
+        or (fluxus and fluxus.queue_on_teleport)
+    if not q then return false, "Your executor doesn't support queue_on_teleport." end
+    if not (isfile and isfile(RERUN_FILE)) then
+        return false, "Save this script as " .. RERUN_FILE .. " in your executor's workspace folder first."
+    end
+    pcall(q, 'loadstring(readfile("' .. RERUN_FILE .. '"))()')
+    return true
+end
 
 -- =================================================================
 -- Settings
@@ -1909,27 +2169,48 @@ do
         end,
     })
 
-    -- Skip animation (grup crate/summon butuh getconnections dari executor)
-    local function skipToggle(title, group, key)
-        local f
-        f = createFeature(page, title, {
-            initial = settings[key] and (group == nil or getconnections ~= nil),
-            onToggle = function(v)
-                if v and group and not getconnections then
-                    f.set(false)
-                    notify("Skip Animation", "Executor tidak mendukung getconnections.", 4)
+    -- Satu tombol untuk semua animasi: crate, lucky block, summon, spin
+    local fSkipAnim
+    fSkipAnim = createFeature(page, "Skip Animations", {
+        initial = settings.skipAnim,
+        onToggle = function(v)
+            settings.skipAnim = v
+            saveSettings()
+            if getconnections then
+                applySkip("crate", v)
+                applySkip("summon", v)
+            elseif v then
+                notify("Skip Animations", "Your executor can't hide crate/summon animations. Only the spin delay gets shorter.", 5)
+            end
+        end,
+    })
+    if not getconnections then fSkipAnim.setNote("Spin only", C.muted) end
+
+    createFeature(page, "Animated background", {
+        initial = settings.fluidBg,
+        onToggle = function(v)
+            settings.fluidBg = v
+            applyFluid()
+            saveSettings()
+        end,
+    })
+
+    local fRerun
+    fRerun = createFeature(page, "Re-run after teleport", {
+        initial = settings.rerun,
+        onToggle = function(v)
+            if v then
+                local ok, why = queueRerun()
+                if not ok then
+                    fRerun.set(false)
+                    notify("Re-run", why, 6)
                     return
                 end
-                settings[key] = v
-                if group then applySkip(group, v) end
-                saveSettings()
-            end,
-        })
-        return f
-    end
-    skipToggle("Skip Crate / Lucky Animation", "crate", "skipCrateAnim")
-    skipToggle("Skip Summon Animation", "summon", "skipSummonAnim")
-    skipToggle("Skip Spin Animation", nil, "skipSpinAnim")
+            end
+            settings.rerun = v
+            saveSettings()
+        end,
+    })
 
     local info = createFeature(page, "Account", { noToggle = true, bodyHeight = 38 })
     createCells(info.body, {
@@ -2005,8 +2286,10 @@ do
         end))
     end
 
-    -- ---------------- Wave sekarang / wave akhir (mis. 1/60) ----------------
-    local WAVE_BAD = { "best", "record", "weekly", "reward", "time", "delay", "timer", "cooldown" }
+    -- ---------------- Wave sekarang / wave akhir (mis. 8/60) ----------------
+    -- Sumber 1: teks HUD yang benar-benar tampil (ancestor ikut dicek).
+    -- Sumber 2: Attribute / Value bernama "wave" di workspace / ReplicatedStorage.
+    local WAVE_BAD = { "best", "record", "highest", "weekly", "reward", "cooldown" }
     local WAVE_END_HINTS = { "max", "total", "final", "end", "last", "limit", "goal", "target", "required" }
 
     local function hasAny(l, list)
@@ -2030,67 +2313,50 @@ do
         return (string.gsub(s, "<[^>]+>", ""))
     end
 
-    -- "Wave 1/60", "Wave: 12", "WAVE 5 / 40"
-    local function parseWaveText(text)
-        local c, m = string.match(text, "^%s*[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)%s*/%s*(%d+)")
+    -- "Wave 8/60", "WAVE: 8 / 60", "8/60 Wave", "Wave 8"
+    local function parseWave(text)
+        text = string.gsub(stripTags(text), "%s+", " ")
+        local c, m = string.match(text, "[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)%s*/%s*(%d+)")
         if c then return tonumber(c), tonumber(m) end
-        c = string.match(text, "^%s*[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)")
+        c, m = string.match(text, "(%d+)%s*/%s*(%d+)%s*[Ww][Aa][Vv][Ee]")
+        if c then return tonumber(c), tonumber(m) end
+        c = string.match(text, "^%s*[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)%s*$")
         if c then return tonumber(c), nil end
         return nil, nil
     end
 
-    -- Label bernama "Wave" yang isinya hanya "1/60"
-    local function parseRatioText(text)
-        local c, m = string.match(text, "^%s*(%d+)%s*/%s*(%d+)%s*$")
+    -- Label bernama "Wave" yang isinya hanya "8/60"
+    local function parseRatio(text)
+        local c, m = string.match(stripTags(text), "^%s*(%d+)%s*/%s*(%d+)%s*$")
         if c then return tonumber(c), tonumber(m) end
         return nil, nil
     end
 
-    local function labelGetter(d)
-        return function()
-            local text = stripTags(d.Text)
-            local c, m = parseWaveText(text)
-            if not c then c, m = parseRatioText(text) end
-            return c, m
+    local waveLabel, lastScan = nil, 0
+    local attrGetters, lastAttrScan = nil, 0
+
+    local function labelWave(d)
+        local c, m = parseWave(d.Text)
+        if not c and string.find(string.lower(d.Name), "wave", 1, true) then
+            c, m = parseRatio(d.Text)
         end
+        return c, m
     end
 
-    -- Mengembalikan fungsi yang menghasilkan (wave sekarang, wave akhir)
-    local function findWaveGetter()
-        local fallbackLabel
+    local function badLabel(d)
+        local low = string.lower(d.Name .. " " .. d.Text)
+        return hasAny(low, WAVE_BAD)
+    end
 
-        -- 1) Teks HUD, utamakan yang punya angka sekarang dan akhir
-        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-        if pg then
-            for _, d in ipairs(pg:GetDescendants()) do
-                if d:IsA("TextLabel") and d.Visible then
-                    local gui = d:FindFirstAncestorOfClass("ScreenGui")
-                    if not gui or gui.Enabled then
-                        local text = stripTags(d.Text)
-                        local cur, max = parseWaveText(text)
-                        if not cur and string.find(string.lower(d.Name), "wave", 1, true) then
-                            cur, max = parseRatioText(text)
-                        end
-                        if cur and max then
-                            return labelGetter(d)
-                        elseif cur and not fallbackLabel then
-                            fallbackLabel = d
-                        end
-                    end
-                end
-            end
-        end
-
-        -- 2) Attribute / Value bernama "wave" (sekarang) dan "max/total wave" (akhir)
-        local curGetter, endGetter
+    local function scanAttrGetters()
+        local curG, endG
         local function consider(name, getter)
-            if not curGetter and isWaveName(name) then
-                curGetter = getter
-            elseif not endGetter and isWaveEndName(name) then
-                endGetter = getter
+            if not curG and isWaveName(name) then
+                curG = getter
+            elseif not endG and isWaveEndName(name) then
+                endG = getter
             end
         end
-
         for _, holder in ipairs({ workspace, ReplicatedStorage }) do
             for name, val in pairs(holder:GetAttributes()) do
                 if type(val) == "number" then
@@ -2105,19 +2371,67 @@ do
                 end
             end
         end
-
-        if curGetter then
-            return function()
-                return curGetter(), endGetter and endGetter() or nil
-            end
-        end
-
-        -- 3) Label yang hanya punya wave sekarang
-        if fallbackLabel then return labelGetter(fallbackLabel) end
+        if curG then return { cur = curG, max = endG } end
         return nil
     end
 
-    local waveGetter, lastWaveSearch = nil, 0
+    local function readWave()
+        local c0, m0
+        -- 1) Label yang sudah ditemukan: dipakai selama masih tampil dan terbaca
+        if waveLabel then
+            if waveLabel.Parent and isShown(waveLabel) then
+                c0, m0 = labelWave(waveLabel)
+                if c0 and m0 then return c0, m0 end
+            end
+            if not c0 then waveLabel = nil end
+        end
+
+        -- 2) Cari label HUD (tiap 2 detik); utamakan yang punya angka sekarang dan akhir
+        if tick() - lastScan > 2 then
+            lastScan = tick()
+            local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+            if pg then
+                local fallback
+                for _, d in ipairs(pg:GetDescendants()) do
+                    if (d:IsA("TextLabel") or d:IsA("TextButton")) and isShown(d) and not badLabel(d) then
+                        local c, m = labelWave(d)
+                        if c and m and c <= m then
+                            waveLabel = d
+                            return c, m
+                        elseif c and not fallback then
+                            fallback = d
+                        end
+                    end
+                end
+                if fallback and not waveLabel then waveLabel = fallback end
+            end
+        end
+        if waveLabel and not c0 then
+            c0, m0 = labelWave(waveLabel)
+        end
+        if c0 then return c0, m0 end
+
+        -- 3) Attribute / Value
+        if not attrGetters and tick() - lastAttrScan > 10 then
+            lastAttrScan = tick()
+            attrGetters = scanAttrGetters()
+        end
+        if attrGetters then
+            local ok, c = pcall(attrGetters.cur)
+            if ok and type(c) == "number" then
+                local m = nil
+                if attrGetters.max then
+                    local ok2, mm = pcall(attrGetters.max)
+                    if ok2 and type(mm) == "number" then m = mm end
+                end
+                return c, m
+            end
+            attrGetters = nil
+        end
+        return nil, nil
+    end
+
+    local lastMax = nil
 
     runLoop(function()
         local folder = workspace:FindFirstChild("Towers")
@@ -2126,24 +2440,21 @@ do
             hookFolder(folder)
         end
 
-        -- Wave: sekarang/akhir (dicari ulang tiap 10 detik kalau belum ketemu)
-        if not waveGetter and (tick() - lastWaveSearch) > 10 then
-            lastWaveSearch = tick()
-            waveGetter = findWaveGetter()
-        end
-        local waveText = "-"
-        if waveGetter then
-            local ok, cur, max = pcall(waveGetter)
-            if ok and type(cur) == "number" then
-                waveText = tostring(math.floor(cur))
-                if type(max) == "number" and max > 0 then
-                    waveText = waveText .. "/" .. tostring(math.floor(max))
-                end
+        -- Wave: sekarang/akhir. Wave akhir diingat kalau sempat terbaca.
+        local ok, cur, max = pcall(readWave)
+        if ok and type(cur) == "number" then
+            if type(max) == "number" and max > 0 then
+                lastMax = max
             else
-                waveGetter = nil
+                max = lastMax
             end
+            waveNow.cur, waveNow.max = cur, max
+            statLabels.wave.Text = max and (tostring(cur) .. "/" .. tostring(max)) or tostring(cur)
+        else
+            waveNow.cur, waveNow.max = nil, nil
+            lastMax = nil
+            statLabels.wave.Text = "-"
         end
-        statLabels.wave.Text = waveText
 
         -- Units
         local pu = LocalPlayer:FindFirstChild("PlacedUnits")
@@ -2204,5 +2515,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     cleanup()
 end)
 
+if settings.rerun then pcall(queueRerun) end
 selectTab("Main")
 notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)

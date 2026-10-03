@@ -2178,8 +2178,12 @@ do
     local function validMacro(m)
         if type(m) ~= "table" or type(m.actions) ~= "table" or #m.actions > 500 then return false end
         for _, a in ipairs(m.actions) do
-            if type(a) ~= "table" or type(a.n) ~= "string" then return false end
-            if a.t == "place" then
+            if type(a) ~= "table" or (a.d ~= nil and type(a.d) ~= "number") then return false end
+            if a.t == "wait" then
+                -- hanya jeda
+            elseif type(a.n) ~= "string" then
+                return false
+            elseif a.t == "place" then
                 if not isNums(a.cf, 12) then return false end
             elseif a.t == "up" or a.t == "sell" then
                 if not isNums(a.p, 3) then return false end
@@ -2188,6 +2192,40 @@ do
             end
         end
         return true
+    end
+
+    -- Format macro lain: {"Name":..,"Actions":[{"t":"P","i":1,"p":[x,y,z],"n":"Unit","d":4.6},
+    -- {"t":"U","i":1},{"t":"S","i":1},{"t":"W"}]}. i = nomor tower, d = jeda (detik).
+    -- P=place, U=upgrade, S=sell, W=jeda saja.
+    local function convertForeign(data)
+        local src = data.Actions
+        if type(src) ~= "table" then return nil end
+        local towers, out = {}, {}
+        for _, a in ipairs(src) do
+            if type(a) == "table" then
+                local d = type(a.d) == "number" and a.d or nil
+                if a.t == "P" and type(a.n) == "string" and isNums(a.p, 3) and a.i then
+                    towers[a.i] = { n = a.n, p = a.p }
+                    out[#out + 1] = {
+                        t = "place", n = a.n, d = d, w = 0,
+                        cf = { a.p[1], a.p[2], a.p[3], 1, 0, 0, 0, 1, 0, 0, 0, 1 },
+                    }
+                elseif (a.t == "U" or a.t == "S") and towers[a.i] then
+                    local tw = towers[a.i]
+                    out[#out + 1] = {
+                        t = (a.t == "U") and "up" or "sell", n = tw.n, d = d, w = 0,
+                        p = { tw.p[1], tw.p[2], tw.p[3] },
+                    }
+                elseif a.t == "W" then
+                    out[#out + 1] = { t = "wait", n = "wait", d = d, w = 0 }
+                end
+            end
+        end
+        return {
+            v = 1,
+            name = type(data.Name) == "string" and data.Name or "imported",
+            actions = out,
+        }
     end
 
     local function saveMacro(name, macro)
@@ -2537,6 +2575,9 @@ do
             return
         end
         local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
+        if ok and type(data) == "table" and data.Actions then
+            data = convertForeign(data)
+        end
         if not ok or not validMacro(data) then
             staged = nil
             notify("Macro", "That isn't a valid macro JSON.", 4)
@@ -2648,9 +2689,16 @@ do
             return 0.7
         end
         play.stepSince = play.stepSince or os.clock()
+        if a.d and os.clock() - play.stepSince < a.d then
+            local left = math.ceil(a.d - (os.clock() - play.stepSince))
+            fPlay.setNote("Waiting " .. left .. "s (" .. play.idx .. "/" .. #acts .. ")", C.muted)
+            return 0.3
+        end
 
         local done = false
-        if a.t == "place" then
+        if a.t == "wait" then
+            done = true
+        elseif a.t == "place" then
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true
             else
@@ -2699,7 +2747,7 @@ do
             fPlay.setNote("Playing " .. math.min(play.idx, #acts) .. "/" .. #acts, C.text)
             return 0.3
         end
-        if os.clock() - play.stepSince > 90 then
+        if os.clock() - play.stepSince > 90 + (a.d or 0) then
             notify("Macro", "Skipped step " .. play.idx .. ": it couldn't be completed in 90s.", 4)
             play.idx = play.idx + 1
             play.stepSince = nil

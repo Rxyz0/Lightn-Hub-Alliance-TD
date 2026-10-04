@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v3.9
+-- LIGHTN HUB v3.10
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -14,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "3.9"
+local VERSION = "3.10"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -558,13 +558,13 @@ local VersionLabel = make("TextLabel", {
 }, TitleRow)
 
 local TimerLabel = make("TextLabel", {
-    Size = UDim2.new(0, 76, 1, 0),
-    Position = UDim2.new(1, -150, 0, 0),
+    Size = UDim2.new(0, 84, 1, 0),
+    Position = UDim2.new(1, -158, 0, 0),
     BackgroundTransparency = 1,
     Text = "00:00:00",
-    TextColor3 = C.muted,
-    TextSize = 11,
-    Font = Enum.Font.RobotoMono,
+    TextColor3 = C.white,
+    TextSize = 14,
+    Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Right,
 }, Header)
 
@@ -577,17 +577,52 @@ end
 applyTimerVisibility()
 
 -- Wave sekarang, hanya tampil saat window diperkecil
-local MiniWave = make("TextLabel", {
-    Size = UDim2.new(0, 88, 1, 0),
-    Position = UDim2.new(0, 100, 0, 0),
+local MiniWave = make("Frame", {
+    Size = UDim2.new(0, 76, 1, -1),
+    Position = UDim2.new(0, 106, 0, 0),
     BackgroundTransparency = 1,
-    Text = "Wave -",
-    TextColor3 = C.text,
-    TextSize = 11,
-    Font = Enum.Font.GothamMedium,
-    TextXAlignment = Enum.TextXAlignment.Left,
     Visible = false,
 }, Header)
+make("Frame", {
+    Size = UDim2.new(0, 1, 0, 20),
+    Position = UDim2.new(0, -8, 0.5, -10),
+    BackgroundColor3 = C.line,
+    BorderSizePixel = 0,
+}, MiniWave)
+make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 10),
+    Position = UDim2.new(0, 0, 0, 4),
+    BackgroundTransparency = 1,
+    Text = "WAVE",
+    TextColor3 = C.muted,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, MiniWave)
+local MiniWaveValue = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 18),
+    Position = UDim2.new(0, 0, 0, 12),
+    BackgroundTransparency = 1,
+    Text = "-",
+    TextColor3 = C.white,
+    TextSize = 14,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, MiniWave)
+
+-- Bar progres wave di tepi bawah, hanya saat diperkecil
+local MiniBarTrack = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 2),
+    Position = UDim2.new(0, 0, 1, -3),
+    BackgroundColor3 = C.line,
+    BorderSizePixel = 0,
+    Visible = false,
+}, Header)
+local MiniBarFill = make("Frame", {
+    Size = UDim2.new(0, 0, 1, 0),
+    BackgroundColor3 = C.white,
+    BorderSizePixel = 0,
+}, MiniBarTrack)
 
 local function iconButton(xOff)
     local btn = make("TextButton", {
@@ -628,8 +663,7 @@ local MinBox = make("Frame", {
 make("UIStroke", { Color = C.text, Thickness = 1.5 }, MinBox)
 
 local CloseBtn = iconButton(-34)
-iconBar(CloseBtn, 13, 2, 45)
-iconBar(CloseBtn, 13, 2, -45)
+local CloseBars = { iconBar(CloseBtn, 13, 2, 45), iconBar(CloseBtn, 13, 2, -45) }
 
 -- Body: sidebar kiri + halaman kanan
 local Body = make("Frame", {
@@ -731,14 +765,44 @@ end
 
 Catcher.MouseButton1Click:Connect(closeOverlay)
 
+-- Daftar panjang bisa di-scroll dan punya tombol Close
+local ListScroll = make("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = Color3.fromRGB(120, 120, 126),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ZIndex = 3,
+}, ListFrame)
+
+local CloseRow = make("TextButton", {
+    Size = UDim2.new(1, -4, 0, 22),
+    BackgroundColor3 = C.hover,
+    BackgroundTransparency = 0.4,
+    BorderSizePixel = 0,
+    Text = "Close  x",
+    TextColor3 = C.muted,
+    TextSize = 10,
+    Font = Enum.Font.GothamMedium,
+    AutoButtonColor = false,
+    Visible = false,
+    ZIndex = 3,
+}, ListFrame)
+CloseRow.MouseButton1Click:Connect(closeOverlay)
+
+local MAX_VISIBLE = 6
+
 local function openList(anchor, options, current, onPick, chev)
     closeOverlay()
-    for _, c in ipairs(ListFrame:GetChildren()) do
+    for _, c in ipairs(ListScroll:GetChildren()) do
         if c:IsA("TextButton") then c:Destroy() end
     end
 
     local itemH = 26
-    local h = #options * itemH + 4
+    local shown = math.min(#options, MAX_VISIBLE)
+    local long = #options > MAX_VISIBLE
+    local h = shown * itemH + 4 + (long and 24 or 0)
     local w = math.max(anchor.AbsoluteSize.X, 120)
     local mainPos, mainSize = MainFrame.AbsolutePosition, MainFrame.AbsoluteSize
     local aPos = anchor.AbsolutePosition
@@ -757,18 +821,24 @@ local function openList(anchor, options, current, onPick, chev)
         y = math.max(HEADER_H, mainSize.Y - h - 4)
     end
 
+    ListScroll.Size = UDim2.new(1, 0, 0, shown * itemH + 4)
+    ListScroll.CanvasSize = UDim2.new(0, 0, 0, #options * itemH + 4)
+    ListScroll.CanvasPosition = Vector2.new(0, 0)
+    CloseRow.Visible = long
+    CloseRow.Position = UDim2.new(0, 2, 0, shown * itemH + 6)
+
     for i, o in ipairs(options) do
         local selected = (o.value == current)
         local b = make("TextButton", {
-            Size = UDim2.new(1, -4, 0, itemH),
+            Size = UDim2.new(1, long and -8 or -4, 0, itemH),
             Position = UDim2.new(0, 2, 0, 2 + (i - 1) * itemH),
             BackgroundColor3 = C.hover,
             BackgroundTransparency = selected and 0 or 1,
             BorderSizePixel = 0,
             Text = "",
             AutoButtonColor = false,
-            ZIndex = 3,
-        }, ListFrame)
+            ZIndex = 4,
+        }, ListScroll)
         make("TextLabel", {
             Size = UDim2.new(1, -16, 1, 0),
             Position = UDim2.new(0, 10, 0, 0),
@@ -778,14 +848,15 @@ local function openList(anchor, options, current, onPick, chev)
             TextSize = 11,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 4,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            ZIndex = 5,
         }, b)
         if selected then
             make("Frame", {
                 Size = UDim2.new(0, 2, 1, 0),
                 BackgroundColor3 = C.white,
                 BorderSizePixel = 0,
-                ZIndex = 4,
+                ZIndex = 5,
             }, b)
         end
         b.MouseEnter:Connect(function()
@@ -1261,7 +1332,7 @@ end
 -- Halaman + sidebar
 -- =================================================================
 local tabs = {}
-local TAB_ORDER = { "Main", "Gacha", "Endless", "Macro", "AFK", "Settings" }
+local TAB_ORDER = { "Main", "Gacha", "Inventory", "Endless", "Macro", "AFK", "Settings" }
 
 local function selectTab(name)
     closeOverlay()
@@ -1993,7 +2064,7 @@ do
     end)
 
     -- Auto Use Potion: potion bisa di-stack, dipakai terus sampai stok habis
-    local fPotion = visualFeature(page, "Auto Use Potion", "autoPotion", 28, function(body)
+    local fPotion = visualFeature(tabs["Inventory"].page, "Auto Use Potion", "autoPotion", 28, function(body)
         createSelect(body, {
             Size = UDim2.new(1, 0, 1, 0),
         }, {
@@ -2041,6 +2112,118 @@ do
         end
         return 1
     end)
+end
+
+-- =================================================================
+-- Inventory: Auto Use Potion (di atas), Fish Inventory, Sell Fish, Craft
+-- =================================================================
+do
+    local page = tabs["Inventory"].page
+
+    -- Fish Inventory: dibaca dari Players.<kamu>.FishingData.Fish
+    local fishCard = createCard(page, 60)
+    make("TextLabel", {
+        Size = UDim2.new(0, 150, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Fish Inventory",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, fishCard)
+    local fishTotal = make("TextLabel", {
+        Size = UDim2.new(0, 190, 0, 34),
+        Position = UDim2.new(1, -202, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, fishCard)
+    local fishRows = make("Frame", {
+        Size = UDim2.new(1, -24, 0, 16),
+        Position = UDim2.new(0, 12, 0, 34),
+        BackgroundTransparency = 1,
+    }, fishCard)
+
+    local fishSig = nil
+    runLoop(function()
+        local fd = LocalPlayer:FindFirstChild("FishingData")
+        local folder = fd and fd:FindFirstChild("Fish")
+        local list, total = {}, 0
+        if folder then
+            for _, v in ipairs(folder:GetChildren()) do
+                if (v:IsA("IntValue") or v:IsA("NumberValue")) and v.Value > 0 then
+                    list[#list + 1] = { n = v.Name, c = v.Value }
+                    total = total + v.Value
+                end
+            end
+        end
+        table.sort(list, function(a, b) return a.c > b.c end)
+
+        local parts = {}
+        for _, f in ipairs(list) do parts[#parts + 1] = f.n .. "=" .. f.c end
+        local sig = table.concat(parts, "|")
+        if sig == fishSig then return 2 end
+        fishSig = sig
+
+        for _, c in ipairs(fishRows:GetChildren()) do c:Destroy() end
+        if not folder then
+            fishTotal.Text = "No fishing data"
+        else
+            fishTotal.Text = #list .. " types  |  " .. total .. " total"
+        end
+        if #list == 0 then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 16),
+                BackgroundTransparency = 1,
+                Text = folder and "No fish yet" or "Fishing data not found",
+                TextColor3 = C.dim,
+                TextSize = 10,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, fishRows)
+        end
+        for i, f in ipairs(list) do
+            if i > 14 then break end
+            make("TextLabel", {
+                Size = UDim2.new(0.7, 0, 0, 16),
+                Position = UDim2.new(0, 0, 0, (i - 1) * 16),
+                BackgroundTransparency = 1,
+                Text = f.n,
+                TextColor3 = C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, fishRows)
+            make("TextLabel", {
+                Size = UDim2.new(0.3, 0, 0, 16),
+                Position = UDim2.new(0.7, 0, 0, (i - 1) * 16),
+                BackgroundTransparency = 1,
+                Text = tostring(f.c),
+                TextColor3 = C.muted,
+                TextSize = 11,
+                Font = Enum.Font.RobotoMono,
+                TextXAlignment = Enum.TextXAlignment.Right,
+            }, fishRows)
+        end
+        local n = math.max(1, math.min(#list, 14))
+        fishRows.Size = UDim2.new(1, -24, 0, n * 16)
+        fishCard.Size = UDim2.new(1, 0, 0, 34 + n * 16 + 10)
+        return 2
+    end)
+
+    -- Belum ada remote jual ikan / craft: tampil terkunci sampai remote-nya ada
+    local sell = createFeature(page, "Sell Fish", {})
+    sell.setLocked(true, "soon")
+    sell.setNote("Needs the sell remote", C.dim)
+
+    local craft = createFeature(page, "Craft", {})
+    craft.setLocked(true, "soon")
+    craft.setNote("Coming soon", C.dim)
 end
 
 -- =================================================================
@@ -2165,9 +2348,9 @@ end
 
 -- =================================================================
 -- Endless: Teleport UTTM + Unit Mover
--- Lokasi dipilih manual: tekan Select, lalu double-tap di tanah.
---   CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
--- Unit Mover = jual unit lalu pasang lagi di lokasi lain (label tetap).
+-- Lokasi dipilih manual: tekan Select / Add, lalu double-tap di tanah.
+--   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
+--   Unit Mover: jual unit lalu pasang lagi di lokasi lain (label ikut pindah)
 -- =================================================================
 local SPOTS_FILE = "LightHub_Spots.json"
 local UTTM_NAME = "Upgraded Titan Cinema Man"
@@ -2176,18 +2359,29 @@ do
     local page = tabs["Endless"].page
     local mouse = LocalPlayer:GetMouse()
 
-    -- ---------------- Penyimpanan lokasi ----------------
-    local spots = { uttm = {}, mover = {} }
+    -- ---------------- Penyimpanan ----------------
+    local spots = { uttm = {}, movers = {} }
+
+    local function readLocs(src)
+        local out = {}
+        if type(src) ~= "table" then return out end
+        for _, s in ipairs(src) do
+            if type(s) == "table" and type(s.n) == "string" and type(s.x) == "number"
+                and type(s.y) == "number" and type(s.z) == "number" then
+                out[#out + 1] = { n = s.n, x = s.x, y = s.y, z = s.z }
+            end
+        end
+        return out
+    end
+
     if canFile and isfile(SPOTS_FILE) then
         local ok, data = pcall(function() return HttpService:JSONDecode(readfile(SPOTS_FILE)) end)
         if ok and type(data) == "table" then
-            for _, key in ipairs({ "uttm", "mover" }) do
-                if type(data[key]) == "table" then
-                    for _, s in ipairs(data[key]) do
-                        if type(s) == "table" and type(s.n) == "string" and type(s.x) == "number"
-                            and type(s.y) == "number" and type(s.z) == "number" then
-                            table.insert(spots[key], { n = s.n, x = s.x, y = s.y, z = s.z, u = type(s.u) == "string" and s.u or nil })
-                        end
+            spots.uttm = readLocs(data.uttm)
+            if type(data.movers) == "table" then
+                for _, m in ipairs(data.movers) do
+                    if type(m) == "table" and type(m.unit) == "string" and type(m.id) == "number" then
+                        spots.movers[#spots.movers + 1] = { id = m.id, unit = m.unit, locs = readLocs(m.locs) }
                     end
                 end
             end
@@ -2237,12 +2431,8 @@ do
     end))
 
     -- ---------------- Tower ----------------
-    local function myTowerFolder()
-        return workspace:FindFirstChild("Towers")
-    end
-
     local function findTowerNear(name, x, z, r)
-        local folder = myTowerFolder()
+        local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
         for _, t in ipairs(folder:GetChildren()) do
             if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
@@ -2261,7 +2451,6 @@ do
         end
     end
 
-    -- ---------------- Panel lokasi (dipakai UTTM dan Unit Mover) ----------------
     local function nextLocName(list)
         local n = 1
         while true do
@@ -2274,172 +2463,111 @@ do
         end
     end
 
-    local function createSpotPanel(title, key, opts)
-        local list = spots[key]
-        local headerH = opts.headerH or 0
-        local card = createCard(page, 80)
-
+    -- Baris lokasi: Loc N | Teleport | Select | Delete
+    local function addLocRow(rows, list, s, y, onTeleport, onChanged, rebuild)
         make("TextLabel", {
-            Size = UDim2.new(0, 150, 0, 34),
-            Position = UDim2.new(0, 12, 0, 0),
+            Size = UDim2.new(0, 66, 0, 28),
+            Position = UDim2.new(0, 0, 0, y),
             BackgroundTransparency = 1,
-            Text = title,
+            Text = s.n,
             TextColor3 = C.text,
-            TextSize = 12,
+            TextSize = 11,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
-        }, card)
-        local noteLbl = make("TextLabel", {
-            Size = UDim2.new(0, 190, 0, 34),
-            Position = UDim2.new(1, -202, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "",
-            TextColor3 = C.muted,
-            TextSize = 10,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Right,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, card)
+        }, rows)
 
-        local panel = { card = card }
-        function panel.setNote(t, color)
-            noteLbl.Text = t or ""
-            noteLbl.TextColor3 = color or C.muted
-        end
+        createButton(rows, {
+            Size = UDim2.new(0, 92, 0, 28),
+            Position = UDim2.new(0, 70, 0, y),
+        }, "Teleport", function() onTeleport(s) end)
 
-        if opts.buildHeader then opts.buildHeader(card) end
-
-        local rows = make("Frame", {
-            Size = UDim2.new(1, -24, 0, 28),
-            Position = UDim2.new(0, 12, 0, 34 + headerH),
-            BackgroundTransparency = 1,
-        }, card)
-
-        local busy = false
-        local rebuild
-
-        rebuild = function()
-            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
-
-            -- Panel Unit Mover menampilkan unit yang terkunci di tiap lokasi
-            local showUnit = opts.showUnit
-            local lblW = showUnit and 100 or 66
-            local tpX, tpW = lblW + 4, showUnit and 86 or 92
-            local selX, selW = tpX + tpW + 4, showUnit and 70 or 92
-            local delX, delW = selX + selW + 4, showUnit and 54 or 56
-
-            for i, s in ipairs(list) do
-                local y = (i - 1) * 32
-                make("TextLabel", {
-                    Size = UDim2.new(0, lblW, 0, showUnit and 14 or 28),
-                    Position = UDim2.new(0, 0, 0, showUnit and (y + 2) or y),
-                    BackgroundTransparency = 1,
-                    Text = s.n,
-                    TextColor3 = C.text,
-                    TextSize = 11,
-                    Font = Enum.Font.GothamMedium,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                }, rows)
-                if showUnit then
-                    make("TextLabel", {
-                        Size = UDim2.new(0, lblW, 0, 12),
-                        Position = UDim2.new(0, 0, 0, y + 15),
-                        BackgroundTransparency = 1,
-                        Text = s.u or "no unit saved",
-                        TextColor3 = s.u and C.muted or C.warn,
-                        TextSize = 9,
-                        Font = Enum.Font.GothamMedium,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd,
-                    }, rows)
-                end
-
-                createButton(rows, {
-                    Size = UDim2.new(0, tpW, 0, 28),
-                    Position = UDim2.new(0, tpX, 0, y),
-                }, "Teleport", function()
-                    if busy then return end
-                    busy = true
-                    task.spawn(function()
-                        panel.setNote("Working...", C.muted)
-                        local ok, msg = opts.teleport(s)
-                        panel.setNote(msg, ok and C.text or C.warn)
-                        busy = false
-                    end)
-                end)
-
-                -- Select hanya mengganti posisi; unit yang terkunci tidak berubah
-                createButton(rows, {
-                    Size = UDim2.new(0, selW, 0, 28),
-                    Position = UDim2.new(0, selX, 0, y),
-                }, "Select", function()
-                    startPick(function(pos)
-                        s.x, s.y, s.z = pos.X, pos.Y, pos.Z
-                        saveSpots()
-                        panel.setNote(s.n .. " updated", C.text)
-                    end)
-                end)
-
-                local armed = false
-                local del
-                del = createButton(rows, {
-                    Size = UDim2.new(0, delW, 0, 28),
-                    Position = UDim2.new(0, delX, 0, y),
-                }, "Delete", function()
-                    if not armed then
-                        armed = true
-                        del.Text = "Sure?"
-                        task.delay(3, function()
-                            armed = false
-                            if del.Parent then del.Text = "Delete" end
-                        end)
-                        return
-                    end
-                    for j, v in ipairs(list) do
-                        if v == s then
-                            table.remove(list, j)
-                            break
-                        end
-                    end
-                    saveSpots()
-                    rebuild()
-                end)
-            end
-
-            createButton(rows, {
-                Size = UDim2.new(1, 0, 0, 28),
-                Position = UDim2.new(0, 0, 0, #list * 32),
-            }, "+ Add location", function()
-                -- Lokasi baru terkunci ke unit yang dipilih di dropdown saat ini
-                local unit = nil
-                if opts.getUnit then
-                    unit = opts.getUnit()
-                    if not unit then
-                        notify("Unit Mover", "Select a unit in the dropdown first. The new location locks to it.", 4)
-                        return
-                    end
-                end
-                startPick(function(pos)
-                    table.insert(list, { n = nextLocName(list), x = pos.X, y = pos.Y, z = pos.Z, u = unit })
-                    saveSpots()
-                    rebuild()
-                    panel.setNote("Location added" .. (unit and (" for " .. unit) or ""), C.text)
-                end)
+        createButton(rows, {
+            Size = UDim2.new(0, 92, 0, 28),
+            Position = UDim2.new(0, 166, 0, y),
+        }, "Select", function()
+            startPick(function(pos)
+                s.x, s.y, s.z = pos.X, pos.Y, pos.Z
+                saveSpots()
+                onChanged(s.n .. " updated")
             end)
+        end)
 
-            rows.Size = UDim2.new(1, -24, 0, #list * 32 + 28)
-            card.Size = UDim2.new(1, 0, 0, 34 + headerH + #list * 32 + 28 + 10)
-        end
-
-        rebuild()
-        return panel
+        local armed = false
+        local del
+        del = createButton(rows, {
+            Size = UDim2.new(0, 56, 0, 28),
+            Position = UDim2.new(0, 262, 0, y),
+        }, "Delete", function()
+            if not armed then
+                armed = true
+                del.Text = "Sure?"
+                task.delay(3, function()
+                    armed = false
+                    if del.Parent then del.Text = "Delete" end
+                end)
+                return
+            end
+            for j, v in ipairs(list) do
+                if v == s then
+                    table.remove(list, j)
+                    break
+                end
+            end
+            saveSpots()
+            rebuild()
+        end)
     end
 
     -- ---------------- Teleport UTTM (muncul otomatis kalau unitnya ada) ----------------
+    local uttmCard = createCard(page, 80)
+    local uttmTitle = make("TextLabel", {
+        Size = UDim2.new(0, 150, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Teleport UTTM",
+        TextColor3 = C.white,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, uttmCard)
+    -- Warna judul mengikuti tier UTTM: biru muda, putih, ungu violet muda
+    local uttmGrad = make("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(135, 200, 255)),
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(0.7, Color3.fromRGB(178, 160, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 200, 255)),
+        }),
+    }, uttmTitle)
+    movers[#movers + 1] = { g = uttmGrad, base = 0, amp = 45, speed = 0.27, phase = 0.8 }
+
+    local uttmNote = make("TextLabel", {
+        Size = UDim2.new(0, 190, 0, 34),
+        Position = UDim2.new(1, -202, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, uttmCard)
+    local function uttmSay(t, color)
+        uttmNote.Text = t or ""
+        uttmNote.TextColor3 = color or C.muted
+    end
+
+    local uttmRows = make("Frame", {
+        Size = UDim2.new(1, -24, 0, 28),
+        Position = UDim2.new(0, 12, 0, 34),
+        BackgroundTransparency = 1,
+    }, uttmCard)
+
     local lastUttmUse = nil
+    local uttmBusy = false
 
     local function findUttm()
-        local folder = myTowerFolder()
+        local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
         for _, t in ipairs(folder:GetChildren()) do
             if t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
@@ -2449,41 +2577,74 @@ do
         return nil
     end
 
-    local uttm = createSpotPanel("Teleport UTTM", "uttm", {
-        teleport = function(s)
+    local function uttmTeleport(s)
+        if uttmBusy then return end
+        uttmBusy = true
+        task.spawn(function()
+            uttmSay("Working...", C.muted)
             local tw = findUttm()
-            if not tw then return false, "UTTM not found" end
-            local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
-            if not accepted(ok, res) then
-                local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
-                return false, "On cooldown" .. ago
+            if not tw then
+                uttmSay("UTTM not found", C.warn)
+            else
+                local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
+                if not accepted(ok, res) then
+                    local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
+                    uttmSay("On cooldown" .. ago, C.warn)
+                else
+                    local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
+                    if accepted(ok2, res2) then
+                        lastUttmUse = os.clock()
+                        uttmSay("Teleported to " .. s.n, C.text)
+                    else
+                        uttmSay("Couldn't place it there", C.warn)
+                    end
+                end
             end
-            local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
-            if accepted(ok2, res2) then
-                lastUttmUse = os.clock()
-                return true, "Teleported to " .. s.n
-            end
-            return false, "Couldn't place it there"
-        end,
-    })
-    uttm.card.Visible = false
+            uttmBusy = false
+        end)
+    end
+
+    local uttmRebuild
+    uttmRebuild = function()
+        for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
+        for i, s in ipairs(spots.uttm) do
+            addLocRow(uttmRows, spots.uttm, s, (i - 1) * 32, uttmTeleport,
+                function(msg) uttmSay(msg, C.text) end, uttmRebuild)
+        end
+        local y = #spots.uttm * 32
+        createButton(uttmRows, {
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, y),
+        }, "+ Add location", function()
+            startPick(function(pos)
+                table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
+                saveSpots()
+                uttmRebuild()
+                uttmSay("Location added", C.text)
+            end)
+        end)
+        uttmRows.Size = UDim2.new(1, -24, 0, y + 28)
+        uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
+    end
+    uttmRebuild()
+    uttmCard.Visible = false
 
     runLoop(function()
         local found = findUttm() ~= nil
-        if uttm.card.Visible ~= found then uttm.card.Visible = found end
+        if uttmCard.Visible ~= found then uttmCard.Visible = found end
         return 1
     end)
 
     -- ---------------- Unit Mover ----------------
-    -- Label per unit ("Camera Man 1", "Camera Man 2") supaya unit bernama sama
-    -- tidak bentrok. Label ikut ke unit baru setelah dipindah.
+    -- Pilih unit di dropdown -> muncul kartu "Mover N - nama unit" dengan unit
+    -- yang sudah terkunci. Tiap mover punya daftar lokasinya sendiri dan
+    -- beberapa mover bisa dipindahkan bersamaan.
     local unitLabels = setmetatable({}, { __mode = "k" })
     local labelCount = {}
-    local selected = nil
 
     local function scanUnits()
         local out = {}
-        local folder = myTowerFolder()
+        local folder = workspace:FindFirstChild("Towers")
         if not folder then return out end
         for _, t in ipairs(folder:GetChildren()) do
             if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
@@ -2508,7 +2669,6 @@ do
 
     -- Jual unit, pasang lagi di lokasi baru, lalu upgrade lagi ke level semula
     local function moveUnit(label, s)
-        if not label then return false, "No unit saved for this location" end
         local unit
         for _, u in ipairs(scanUnits()) do
             if u.label == label then
@@ -2516,7 +2676,7 @@ do
                 break
             end
         end
-        if not unit then return false, "Unit not found: " .. label end
+        if not unit then return false, "Unit not found: " .. tostring(label) end
 
         local tw, name = unit.tower, unit.name
         local okp, p0 = pcall(function() return tw:GetPivot().Position end)
@@ -2557,27 +2717,180 @@ do
                 task.wait(0.4)
             end
         end
-        return true, label .. " moved to " .. s.n
+        return true, "moved to " .. s.n
     end
 
-    local mover = createSpotPanel("Unit Mover", "mover", {
-        headerH = 34,
-        showUnit = true,
-        getUnit = function() return selected end,
-        buildHeader = function(card)
-            createSelect(card, {
-                Size = UDim2.new(1, -24, 0, 28),
-                Position = UDim2.new(0, 12, 0, 34),
-            }, {
-                placeholder = "Unit for new locations",
-                getOptions = unitOptions,
-                emptyMsg = "No units placed yet.",
-                onChange = function(v) selected = v end,
-            })
+    -- Kartu header: judul + dropdown "tambah mover"
+    local moverHead = createCard(page, 72)
+    make("TextLabel", {
+        Size = UDim2.new(0, 150, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Unit Mover",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, moverHead)
+    local moverNoteLbl = make("TextLabel", {
+        Size = UDim2.new(0, 190, 0, 34),
+        Position = UDim2.new(1, -202, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Pick a unit to lock it to a mover",
+        TextColor3 = C.dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, moverHead)
+    local function moverSay(t, color)
+        moverNoteLbl.Text = t or ""
+        moverNoteLbl.TextColor3 = color or C.muted
+    end
+
+    local buildMover
+
+    local function nextMoverId()
+        local n = 0
+        for _, m in ipairs(spots.movers) do
+            if m.id > n then n = m.id end
+        end
+        return n + 1
+    end
+
+    local unitSel
+    unitSel = createSelect(moverHead, {
+        Size = UDim2.new(1, -24, 0, 28),
+        Position = UDim2.new(0, 12, 0, 34),
+    }, {
+        placeholder = "Add mover: select a unit",
+        getOptions = unitOptions,
+        emptyMsg = "No units placed yet.",
+        onChange = function(v)
+            unitSel.set(nil)
+            for _, m in ipairs(spots.movers) do
+                if m.unit == v then
+                    moverSay("That unit already has a mover", C.warn)
+                    return
+                end
+            end
+            local data = { id = nextMoverId(), unit = v, locs = {} }
+            table.insert(spots.movers, data)
+            saveSpots()
+            buildMover(data, true)
+            moverSay("Mover " .. data.id .. " added", C.text)
         end,
-        teleport = function(s) return moveUnit(s.u, s) end,
     })
-    mover.setNote("Each location is locked to its unit", C.dim)
+
+    -- Kartu per mover: header ringkas yang bisa dibuka/tutup
+    buildMover = function(data, openNow)
+        local card = createCard(page, 34)
+        local expanded = openNow and true or false
+        local busy = false
+
+        local head = make("TextButton", {
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+        }, card)
+        make("TextLabel", {
+            Size = UDim2.new(1, -44, 0, 34),
+            Position = UDim2.new(0, 12, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "Mover " .. data.id .. " - " .. data.unit,
+            TextColor3 = C.text,
+            TextSize = 12,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, head)
+        local chev = createChevron(head, -12)
+        chev.Position = UDim2.new(1, -12, 0, 17)
+
+        local rows = make("Frame", {
+            Size = UDim2.new(1, -24, 0, 28),
+            Position = UDim2.new(0, 12, 0, 34),
+            BackgroundTransparency = 1,
+        }, card)
+
+        local rebuild
+        rebuild = function()
+            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
+            if not expanded then
+                rows.Visible = false
+                chev.Rotation = 0
+                card.Size = UDim2.new(1, 0, 0, 34)
+                return
+            end
+            rows.Visible = true
+            chev.Rotation = 180
+
+            local function onTeleport(s)
+                if busy then return end
+                busy = true
+                task.spawn(function()
+                    moverSay("Mover " .. data.id .. ": moving...", C.muted)
+                    local ok, msg = moveUnit(data.unit, s)
+                    moverSay("Mover " .. data.id .. ": " .. msg, ok and C.text or C.warn)
+                    busy = false
+                end)
+            end
+
+            for i, s in ipairs(data.locs) do
+                addLocRow(rows, data.locs, s, (i - 1) * 32, onTeleport,
+                    function(msg) moverSay("Mover " .. data.id .. ": " .. msg, C.text) end, rebuild)
+            end
+
+            local y = #data.locs * 32
+            createButton(rows, {
+                Size = UDim2.new(0.6, -3, 0, 28),
+                Position = UDim2.new(0, 0, 0, y),
+            }, "+ Add location", function()
+                startPick(function(pos)
+                    table.insert(data.locs, { n = nextLocName(data.locs), x = pos.X, y = pos.Y, z = pos.Z })
+                    saveSpots()
+                    rebuild()
+                end)
+            end)
+
+            local armed = false
+            local delMover
+            delMover = createButton(rows, {
+                Size = UDim2.new(0.4, -3, 0, 28),
+                Position = UDim2.new(0.6, 3, 0, y),
+            }, "Delete mover", function()
+                if not armed then
+                    armed = true
+                    delMover.Text = "Sure?"
+                    task.delay(3, function()
+                        armed = false
+                        if delMover.Parent then delMover.Text = "Delete mover" end
+                    end)
+                    return
+                end
+                for j, m in ipairs(spots.movers) do
+                    if m == data then
+                        table.remove(spots.movers, j)
+                        break
+                    end
+                end
+                saveSpots()
+                card:Destroy()
+            end)
+
+            rows.Size = UDim2.new(1, -24, 0, y + 28)
+            card.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
+        end
+
+        head.MouseButton1Click:Connect(function()
+            expanded = not expanded
+            rebuild()
+        end)
+        rebuild()
+    end
+
+    for _, data in ipairs(spots.movers) do buildMover(data, false) end
 end
 
 -- =================================================================
@@ -3263,24 +3576,73 @@ do
     local applyClaimState
 
     local feature = createFeature(page, "Auto Claim Gift", {
-        bodyHeight = 38,
+        bodyHeight = 40,
         onToggle = function(v) applyClaimState(v, true) end,
     })
 
-    local cells = createCells(feature.body, {
-        { caption = "ID", value = "-----", weight = 1.15 },
-        { caption = "GIFT", value = "0/9", weight = 0.9 },
-        { caption = "STATUS", value = "Idle", weight = 1 },
-    }, 0, 0)
-    local IdValueLabel = cells[1].value
-    local GiftValueLabel = cells[2].value
-    local StatusValue = cells[3].value
+    -- Hanya jumlah gift yang sudah diambil + daftar hadiahnya
+    local CountLabel = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 22),
+        BackgroundTransparency = 1,
+        RichText = true,
+        Text = "",
+        TextColor3 = C.white,
+        TextSize = 16,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, feature.body)
+    local RewardLabel = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14),
+        Position = UDim2.new(0, 0, 0, 26),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, feature.body)
 
-    local function setStatus(text, color)
-        StatusValue.Text = text
-        StatusValue.TextColor3 = color
+    local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
+
+    local function renderGifts()
+        local lines = {}
+        for i = 1, GIFT_COUNT do
+            if rewards[i] then
+                lines[#lines + 1] = "Gift " .. i .. "   " .. rewards[i]
+            elseif i <= claimedCount then
+                lines[#lines + 1] = "Gift " .. i .. "   claimed"
+            end
+        end
+        local sig = claimedCount .. "#" .. table.concat(lines, "|")
+        if sig == giftSig then return end
+        giftSig = sig
+
+        CountLabel.Text = tostring(claimedCount) .. "/" .. GIFT_COUNT
+            .. ' <font size="11" color="rgb(130,130,136)">gifts claimed</font>'
+        RewardLabel.Text = #lines > 0 and table.concat(lines, "\n") or "No rewards yet"
+        local h = math.max(1, #lines) * 13 + 2
+        RewardLabel.Size = UDim2.new(1, 0, 0, h)
+        feature.body.Size = UDim2.new(1, -24, 0, 26 + h)
+        feature.card.Size = UDim2.new(1, 0, 0, 34 + 26 + h + 10)
     end
-    setStatus("Idle", C.muted)
+
+    -- Hadiah dibaca dari notifikasi game yang muncul sesaat setelah klaim
+    bindEvent("Notify", function(text)
+        if type(text) ~= "string" or not lastClaimAt or not lastClaimIndex then return end
+        if os.clock() - lastClaimAt > 3 or rewards[lastClaimIndex] then return end
+        local clean = (string.gsub(text, "<[^>]+>", ""))
+        if string.find(clean, "Auto Sell", 1, true) then return end
+        rewards[lastClaimIndex] = string.sub(clean, 1, 60)
+    end)
+
+    -- Status singkat tampil di sebelah toggle
+    local function setStatus(text, color)
+        feature.setNote(text, color)
+    end
+    setStatus("", C.muted)
+    renderGifts()
 
     -- Jumlah bit yang menyala di bitmask PlaytimeGiftClaimed
     local function popcount(mask)
@@ -3308,7 +3670,7 @@ do
         if v then
             setStatus("Claiming", C.text)
         else
-            setStatus("Idle", C.muted)
+            setStatus("", C.muted)
         end
         if fromUser then
             settings.claimEnabled = v
@@ -3317,13 +3679,9 @@ do
     end
 
     -- Toggle terkunci sampai data ID dari game tersedia
-    local lastLocked, lastShownId = nil, nil
+    local lastLocked = nil
     local function refreshLock()
         local id = readGameDay()
-        if id ~= lastShownId then
-            lastShownId = id
-            IdValueLabel.Text = id and tostring(id) or "-----"
-        end
 
         local locked = (id == nil) and not run.claim
         if locked ~= lastLocked then
@@ -3371,6 +3729,7 @@ do
             backoff = 5
             if changed then
                 claimedCount = 0
+                rewards = {}
                 local mask = LocalPlayer:GetAttribute("PlaytimeGiftClaimed")
                 if type(mask) == "number" and popcount(mask) >= GIFT_COUNT then
                     staleMask = mask
@@ -3381,7 +3740,7 @@ do
         end
 
         syncFromGame()
-        GiftValueLabel.Text = tostring(claimedCount) .. "/" .. GIFT_COUNT
+        renderGifts()
 
         if not run.claim then return 1 end
         if not day then
@@ -3408,6 +3767,7 @@ do
             -- Pastikan ID masih sama tepat sebelum klaim
             if readGameDay() ~= day then break end
 
+            lastClaimAt, lastClaimIndex = os.clock(), giftIndex
             local ok, res = pcall(function()
                 return remote:InvokeServer(giftIndex, day)
             end)
@@ -3418,7 +3778,7 @@ do
             end
             if giftIndex < lastIdx then task.wait(0.5) end
         end
-        GiftValueLabel.Text = tostring(claimedCount) .. "/" .. GIFT_COUNT
+        renderGifts()
 
         if claimedAny then
             backoff = 5
@@ -3832,8 +4192,10 @@ runLoop(function()
         math.floor((elapsed % 3600) / 60),
         elapsed % 60)
     if ui.minimized then
-        local w = waveNow.cur
-        MiniWave.Text = w and ("Wave " .. w .. (waveNow.max and ("/" .. waveNow.max) or "")) or "Wave -"
+        local w, m = waveNow.cur, waveNow.max
+        MiniWaveValue.Text = w and (w .. (m and ("/" .. m) or "")) or "-"
+        local frac = (w and m and m > 0) and math.clamp(w / m, 0, 1) or 0
+        tween(MiniBarFill, 0.4, { Size = UDim2.new(frac, 0, 1, 0) })
     end
     return 1
 end)
@@ -3865,13 +4227,26 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     MinBox.Visible = mini
     VersionLabel.Visible = not mini
     MiniWave.Visible = mini
+    MiniBarTrack.Visible = mini
     applyTimerVisibility()
     tween(MainFrame, 0.15, {
         Size = mini and UDim2.new(0, MINI_W, 0, HEADER_H) or UDim2.new(0, WIN_W, 0, WIN_H),
     })
 end)
 
+-- Tekan pertama: minta konfirmasi (X berubah oranye 3 detik). Tekan kedua: tutup.
+local closeArmed = false
 CloseBtn.MouseButton1Click:Connect(function()
+    if not closeArmed then
+        closeArmed = true
+        for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.warn end
+        notify("Close Lightn Hub?", "Press X again within 3 seconds to close the script.", 3)
+        task.delay(3, function()
+            closeArmed = false
+            for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.text end
+        end)
+        return
+    end
     notify("Terminated", "Lightn Hub closed. All features stopped.", 2)
     cleanup()
 end)

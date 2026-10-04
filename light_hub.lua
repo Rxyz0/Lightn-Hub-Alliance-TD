@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v3.8
+-- LIGHTN HUB v3.9
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -14,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "3.8"
+local VERSION = "3.9"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -546,7 +546,7 @@ local TitleLabel = make("TextLabel", {
     LayoutOrder = 1,
 }, TitleRow)
 fluid.titleGrad = make("UIGradient", { Color = titleSeq(0) }, TitleLabel)
-make("TextLabel", {
+local VersionLabel = make("TextLabel", {
     Size = UDim2.new(0, 0, 1, 0),
     AutomaticSize = Enum.AutomaticSize.X,
     BackgroundTransparency = 1,
@@ -568,10 +568,26 @@ local TimerLabel = make("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Right,
 }, Header)
 
+local ui = { minimized = false }
+
 local function applyTimerVisibility()
-    TimerLabel.Visible = settings.showTimer
+    -- Saat diperkecil, timer selalu tampil
+    TimerLabel.Visible = settings.showTimer or ui.minimized
 end
 applyTimerVisibility()
+
+-- Wave sekarang, hanya tampil saat window diperkecil
+local MiniWave = make("TextLabel", {
+    Size = UDim2.new(0, 88, 1, 0),
+    Position = UDim2.new(0, 100, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "Wave -",
+    TextColor3 = C.text,
+    TextSize = 11,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Visible = false,
+}, Header)
 
 local function iconButton(xOff)
     local btn = make("TextButton", {
@@ -2170,7 +2186,7 @@ do
                     for _, s in ipairs(data[key]) do
                         if type(s) == "table" and type(s.n) == "string" and type(s.x) == "number"
                             and type(s.y) == "number" and type(s.z) == "number" then
-                            table.insert(spots[key], { n = s.n, x = s.x, y = s.y, z = s.z })
+                            table.insert(spots[key], { n = s.n, x = s.x, y = s.y, z = s.z, u = type(s.u) == "string" and s.u or nil })
                         end
                     end
                 end
@@ -2305,11 +2321,18 @@ do
         rebuild = function()
             for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
 
+            -- Panel Unit Mover menampilkan unit yang terkunci di tiap lokasi
+            local showUnit = opts.showUnit
+            local lblW = showUnit and 100 or 66
+            local tpX, tpW = lblW + 4, showUnit and 86 or 92
+            local selX, selW = tpX + tpW + 4, showUnit and 70 or 92
+            local delX, delW = selX + selW + 4, showUnit and 54 or 56
+
             for i, s in ipairs(list) do
                 local y = (i - 1) * 32
                 make("TextLabel", {
-                    Size = UDim2.new(0, 66, 0, 28),
-                    Position = UDim2.new(0, 0, 0, y),
+                    Size = UDim2.new(0, lblW, 0, showUnit and 14 or 28),
+                    Position = UDim2.new(0, 0, 0, showUnit and (y + 2) or y),
                     BackgroundTransparency = 1,
                     Text = s.n,
                     TextColor3 = C.text,
@@ -2317,10 +2340,23 @@ do
                     Font = Enum.Font.GothamMedium,
                     TextXAlignment = Enum.TextXAlignment.Left,
                 }, rows)
+                if showUnit then
+                    make("TextLabel", {
+                        Size = UDim2.new(0, lblW, 0, 12),
+                        Position = UDim2.new(0, 0, 0, y + 15),
+                        BackgroundTransparency = 1,
+                        Text = s.u or "no unit saved",
+                        TextColor3 = s.u and C.muted or C.warn,
+                        TextSize = 9,
+                        Font = Enum.Font.GothamMedium,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                    }, rows)
+                end
 
                 createButton(rows, {
-                    Size = UDim2.new(0, 92, 0, 28),
-                    Position = UDim2.new(0, 70, 0, y),
+                    Size = UDim2.new(0, tpW, 0, 28),
+                    Position = UDim2.new(0, tpX, 0, y),
                 }, "Teleport", function()
                     if busy then return end
                     busy = true
@@ -2332,9 +2368,10 @@ do
                     end)
                 end)
 
+                -- Select hanya mengganti posisi; unit yang terkunci tidak berubah
                 createButton(rows, {
-                    Size = UDim2.new(0, 92, 0, 28),
-                    Position = UDim2.new(0, 166, 0, y),
+                    Size = UDim2.new(0, selW, 0, 28),
+                    Position = UDim2.new(0, selX, 0, y),
                 }, "Select", function()
                     startPick(function(pos)
                         s.x, s.y, s.z = pos.X, pos.Y, pos.Z
@@ -2346,8 +2383,8 @@ do
                 local armed = false
                 local del
                 del = createButton(rows, {
-                    Size = UDim2.new(0, 56, 0, 28),
-                    Position = UDim2.new(0, 262, 0, y),
+                    Size = UDim2.new(0, delW, 0, 28),
+                    Position = UDim2.new(0, delX, 0, y),
                 }, "Delete", function()
                     if not armed then
                         armed = true
@@ -2373,11 +2410,20 @@ do
                 Size = UDim2.new(1, 0, 0, 28),
                 Position = UDim2.new(0, 0, 0, #list * 32),
             }, "+ Add location", function()
+                -- Lokasi baru terkunci ke unit yang dipilih di dropdown saat ini
+                local unit = nil
+                if opts.getUnit then
+                    unit = opts.getUnit()
+                    if not unit then
+                        notify("Unit Mover", "Select a unit in the dropdown first. The new location locks to it.", 4)
+                        return
+                    end
+                end
                 startPick(function(pos)
-                    table.insert(list, { n = nextLocName(list), x = pos.X, y = pos.Y, z = pos.Z })
+                    table.insert(list, { n = nextLocName(list), x = pos.X, y = pos.Y, z = pos.Z, u = unit })
                     saveSpots()
                     rebuild()
-                    panel.setNote("Location added", C.text)
+                    panel.setNote("Location added" .. (unit and (" for " .. unit) or ""), C.text)
                 end)
             end)
 
@@ -2462,7 +2508,7 @@ do
 
     -- Jual unit, pasang lagi di lokasi baru, lalu upgrade lagi ke level semula
     local function moveUnit(label, s)
-        if not label then return false, "Select a unit first" end
+        if not label then return false, "No unit saved for this location" end
         local unit
         for _, u in ipairs(scanUnits()) do
             if u.label == label then
@@ -2470,7 +2516,7 @@ do
                 break
             end
         end
-        if not unit then return false, "Unit not found" end
+        if not unit then return false, "Unit not found: " .. label end
 
         local tw, name = unit.tower, unit.name
         local okp, p0 = pcall(function() return tw:GetPivot().Position end)
@@ -2516,20 +2562,22 @@ do
 
     local mover = createSpotPanel("Unit Mover", "mover", {
         headerH = 34,
+        showUnit = true,
+        getUnit = function() return selected end,
         buildHeader = function(card)
             createSelect(card, {
                 Size = UDim2.new(1, -24, 0, 28),
                 Position = UDim2.new(0, 12, 0, 34),
             }, {
-                placeholder = "Select unit",
+                placeholder = "Unit for new locations",
                 getOptions = unitOptions,
                 emptyMsg = "No units placed yet.",
                 onChange = function(v) selected = v end,
             })
         end,
-        teleport = function(s) return moveUnit(selected, s) end,
+        teleport = function(s) return moveUnit(s.u, s) end,
     })
-    mover.setNote("Sells + re-places the unit", C.dim)
+    mover.setNote("Each location is locked to its unit", C.dim)
 end
 
 -- =================================================================
@@ -3783,6 +3831,10 @@ runLoop(function()
         math.floor(elapsed / 3600),
         math.floor((elapsed % 3600) / 60),
         elapsed % 60)
+    if ui.minimized then
+        local w = waveNow.cur
+        MiniWave.Text = w and ("Wave " .. w .. (waveNow.max and ("/" .. waveNow.max) or "")) or "Wave -"
+    end
     return 1
 end)
 
@@ -3801,15 +3853,22 @@ local function cleanup()
 end
 env.LightHubCleanup = cleanup
 
-local minimized = false
+local MINI_W = 340
 
+-- Diperkecil: kotak kecil berisi nama hub, wave, dan timer. Diperbesar: kembali normal.
 MinimizeBtn.MouseButton1Click:Connect(function()
     closeOverlay()
-    minimized = not minimized
-    Body.Visible = not minimized
-    MinLine.Visible = not minimized
-    MinBox.Visible = minimized
-    tween(MainFrame, 0.15, { Size = UDim2.new(0, WIN_W, 0, minimized and HEADER_H or WIN_H) })
+    ui.minimized = not ui.minimized
+    local mini = ui.minimized
+    Body.Visible = not mini
+    MinLine.Visible = not mini
+    MinBox.Visible = mini
+    VersionLabel.Visible = not mini
+    MiniWave.Visible = mini
+    applyTimerVisibility()
+    tween(MainFrame, 0.15, {
+        Size = mini and UDim2.new(0, MINI_W, 0, HEADER_H) or UDim2.new(0, WIN_W, 0, WIN_H),
+    })
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()

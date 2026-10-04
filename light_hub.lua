@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHT HUB v3.6
+-- LIGHTN HUB v3.8
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -14,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "3.6"
+local VERSION = "3.8"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -155,7 +155,7 @@ local conns = {}
 local function notify(sub, txt, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = "Light • " .. sub,
+            Title = "Lightn Hub • " .. sub,
             Text = txt,
             Duration = dur or 3,
         })
@@ -418,6 +418,35 @@ local function fluidLayer(colors, alphas)
     return layer, g
 end
 
+-- Gradient papan (kartu, header, sidebar, tab) berayun pelan; tiap papan
+-- punya fase dan kecepatan sendiri sehingga tidak selaras dengan teks judul.
+local movers = {}
+local function swing(frame, lo, hi, base, amp, speed, phase)
+    local g = make("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, lo),
+            ColorSequenceKeypoint.new(0.5, hi),
+            ColorSequenceKeypoint.new(1, lo),
+        }),
+        Rotation = base,
+    }, frame)
+    movers[#movers + 1] = { g = g, base = base, amp = amp, speed = speed, phase = phase or 0 }
+    return g
+end
+
+-- Warna teks judul: pita abu-abu ke putih yang mengalir pelan ke kanan
+local function titleSeq(t)
+    local kps = {}
+    local n = 6
+    for i = 0, n do
+        local x = i / n
+        local v = 0.5 + 0.5 * math.sin((x * 1.3 - t * 0.12) * math.pi * 2)
+        local g = math.floor(125 + 130 * v)
+        kps[#kps + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(g, g, g))
+    end
+    return ColorSequence.new(kps)
+end
+
 local fluid = { t = 0, acc = 0 }
 fluid.layerA, fluid.gradA = fluidLayer({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(205, 205, 209)),
@@ -452,7 +481,7 @@ applyFluid()
 table.insert(conns, RunService.Heartbeat:Connect(function(dt)
     if not settings.fluidBg then return end
     fluid.acc = fluid.acc + dt
-    if fluid.acc < 0.04 then return end -- ~25 fps cukup untuk gerakan lambat
+    if fluid.acc < 0.06 then return end -- ~16 fps cukup untuk gerakan lambat
     fluid.t = fluid.t + fluid.acc
     fluid.acc = 0
     local t = fluid.t
@@ -460,6 +489,10 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
     fluid.gradA.Offset = Vector2.new(math.sin(t * 0.21) * 0.12, math.cos(t * 0.17) * 0.12)
     fluid.gradB.Rotation = (120 - t * 3) % 360
     fluid.gradB.Offset = Vector2.new(math.cos(t * 0.13) * 0.12, math.sin(t * 0.19) * 0.12)
+    for _, m in ipairs(movers) do
+        m.g.Rotation = m.base + math.sin(t * m.speed + m.phase) * m.amp
+    end
+    if fluid.titleGrad then fluid.titleGrad.Color = titleSeq(t) end
 end))
 
 -- Loop latar belakang yang berhenti otomatis saat GUI dihancurkan
@@ -483,7 +516,7 @@ local Header = make("Frame", {
     BackgroundTransparency = 0.18,
     BorderSizePixel = 0,
 }, MainFrame)
-grad(Header, Color3.fromRGB(22, 22, 24), Color3.fromRGB(8, 8, 9))
+swing(Header, Color3.fromRGB(8, 8, 9), Color3.fromRGB(26, 26, 30), 0, 25, 0.16, 0.5)
 make("Frame", {
     Size = UDim2.new(1, 0, 0, 1),
     Position = UDim2.new(0, 0, 1, -1),
@@ -491,17 +524,38 @@ make("Frame", {
     BorderSizePixel = 0,
 }, Header)
 
-make("TextLabel", {
-    Size = UDim2.new(0, 160, 1, 0),
+local TitleRow = make("Frame", {
+    Size = UDim2.new(0, 220, 1, 0),
     Position = UDim2.new(0, 14, 0, 0),
     BackgroundTransparency = 1,
-    RichText = true,
-    Text = 'LIGHT  <font size="10" color="rgb(130,130,136)">v' .. VERSION .. "</font>",
+}, Header)
+make("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    VerticalAlignment = Enum.VerticalAlignment.Center,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 7),
+}, TitleRow)
+local TitleLabel = make("TextLabel", {
+    Size = UDim2.new(0, 0, 1, 0),
+    AutomaticSize = Enum.AutomaticSize.X,
+    BackgroundTransparency = 1,
+    Text = "LIGHTN HUB",
     TextColor3 = C.white,
     TextSize = 13,
     Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, Header)
+    LayoutOrder = 1,
+}, TitleRow)
+fluid.titleGrad = make("UIGradient", { Color = titleSeq(0) }, TitleLabel)
+make("TextLabel", {
+    Size = UDim2.new(0, 0, 1, 0),
+    AutomaticSize = Enum.AutomaticSize.X,
+    BackgroundTransparency = 1,
+    Text = "v" .. VERSION,
+    TextColor3 = C.muted,
+    TextSize = 10,
+    Font = Enum.Font.GothamMedium,
+    LayoutOrder = 2,
+}, TitleRow)
 
 local TimerLabel = make("TextLabel", {
     Size = UDim2.new(0, 76, 1, 0),
@@ -574,7 +628,7 @@ local Sidebar = make("Frame", {
     BackgroundTransparency = 0.2,
     BorderSizePixel = 0,
 }, Body)
-grad(Sidebar, Color3.fromRGB(16, 16, 17), Color3.fromRGB(9, 9, 10))
+swing(Sidebar, Color3.fromRGB(9, 9, 10), Color3.fromRGB(24, 24, 27), 90, 30, 0.14, 2.1)
 make("Frame", {
     Size = UDim2.new(0, 1, 1, 0),
     Position = UDim2.new(1, -1, 0, 0),
@@ -751,7 +805,7 @@ local function createCard(par, height)
         BorderSizePixel = 0,
         LayoutOrder = nextOrder(par),
     }, par)
-    grad(card, Color3.fromRGB(36, 36, 39), Color3.fromRGB(24, 24, 26))
+    swing(card, Color3.fromRGB(24, 24, 27), Color3.fromRGB(46, 46, 50), 90, 38, 0.18 + (#movers % 4) * 0.035, #movers * 1.7)
     return card
 end
 
@@ -1214,7 +1268,7 @@ for i, name in ipairs(TAB_ORDER) do
         Text = "",
         AutoButtonColor = false,
     }, Sidebar)
-    grad(item, Color3.fromRGB(54, 54, 58), Color3.fromRGB(30, 30, 33), 0)
+    swing(item, Color3.fromRGB(32, 32, 36), Color3.fromRGB(62, 62, 67), 0, 30, 0.22, i * 1.3)
 
     local bar = make("Frame", {
         Size = UDim2.new(0, 2, 1, 0),
@@ -2094,6 +2148,391 @@ do
 end
 
 -- =================================================================
+-- Endless: Teleport UTTM + Unit Mover
+-- Lokasi dipilih manual: tekan Select, lalu double-tap di tanah.
+--   CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
+-- Unit Mover = jual unit lalu pasang lagi di lokasi lain (label tetap).
+-- =================================================================
+local SPOTS_FILE = "LightHub_Spots.json"
+local UTTM_NAME = "Upgraded Titan Cinema Man"
+
+do
+    local page = tabs["Endless"].page
+    local mouse = LocalPlayer:GetMouse()
+
+    -- ---------------- Penyimpanan lokasi ----------------
+    local spots = { uttm = {}, mover = {} }
+    if canFile and isfile(SPOTS_FILE) then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(SPOTS_FILE)) end)
+        if ok and type(data) == "table" then
+            for _, key in ipairs({ "uttm", "mover" }) do
+                if type(data[key]) == "table" then
+                    for _, s in ipairs(data[key]) do
+                        if type(s) == "table" and type(s.n) == "string" and type(s.x) == "number"
+                            and type(s.y) == "number" and type(s.z) == "number" then
+                            table.insert(spots[key], { n = s.n, x = s.x, y = s.y, z = s.z })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local function saveSpots()
+        if canFile then pcall(writefile, SPOTS_FILE, HttpService:JSONEncode(spots)) end
+    end
+
+    -- ---------------- Pilih lokasi: double-tap di tanah ----------------
+    local pick = nil
+
+    local function startPick(cb)
+        local token = os.clock()
+        pick = { cb = cb, token = token, lastT = 0, lastPos = nil }
+        pcall(function() mouse.TargetFilter = workspace:FindFirstChild("Towers") end)
+        notify("Select location", "Double-tap the ground where you want it (30s).", 6)
+        task.delay(30, function()
+            if pick and pick.token == token then
+                pick = nil
+                notify("Select location", "Selection timed out.", 3)
+            end
+        end)
+    end
+
+    table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
+        if not pick or processed then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+        local now = os.clock()
+        local here = Vector2.new(input.Position.X, input.Position.Y)
+        if pick.lastPos and (now - pick.lastT) < 0.5 and (here - pick.lastPos).Magnitude < 60 then
+            local cb = pick.cb
+            pick = nil
+            task.delay(0.05, function()
+                local hit = mouse.Hit
+                if hit then
+                    cb(hit.Position)
+                else
+                    notify("Select location", "Couldn't read that spot. Try again.", 3)
+                end
+            end)
+            return
+        end
+        pick.lastT, pick.lastPos = now, here
+    end))
+
+    -- ---------------- Tower ----------------
+    local function myTowerFolder()
+        return workspace:FindFirstChild("Towers")
+    end
+
+    local function findTowerNear(name, x, z, r)
+        local folder = myTowerFolder()
+        if not folder then return nil end
+        for _, t in ipairs(folder:GetChildren()) do
+            if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                local ok, p = pcall(function() return t:GetPivot().Position end)
+                if ok and math.sqrt((p.X - x) ^ 2 + (p.Z - z) ^ 2) <= r then return t end
+            end
+        end
+        return nil
+    end
+
+    local function pushMacro(act)
+        local ms = env.LightHubMacroState
+        if ms and ms.rec and ms.push then
+            act.w = waveNow.cur or 0
+            ms.push(act)
+        end
+    end
+
+    -- ---------------- Panel lokasi (dipakai UTTM dan Unit Mover) ----------------
+    local function nextLocName(list)
+        local n = 1
+        while true do
+            local used = false
+            for _, s in ipairs(list) do
+                if s.n == "Loc " .. n then used = true end
+            end
+            if not used then return "Loc " .. n end
+            n = n + 1
+        end
+    end
+
+    local function createSpotPanel(title, key, opts)
+        local list = spots[key]
+        local headerH = opts.headerH or 0
+        local card = createCard(page, 80)
+
+        make("TextLabel", {
+            Size = UDim2.new(0, 150, 0, 34),
+            Position = UDim2.new(0, 12, 0, 0),
+            BackgroundTransparency = 1,
+            Text = title,
+            TextColor3 = C.text,
+            TextSize = 12,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, card)
+        local noteLbl = make("TextLabel", {
+            Size = UDim2.new(0, 190, 0, 34),
+            Position = UDim2.new(1, -202, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            TextColor3 = C.muted,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, card)
+
+        local panel = { card = card }
+        function panel.setNote(t, color)
+            noteLbl.Text = t or ""
+            noteLbl.TextColor3 = color or C.muted
+        end
+
+        if opts.buildHeader then opts.buildHeader(card) end
+
+        local rows = make("Frame", {
+            Size = UDim2.new(1, -24, 0, 28),
+            Position = UDim2.new(0, 12, 0, 34 + headerH),
+            BackgroundTransparency = 1,
+        }, card)
+
+        local busy = false
+        local rebuild
+
+        rebuild = function()
+            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
+
+            for i, s in ipairs(list) do
+                local y = (i - 1) * 32
+                make("TextLabel", {
+                    Size = UDim2.new(0, 66, 0, 28),
+                    Position = UDim2.new(0, 0, 0, y),
+                    BackgroundTransparency = 1,
+                    Text = s.n,
+                    TextColor3 = C.text,
+                    TextSize = 11,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, rows)
+
+                createButton(rows, {
+                    Size = UDim2.new(0, 92, 0, 28),
+                    Position = UDim2.new(0, 70, 0, y),
+                }, "Teleport", function()
+                    if busy then return end
+                    busy = true
+                    task.spawn(function()
+                        panel.setNote("Working...", C.muted)
+                        local ok, msg = opts.teleport(s)
+                        panel.setNote(msg, ok and C.text or C.warn)
+                        busy = false
+                    end)
+                end)
+
+                createButton(rows, {
+                    Size = UDim2.new(0, 92, 0, 28),
+                    Position = UDim2.new(0, 166, 0, y),
+                }, "Select", function()
+                    startPick(function(pos)
+                        s.x, s.y, s.z = pos.X, pos.Y, pos.Z
+                        saveSpots()
+                        panel.setNote(s.n .. " updated", C.text)
+                    end)
+                end)
+
+                local armed = false
+                local del
+                del = createButton(rows, {
+                    Size = UDim2.new(0, 56, 0, 28),
+                    Position = UDim2.new(0, 262, 0, y),
+                }, "Delete", function()
+                    if not armed then
+                        armed = true
+                        del.Text = "Sure?"
+                        task.delay(3, function()
+                            armed = false
+                            if del.Parent then del.Text = "Delete" end
+                        end)
+                        return
+                    end
+                    for j, v in ipairs(list) do
+                        if v == s then
+                            table.remove(list, j)
+                            break
+                        end
+                    end
+                    saveSpots()
+                    rebuild()
+                end)
+            end
+
+            createButton(rows, {
+                Size = UDim2.new(1, 0, 0, 28),
+                Position = UDim2.new(0, 0, 0, #list * 32),
+            }, "+ Add location", function()
+                startPick(function(pos)
+                    table.insert(list, { n = nextLocName(list), x = pos.X, y = pos.Y, z = pos.Z })
+                    saveSpots()
+                    rebuild()
+                    panel.setNote("Location added", C.text)
+                end)
+            end)
+
+            rows.Size = UDim2.new(1, -24, 0, #list * 32 + 28)
+            card.Size = UDim2.new(1, 0, 0, 34 + headerH + #list * 32 + 28 + 10)
+        end
+
+        rebuild()
+        return panel
+    end
+
+    -- ---------------- Teleport UTTM (muncul otomatis kalau unitnya ada) ----------------
+    local lastUttmUse = nil
+
+    local function findUttm()
+        local folder = myTowerFolder()
+        if not folder then return nil end
+        for _, t in ipairs(folder:GetChildren()) do
+            if t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                return t
+            end
+        end
+        return nil
+    end
+
+    local uttm = createSpotPanel("Teleport UTTM", "uttm", {
+        teleport = function(s)
+            local tw = findUttm()
+            if not tw then return false, "UTTM not found" end
+            local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
+            if not accepted(ok, res) then
+                local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
+                return false, "On cooldown" .. ago
+            end
+            local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
+            if accepted(ok2, res2) then
+                lastUttmUse = os.clock()
+                return true, "Teleported to " .. s.n
+            end
+            return false, "Couldn't place it there"
+        end,
+    })
+    uttm.card.Visible = false
+
+    runLoop(function()
+        local found = findUttm() ~= nil
+        if uttm.card.Visible ~= found then uttm.card.Visible = found end
+        return 1
+    end)
+
+    -- ---------------- Unit Mover ----------------
+    -- Label per unit ("Camera Man 1", "Camera Man 2") supaya unit bernama sama
+    -- tidak bentrok. Label ikut ke unit baru setelah dipindah.
+    local unitLabels = setmetatable({}, { __mode = "k" })
+    local labelCount = {}
+    local selected = nil
+
+    local function scanUnits()
+        local out = {}
+        local folder = myTowerFolder()
+        if not folder then return out end
+        for _, t in ipairs(folder:GetChildren()) do
+            if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                local label = unitLabels[t]
+                if not label then
+                    labelCount[t.Name] = (labelCount[t.Name] or 0) + 1
+                    label = t.Name .. " " .. labelCount[t.Name]
+                    unitLabels[t] = label
+                end
+                out[#out + 1] = { tower = t, name = t.Name, label = label }
+            end
+        end
+        table.sort(out, function(a, b) return a.label < b.label end)
+        return out
+    end
+
+    local function unitOptions()
+        local t = {}
+        for _, u in ipairs(scanUnits()) do t[#t + 1] = { label = u.label, value = u.label } end
+        return t
+    end
+
+    -- Jual unit, pasang lagi di lokasi baru, lalu upgrade lagi ke level semula
+    local function moveUnit(label, s)
+        if not label then return false, "Select a unit first" end
+        local unit
+        for _, u in ipairs(scanUnits()) do
+            if u.label == label then
+                unit = u
+                break
+            end
+        end
+        if not unit then return false, "Unit not found" end
+
+        local tw, name = unit.tower, unit.name
+        local okp, p0 = pcall(function() return tw:GetPivot().Position end)
+        if not okp then return false, "Unit not found" end
+        local lvl = tw:GetAttribute("Level")
+
+        invoke("SellTower", tw)
+        for _ = 1, 8 do
+            if not tw.Parent then break end
+            task.wait(0.25)
+        end
+        if tw.Parent then return false, "Couldn't sell it" end
+        pushMacro({ t = "sell", n = name, p = { p0.X, p0.Y, p0.Z } })
+
+        local cf = CFrame.new(s.x, s.y, s.z)
+        local placed
+        for _ = 1, 20 do -- menunggu cash cukup, maksimal sekitar 20 detik
+            invoke("PlaceTower", name, cf)
+            task.wait(0.6)
+            placed = findTowerNear(name, s.x, s.z, 4)
+            if placed then break end
+            task.wait(0.4)
+        end
+        if not placed then return false, "Sold it, but couldn't place (cash?)" end
+        unitLabels[placed] = label
+        pushMacro({ t = "place", n = name, cf = { cf:GetComponents() } })
+
+        if type(lvl) == "number" then
+            local t0 = os.clock()
+            while os.clock() - t0 < 25 do
+                local cur = placed:GetAttribute("Level")
+                local price = placed:GetAttribute("UpgradePrice")
+                if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then break end
+                local ok, res = invoke("UpgradeTower", placed)
+                if ok and res == true then
+                    pushMacro({ t = "up", n = name, p = { s.x, s.y, s.z } })
+                end
+                task.wait(0.4)
+            end
+        end
+        return true, label .. " moved to " .. s.n
+    end
+
+    local mover = createSpotPanel("Unit Mover", "mover", {
+        headerH = 34,
+        buildHeader = function(card)
+            createSelect(card, {
+                Size = UDim2.new(1, -24, 0, 28),
+                Position = UDim2.new(0, 12, 0, 34),
+            }, {
+                placeholder = "Select unit",
+                getOptions = unitOptions,
+                emptyMsg = "No units placed yet.",
+                onChange = function(v) selected = v end,
+            })
+        end,
+        teleport = function(s) return moveUnit(selected, s) end,
+    })
+    mover.setNote("Sells + re-places the unit", C.dim)
+end
+
+-- =================================================================
 -- Macro: rekam dan putar ulang strategi
 --   PlaceTower(nama, CFrame)   UpgradeTower(tower)   SellTower(tower)
 -- Rekaman ditulis ke file LightHub_Macro_<nama>.json (daftar nama di
@@ -2349,6 +2788,16 @@ do
         saveCurrentRec()
     end
     mstate.handler = onCall
+
+    -- Aksi dari Unit Mover (sell + place + upgrade) ikut direkam saat Record aktif
+    mstate.push = function(act)
+        local rec = mstate.rec
+        if not rec then return end
+        act.ts = os.clock()
+        table.insert(rec.actions, act)
+        table.sort(rec.actions, function(x, y) return x.ts < y.ts end)
+        saveCurrentRec()
+    end
 
     -- Hook dipasang sekali per server, membaca handler dari mstate
     local function installHook()
@@ -3364,7 +3813,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
-    notify("Terminated", "Light closed. All features stopped.", 2)
+    notify("Terminated", "Lightn Hub closed. All features stopped.", 2)
     cleanup()
 end)
 

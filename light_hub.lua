@@ -2508,17 +2508,31 @@ do
         return alive()
     end
 
-    -- ---------------- Sinyal dari server ----------------
-    -- Tombol tarik = remote Hit. Server bisa mengirim sinyal ke client lewat
-    -- FishingEvent (ikan menggigit, target Hit). Sinyal itu dipakai sebagai
-    -- aba-aba; kalau game tidak mengirim apa-apa, dipakai jeda tetap.
-    local cueCount, lastCue, cueMode = 0, nil, false
-    local cueEvent = fishRemote("FishingEvent")
-    if cueEvent and cueEvent:IsA("RemoteEvent") then
-        table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
-            cueCount = cueCount + 1
-            lastCue = table.pack(...)
-        end))
+    -- ---------------- Aba-aba "hit" ----------------
+    -- Hit harus dikirim tepat saat prompt "hit" muncul, bukan setelah jeda tetap
+    -- (jeda bikin ikan lepas). Aba-aba dibaca dari dua sumber:
+    --   1. elemen UI yang namanya / teksnya "hit" mulai tampil
+    --   2. event server -> client di FishingEvent yang memuat kata "hit"
+    -- Hanya dihitung selama fase menarik ikan (setelah LuckRelease).
+    local reelWindow = false
+    local hitCount, hitIndex, lastHitAt, hitSeen = 0, nil, 0, false
+    local cueCount, lastCue = 0, nil  -- semua event server (dipakai sebagai tanda ikan menggigit)
+
+    local function hitWord(str)
+        if type(str) ~= "string" or str == "" then return false end
+        str = string.lower(str)
+        return string.find(str, "%f[%a]hit%f[%A]") ~= nil
+            or string.find(str, "^hit") ~= nil
+            or string.find(str, "hit$") ~= nil
+    end
+
+    local function markHit(idx)
+        if not reelWindow then return end
+        local now = os.clock()
+        if now - lastHitAt < 0.35 then return end
+        lastHitAt = now
+        hitIndex = idx
+        hitCount = hitCount + 1
     end
 
     local function cueIndex(pack)
@@ -2530,7 +2544,73 @@ do
         return nil
     end
 
-    -- true kalau ada sinyal baru setelah hitungan "base"
+    local cueEvent = fishRemote("FishingEvent")
+    if cueEvent and cueEvent:IsA("RemoteEvent") then
+        table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
+            local pack = table.pack(...)
+            cueCount = cueCount + 1
+            lastCue = pack
+            for i = 1, pack.n do
+                if type(pack[i]) == "string" and hitWord(pack[i]) then
+                    markHit(cueIndex(pack))
+                    break
+                end
+            end
+        end))
+    end
+
+    -- Elemen UI kandidat: nama "hit", teks "hit", atau label di dalam UI fishing
+    local watched, watchList = {}, {}
+    local function pathHasFish(path)
+        return string.find(path, "fish", 1, true) or string.find(path, "reel", 1, true)
+            or string.find(path, "minigame", 1, true)
+    end
+    local function isTextObj(d) return d:IsA("TextLabel") or d:IsA("TextButton") end
+    local function consider(d)
+        if watched[d] or not d:IsA("GuiObject") then return end
+        local ok = hitWord(d.Name)
+            or (isTextObj(d) and (hitWord(d.Text) or pathHasFish(string.lower(d:GetFullName()))))
+        if ok then
+            watched[d] = true
+            watchList[#watchList + 1] = { d = d, was = false }
+        end
+    end
+
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        pcall(function()
+            for _, d in ipairs(pg:GetDescendants()) do consider(d) end
+        end)
+        table.insert(conns, pg.DescendantAdded:Connect(function(d)
+            task.defer(function() pcall(consider, d) end)
+        end))
+    end
+
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if not fishing then
+                reelWindow = false
+                task.wait(0.5)
+            else
+                for i = #watchList, 1, -1 do
+                    local w = watchList[i]
+                    local d = w.d
+                    if not d.Parent then
+                        table.remove(watchList, i)
+                        watched[d] = nil
+                    else
+                        local on = isShown(d) and (hitWord(d.Name) or (isTextObj(d) and hitWord(d.Text)))
+                        on = on and true or false
+                        if on and not w.was then markHit(nil) end
+                        w.was = on
+                    end
+                end
+                if reelWindow then task.wait() else task.wait(0.2) end
+            end
+        end
+    end)
+
+    -- true kalau ada event server baru setelah hitungan "base"
     local function waitCue(base, timeout)
         local untilT = os.clock() + timeout
         while cueCount <= base do
@@ -2540,52 +2620,67 @@ do
         return true
     end
 
-    local function fireHit(ev, i)
-        feat.setNote("Reeling " .. i .. "/" .. TIMING.hits, C.text)
+    local function waitHit(base, timeout)
+        local untilT = os.clock() + timeout
+        while hitCount <= base do
+            if os.clock() >= untilT or not alive() then return false end
+            task.wait()
+        end
+        return true
+    end
+
+    local function fireHit(ev, i, tag)
+        feat.setNote("Reeling " .. i .. "/" .. TIMING.hits .. (tag or ""), C.text)
         ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
     end
 
+    local biteSeen = false
     local function cycle(ev)
+        reelWindow = false
         local base = cueCount
         feat.setNote("Casting", C.text)
         ev:FireServer("Cast", { Position = spot })
 
-        -- Tunggu ikan menggigit: sinyal server kalau game memakainya, kalau tidak jeda tetap
-        local bite = waitCue(base, cueMode and 20 or TIMING.castToLuck)
+        -- Tunggu ikan menggigit: event server kalau ada, kalau tidak jeda tetap
+        local bite = waitCue(base, biteSeen and 20 or TIMING.castToLuck)
         if not alive() then return end
-        if bite then cueMode = true end
+        if bite then biteSeen = true end
 
         feat.setNote("Luck", C.text)
         ev:FireServer("LuckHold", { ClickTime = workspace:GetServerTimeNow() })
         if not nap(TIMING.luckHold) then return end
         ev:FireServer("LuckRelease", { ClickTime = workspace:GetServerTimeNow() })
 
-        base = cueCount
-        local reelCue = waitCue(base, cueMode and 6 or TIMING.luckToHit)
+        -- Fase tarik: Hit dikirim begitu aba-aba "hit" muncul
+        local hbase = hitCount
+        reelWindow = true
+        feat.setNote("Waiting hit", C.text)
+        local first = waitHit(hbase, hitSeen and 12 or (TIMING.luckToHit + 3))
         if not alive() then return end
 
-        local done = 0
-        if reelCue then
-            -- Tiap sinyal dari server dibalas satu Hit (pakai Index dari sinyal kalau ada)
-            local seen = base
+        if first then
+            hitSeen = true
+            local done, seen = 0, hbase
             local deadline = os.clock() + 4
             while alive() and done < TIMING.hits do
-                if cueCount > seen then
-                    seen = cueCount
+                if hitCount > seen then
+                    seen = hitCount
                     done = done + 1
-                    fireHit(ev, cueIndex(lastCue) or done)
+                    fireHit(ev, hitIndex or done)
                     deadline = os.clock() + 4
                 elseif os.clock() > deadline then
                     break
                 end
-                if not nap(0.05) then return end
+                task.wait()
+            end
+        else
+            -- Tidak ada aba-aba yang terbaca: urutan Hit dengan jeda tetap
+            for i = 1, TIMING.hits do
+                fireHit(ev, i, " timed")
+                if not nap(TIMING.hitGap) then return end
             end
         end
-        -- Sisa Hit (atau semuanya, kalau tidak ada sinyal) dengan jeda tetap
-        for i = done + 1, TIMING.hits do
-            fireHit(ev, i)
-            if not nap(TIMING.hitGap) then return end
-        end
+        reelWindow = false
         feat.setNote("Caught", C.text)
         nap(TIMING.endWait)
     end

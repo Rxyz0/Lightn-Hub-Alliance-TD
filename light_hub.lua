@@ -66,6 +66,7 @@ local SPEED_OPTIONS = {
     { label = "1.5x", value = 1.5 },
     { label = "2x", value = 2 },
     { label = "2.5x", value = 2.5 },
+    { label = "3x", value = 3 },
 }
 local MODE_OPTIONS = {
     { label = "Easy", value = "Easy" },
@@ -576,10 +577,9 @@ local function applyTimerVisibility()
 end
 applyTimerVisibility()
 
--- Wave + streak, hanya tampil saat window diperkecil
--- Susunan: WAVE 8/60  |  🔥 3   (streak persis di sebelah wave, dipisah garis tegak)
+-- Wave sekarang, hanya tampil saat window diperkecil
 local MiniWave = make("Frame", {
-    Size = UDim2.new(0, 124, 1, -1),
+    Size = UDim2.new(0, 76, 1, -1),
     Position = UDim2.new(0, 106, 0, 0),
     BackgroundTransparency = 1,
     Visible = false,
@@ -590,24 +590,8 @@ make("Frame", {
     BackgroundColor3 = C.line,
     BorderSizePixel = 0,
 }, MiniWave)
-local MiniRow = make("Frame", {
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-}, MiniWave)
-make("UIListLayout", {
-    FillDirection = Enum.FillDirection.Horizontal,
-    VerticalAlignment = Enum.VerticalAlignment.Center,
-    SortOrder = Enum.SortOrder.LayoutOrder,
-    Padding = UDim.new(0, 9),
-}, MiniRow)
-local MiniWaveCol = make("Frame", {
-    Size = UDim2.new(0, 0, 1, 0),
-    AutomaticSize = Enum.AutomaticSize.X,
-    BackgroundTransparency = 1,
-    LayoutOrder = 1,
-}, MiniRow)
 make("TextLabel", {
-    Size = UDim2.new(0, 30, 0, 10),
+    Size = UDim2.new(1, 0, 0, 10),
     Position = UDim2.new(0, 0, 0, 4),
     BackgroundTransparency = 1,
     Text = "WAVE",
@@ -615,10 +599,19 @@ make("TextLabel", {
     TextSize = 8,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
-}, MiniWaveCol)
+}, MiniWave)
+local MiniStreak = make("TextLabel", {
+    Size = UDim2.new(0, 42, 0, 10),
+    Position = UDim2.new(1, -42, 0, 3),
+    BackgroundTransparency = 1,
+    Text = "\u{1F525} 0",
+    TextColor3 = C.muted,
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Right,
+}, MiniWave)
 local MiniWaveValue = make("TextLabel", {
-    Size = UDim2.new(0, 0, 0, 18),
-    AutomaticSize = Enum.AutomaticSize.X,
+    Size = UDim2.new(1, 0, 0, 18),
     Position = UDim2.new(0, 0, 0, 12),
     BackgroundTransparency = 1,
     Text = "-",
@@ -626,24 +619,7 @@ local MiniWaveValue = make("TextLabel", {
     TextSize = 14,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
-}, MiniWaveCol)
-make("Frame", {
-    Size = UDim2.new(0, 1, 0, 20),
-    BackgroundColor3 = C.line,
-    BorderSizePixel = 0,
-    LayoutOrder = 2,
-}, MiniRow)
-local MiniStreak = make("TextLabel", {
-    Size = UDim2.new(0, 0, 0, 20),
-    AutomaticSize = Enum.AutomaticSize.X,
-    BackgroundTransparency = 1,
-    Text = "\u{1F525} 0",
-    TextColor3 = C.muted,
-    TextSize = 13,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    LayoutOrder = 3,
-}, MiniRow)
+}, MiniWave)
 
 -- Bar progres wave di tepi bawah, hanya saat diperkecil
 local MiniBarTrack = make("Frame", {
@@ -1013,34 +989,32 @@ local function createCells(container, defs, top, pad)
     return cells
 end
 
--- Kartu fitur: judul + toggle persegi (opsional) + body (opsional)
--- Ikon gembok kecil (digambar dari Frame)
-local function createLockIcon(par, pos, scale, color)
-    local s = scale or 1
-    color = color or C.dim
+-- Gembok kecil: kotak datar dan batang 2px, gaya sama dengan chevron
+local function createLockIcon(par, pos, k)
+    k = k or 1
     local holder = make("Frame", {
-        Size = UDim2.new(0, 12 * s, 0, 14 * s),
+        Size = UDim2.new(0, 10 * k, 0, 12 * k),
         Position = pos,
         BackgroundTransparency = 1,
         Visible = false,
     }, par)
-    local shackle = make("Frame", {
-        Size = UDim2.new(0, 8 * s, 0, 8 * s),
-        Position = UDim2.new(0, 2 * s, 0, 0),
-        BackgroundTransparency = 1,
-    }, holder)
-    make("UICorner", { CornerRadius = UDim.new(0, 4 * s) }, shackle)
-    make("UIStroke", { Color = color, Thickness = 1.5 * s }, shackle)
-    local body = make("Frame", {
-        Size = UDim2.new(0, 12 * s, 0, 8 * s),
-        Position = UDim2.new(0, 0, 0, 6 * s),
-        BackgroundColor3 = color,
-        BorderSizePixel = 0,
-    }, holder)
-    make("UICorner", { CornerRadius = UDim.new(0, 2 * s) }, body)
+    local function bar(x, y, w, h, color)
+        make("Frame", {
+            Size = UDim2.new(0, w * k, 0, h * k),
+            Position = UDim2.new(0, x * k, 0, y * k),
+            BackgroundColor3 = color or C.dim,
+            BorderSizePixel = 0,
+        }, holder)
+    end
+    bar(1, 0, 8, 2)   -- atas busur
+    bar(1, 0, 2, 6)   -- kiri
+    bar(7, 0, 2, 6)   -- kanan
+    bar(0, 5, 10, 7)  -- badan
+    bar(4, 7, 2, 3, C.control)  -- lubang kunci
     return holder
 end
 
+-- Kartu fitur: judul + toggle persegi (opsional) + body (opsional)
 local function createFeature(par, title, opts)
     opts = opts or {}
     local bodyH = opts.bodyHeight or 0
@@ -1101,7 +1075,7 @@ local function createFeature(par, title, opts)
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, track)
 
-    local lockIcon = createLockIcon(card, UDim2.new(1, -37, 0, 10))
+    local lockIcon = createLockIcon(card, UDim2.new(1, -36, 0, 11))
 
     local POS_ON = UDim2.new(1, -13, 0.5, -5)
     local POS_OFF = UDim2.new(0, 3, 0.5, -5)
@@ -1467,6 +1441,15 @@ for i, name in ipairs(TAB_ORDER) do
 end
 
 -- =================================================================
+-- Remote fishing: ReplicatedStorage.Fishing.Remotes.<nama>
+-- =================================================================
+local function fishRemote(name)
+    local root = ReplicatedStorage:FindFirstChild("Fishing")
+    local remotes = root and root:FindFirstChild("Remotes")
+    return remotes and remotes:FindFirstChild(name)
+end
+
+-- =================================================================
 -- Statistik (Wave x/y, Units, Sell, Upgrade)
 -- =================================================================
 local statLabels = {}
@@ -1583,7 +1566,7 @@ do
 
     fSpeed = visualFeature(page, "Auto Speed", "autoSpeed", 28, function(body)
         createSegmented(body, {
-            Size = UDim2.new(0, 165, 1, 0),
+            Size = UDim2.new(0, 220, 1, 0),
         }, SPEED_OPTIONS, flags.speedValue, function(v)
             setFlag("speedValue", v)
             if flags.autoSpeed then sendSpeed() end
@@ -2181,61 +2164,598 @@ do
 end
 
 -- =================================================================
--- Fishing: dikunci sementara (ikon gembok besar, latar agak buram)
+-- Inventory: Fish Inventory (dropdown) + Sell
+-- =================================================================
+do
+    local page = tabs["Inventory"].page
+
+    -- Fish: jumlah per JENIS dari Players.<kamu>.FishingData.Fish
+    local SELL_ENABLED = false  -- jual ikan dikunci dulu
+    local FISH_WEIGHT = 1.22
+
+    local function fishList()
+        local fd = LocalPlayer:FindFirstChild("FishingData")
+        local folder = fd and fd:FindFirstChild("Fish")
+        local list, total = {}, 0
+        if folder then
+            for _, v in ipairs(folder:GetChildren()) do
+                if (v:IsA("IntValue") or v:IsA("NumberValue")) and v.Value > 0 then
+                    list[#list + 1] = { n = v.Name, c = math.floor(v.Value) }
+                    total = total + math.floor(v.Value)
+                end
+            end
+        end
+        table.sort(list, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return a.n < b.n
+        end)
+        return list, total, folder ~= nil
+    end
+
+    local function fishInvoke(action, args)
+        local fn = fishRemote("FishingFunction")
+        if not fn then return false, nil end
+        return pcall(function() return fn:InvokeServer(action, args) end)
+    end
+
+    local fish = createFeature(page, "Fish", { noToggle = true, bodyHeight = 64 })
+    if not SELL_ENABLED then
+        createLockIcon(fish.card, UDim2.new(1, -36, 0, 11)).Visible = true
+    end
+    local selectedFish, statusUntil, selling = nil, 0, false
+
+    local function say(t, color)
+        statusUntil = os.clock() + 4
+        fish.setNote(t, color)
+    end
+
+    createSelect(fish.body, {
+        Size = UDim2.new(1, 0, 0, 28),
+    }, {
+        placeholder = "Select a fish",
+        emptyMsg = "You have no fish.",
+        getOptions = function()
+            local opts = {}
+            for _, f in ipairs((fishList())) do
+                opts[#opts + 1] = { label = f.n .. "   x" .. f.c, value = f.n }
+            end
+            return opts
+        end,
+        onChange = function(v) selectedFish = v end,
+    })
+
+    local amountBox = createInput(fish.body, {
+        Size = UDim2.new(0, 84, 0, 28),
+        Position = UDim2.new(0, 0, 0, 36),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, "Amount")
+
+    local function sellFish(all)
+        if not SELL_ENABLED or selling then return end
+        if not selectedFish then
+            say("Choose a fish first", C.warn)
+            return
+        end
+        local have = 0
+        for _, f in ipairs((fishList())) do
+            if f.n == selectedFish then have = f.c end
+        end
+        if have <= 0 then
+            say("You don't have this fish", C.warn)
+            return
+        end
+        local amount = have
+        if not all then
+            amount = tonumber(amountBox.Text)
+            if not amount or amount < 1 then
+                say("Type how many fish to sell", C.warn)
+                return
+            end
+            amount = math.min(math.floor(amount), have)
+        end
+        selling = true
+        task.spawn(function()
+            local ok, res = fishInvoke("SellFish", { Fish = selectedFish, Amount = amount, Weight = FISH_WEIGHT })
+            if accepted(ok, res) then
+                say("Sold " .. amount .. " " .. selectedFish, C.text)
+            else
+                say("The game refused the sale", C.warn)
+            end
+            selling = false
+        end)
+    end
+
+    local sellBtn = createButton(fish.body, {
+        Size = UDim2.new(0, 70, 0, 28),
+        Position = UDim2.new(0, 92, 0, 36),
+    }, "Sell", function() sellFish(false) end)
+    local sellAllBtn = createButton(fish.body, {
+        Size = UDim2.new(1, -170, 0, 28),
+        Position = UDim2.new(0, 170, 0, 36),
+    }, "Sell all", function() sellFish(true) end)
+    if not SELL_ENABLED then
+        sellBtn.TextTransparency = 0.6
+        sellAllBtn.TextTransparency = 0.6
+        amountBox.TextTransparency = 0.6
+    end
+
+    runLoop(function()
+        if os.clock() > statusUntil then
+            local list, total, found = fishList()
+            fish.setNote(found and (#list .. " types  |  " .. total .. " fish") or "No fishing data", C.muted)
+        end
+        return 2
+    end)
+end
+
+-- =================================================================
+-- Fishing: Auto Fishing + Craft Fishing Island
+--   Urutan: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
+--   -> Hit{Index 1..10, ClickTime} (sekitar 1 detik per Hit)
 -- =================================================================
 do
     local page = tabs["Fishing"].page
-    local lockCard = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 262),
-        BackgroundColor3 = C.white,
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-    }, page)
-    make("UICorner", { CornerRadius = UDim.new(0, 6) }, lockCard)
-    make("UIStroke", { Color = C.line, Thickness = 1, Transparency = 0.3 }, lockCard)
-    grad(lockCard, Color3.fromRGB(46, 46, 50), Color3.fromRGB(12, 12, 13), 90)
+    local FISHING_ENABLED = false  -- tab Fishing dikunci total
+    if not FISHING_ENABLED then
+        local area = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 230),
+            BackgroundTransparency = 1,
+        }, page)
+        local big = createLockIcon(area, UDim2.new(0.5, 0, 0.5, 0), 7)
+        big.AnchorPoint = Vector2.new(0.5, 0.5)
+        big.Visible = true
+    else
+    local GuiService = game:GetService("GuiService")
+    local FISH_FILE = "LightHub_Fish.json"
 
-    -- Lingkaran lembut di belakang gembok (kesan buram / glow)
-    local haloOuter = make("Frame", {
-        Size = UDim2.new(0, 170, 0, 170),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, -24),
-        BackgroundColor3 = C.white,
-        BackgroundTransparency = 0.94,
-        BorderSizePixel = 0,
-    }, lockCard)
-    make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, haloOuter)
-    local haloInner = make("Frame", {
-        Size = UDim2.new(0, 112, 0, 112),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, -24),
-        BackgroundColor3 = C.white,
-        BackgroundTransparency = 0.9,
-        BorderSizePixel = 0,
-    }, lockCard)
-    make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, haloInner)
+    -- Jeda antar langkah (detik). Ubah di sini kalau game menolak / terlalu lambat.
+    local TIMING = {
+        castToLuck = 3,    -- setelah Cast sampai LuckHold
+        luckHold = 0.09,   -- jarak LuckHold -> LuckRelease
+        luckToHit = 3,     -- setelah LuckRelease sampai Hit pertama
+        hitGap = 1.0,      -- jarak antar Hit / tekan tombol tarik
+        hits = 10,         -- jumlah Hit per tangkapan
+        endWait = 1.5,     -- jeda sebelum Cast berikutnya
+    }
 
-    -- Gembok besar: 4x ukuran normal (48 x 56)
-    createLockIcon(lockCard, UDim2.new(0.5, -24, 0.5, -52), 4, C.muted).Visible = true
+    -- ---------------- Spot lemparan (disimpan di file kalau executor mendukung) ----------------
+    local spot = nil
+    if canFile then
+        pcall(function()
+            if isfile(FISH_FILE) then
+                local d = HttpService:JSONDecode(readfile(FISH_FILE))
+                if type(d) == "table" and type(d.x) == "number" and type(d.y) == "number" and type(d.z) == "number" then
+                    spot = Vector3.new(d.x, d.y, d.z)
+                end
+            end
+        end)
+    end
+    local function saveSpot()
+        if canFile and spot then
+            pcall(function()
+                writefile(FISH_FILE, HttpService:JSONEncode({ x = spot.X, y = spot.Y, z = spot.Z }))
+            end)
+        end
+    end
 
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 18),
-        Position = UDim2.new(0, 0, 0.5, 24),
+    -- ---------------- Auto Fishing ----------------
+    local fishing = false
+    local feat
+    feat = createFeature(page, "Auto Fishing", {
+        bodyHeight = 62,
+        onToggle = function(v)
+            fishing = v
+            if not v then feat.setNote("", C.muted) end
+        end,
+    })
+
+    local spotLabel = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 22),
+        Position = UDim2.new(0, 0, 0, 36),
         BackgroundTransparency = 1,
-        Text = "LOCKED",
-        TextColor3 = C.text,
-        TextSize = 14,
-        Font = Enum.Font.GothamBold,
-    }, lockCard)
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 14),
-        Position = UDim2.new(0, 0, 0.5, 44),
-        BackgroundTransparency = 1,
-        Text = "Fishing is unavailable for now",
+        Text = "",
         TextColor3 = C.muted,
-        TextSize = 11,
+        TextSize = 10,
+        Font = Enum.Font.RobotoMono,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, feat.body)
+    local function setSpotText()
+        spotLabel.Text = spot
+            and string.format("Spot  %.1f, %.1f, %.1f", spot.X, spot.Y, spot.Z)
+            or "Spot  not set"
+    end
+    setSpotText()
+
+    local picking = false
+    createButton(feat.body, {
+        Size = UDim2.new(0, 96, 0, 28),
+        Position = UDim2.new(0, 0, 0, 2),
+    }, "Set spot", function()
+        picking = true
+        notify("Set spot", "Tap the water where the line should land.", 5)
+    end)
+    createButton(feat.body, {
+        Size = UDim2.new(0, 110, 0, 28),
+        Position = UDim2.new(0, 102, 0, 2),
+    }, "My position", function()
+        local ch = LocalPlayer.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            spot = hrp.Position
+            saveSpot()
+            setSpotText()
+        end
+    end)
+
+    table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
+        if not picking or processed then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+        picking = false
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local pos2
+        if t == Enum.UserInputType.Touch then
+            local inset = GuiService:GetGuiInset()
+            pos2 = Vector2.new(input.Position.X, input.Position.Y) + inset
+        else
+            pos2 = UserInputService:GetMouseLocation()
+        end
+        local ray = cam:ViewportPointToRay(pos2.X, pos2.Y)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { LocalPlayer.Character }
+        params.IgnoreWater = false
+        local hit = workspace:Raycast(ray.Origin, ray.Direction * 1500, params)
+        if hit then
+            spot = hit.Position
+            saveSpot()
+            setSpotText()
+            notify("Set spot", "Spot saved.", 2)
+        else
+            notify("Set spot", "Couldn't read that spot. Try again.", 3)
+        end
+    end))
+
+    local function alive() return fishing and ScreenGui.Parent ~= nil end
+    local function nap(t)
+        local untilT = os.clock() + t
+        while os.clock() < untilT do
+            if not alive() then return false end
+            task.wait(0.1)
+        end
+        return alive()
+    end
+
+    -- ---------------- Aba-aba "hit" ----------------
+    -- Hit harus dikirim tepat saat prompt "hit" muncul, bukan setelah jeda tetap
+    -- (jeda bikin ikan lepas). Aba-aba dibaca dari dua sumber:
+    --   1. elemen UI yang namanya / teksnya "hit" mulai tampil
+    --   2. event server -> client di FishingEvent yang memuat kata "hit"
+    -- Hanya dihitung selama fase menarik ikan (setelah LuckRelease).
+    local reelWindow = false
+    local hitCount, hitIndex, lastHitAt, hitSeen = 0, nil, 0, false
+    local cueCount, lastCue = 0, nil  -- semua event server (dipakai sebagai tanda ikan menggigit)
+
+    local function hitWord(str)
+        if type(str) ~= "string" or str == "" then return false end
+        str = string.lower(str)
+        return string.find(str, "%f[%a]hit%f[%A]") ~= nil
+            or string.find(str, "^hit") ~= nil
+            or string.find(str, "hit$") ~= nil
+    end
+
+    local function markHit(idx)
+        if not reelWindow then return end
+        local now = os.clock()
+        if now - lastHitAt < 0.35 then return end
+        lastHitAt = now
+        hitIndex = idx
+        hitCount = hitCount + 1
+    end
+
+    local function cueIndex(pack)
+        if not pack then return nil end
+        for i = 1, pack.n do
+            local v = pack[i]
+            if type(v) == "table" and type(v.Index) == "number" then return v.Index end
+        end
+        return nil
+    end
+
+    local cueEvent = fishRemote("FishingEvent")
+    if cueEvent and cueEvent:IsA("RemoteEvent") then
+        table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
+            local pack = table.pack(...)
+            cueCount = cueCount + 1
+            lastCue = pack
+            for i = 1, pack.n do
+                if type(pack[i]) == "string" and hitWord(pack[i]) then
+                    markHit(cueIndex(pack))
+                    break
+                end
+            end
+        end))
+    end
+
+    -- Elemen UI kandidat: nama "hit", teks "hit", atau label di dalam UI fishing
+    local watched, watchList = {}, {}
+    local function pathHasFish(path)
+        return string.find(path, "fish", 1, true) or string.find(path, "reel", 1, true)
+            or string.find(path, "minigame", 1, true)
+    end
+    local function isTextObj(d) return d:IsA("TextLabel") or d:IsA("TextButton") end
+    local function consider(d)
+        if watched[d] or not d:IsA("GuiObject") then return end
+        local ok = hitWord(d.Name)
+            or (isTextObj(d) and (hitWord(d.Text) or pathHasFish(string.lower(d:GetFullName()))))
+        if ok then
+            watched[d] = true
+            watchList[#watchList + 1] = { d = d, was = false }
+        end
+    end
+
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        pcall(function()
+            for _, d in ipairs(pg:GetDescendants()) do consider(d) end
+        end)
+        table.insert(conns, pg.DescendantAdded:Connect(function(d)
+            task.defer(function() pcall(consider, d) end)
+        end))
+    end
+
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if not fishing then
+                reelWindow = false
+                task.wait(0.5)
+            else
+                for i = #watchList, 1, -1 do
+                    local w = watchList[i]
+                    local d = w.d
+                    if not d.Parent then
+                        table.remove(watchList, i)
+                        watched[d] = nil
+                    else
+                        local on = isShown(d) and (hitWord(d.Name) or (isTextObj(d) and hitWord(d.Text)))
+                        on = on and true or false
+                        if on and not w.was then markHit(nil) end
+                        w.was = on
+                    end
+                end
+                if reelWindow then task.wait() else task.wait(0.2) end
+            end
+        end
+    end)
+
+    -- true kalau ada event server baru setelah hitungan "base"
+    local function waitCue(base, timeout)
+        local untilT = os.clock() + timeout
+        while cueCount <= base do
+            if os.clock() >= untilT then return false end
+            if not nap(0.05) then return false end
+        end
+        return true
+    end
+
+    local function waitHit(base, timeout)
+        local untilT = os.clock() + timeout
+        while hitCount <= base do
+            if os.clock() >= untilT or not alive() then return false end
+            task.wait()
+        end
+        return true
+    end
+
+    local function fireHit(ev, i, tag)
+        feat.setNote("Reeling " .. i .. "/" .. TIMING.hits .. (tag or ""), C.text)
+        ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
+    end
+
+    local biteSeen = false
+    local function cycle(ev)
+        reelWindow = false
+        local base = cueCount
+        feat.setNote("Casting", C.text)
+        ev:FireServer("Cast", { Position = spot })
+
+        -- Tunggu ikan menggigit: event server kalau ada, kalau tidak jeda tetap
+        local bite = waitCue(base, biteSeen and 20 or TIMING.castToLuck)
+        if not alive() then return end
+        if bite then biteSeen = true end
+
+        feat.setNote("Luck", C.text)
+        ev:FireServer("LuckHold", { ClickTime = workspace:GetServerTimeNow() })
+        if not nap(TIMING.luckHold) then return end
+        ev:FireServer("LuckRelease", { ClickTime = workspace:GetServerTimeNow() })
+
+        -- Fase tarik: Hit dikirim begitu aba-aba "hit" muncul
+        local hbase = hitCount
+        reelWindow = true
+        feat.setNote("Waiting hit", C.text)
+        local first = waitHit(hbase, hitSeen and 12 or (TIMING.luckToHit + 3))
+        if not alive() then return end
+
+        if first then
+            hitSeen = true
+            local done, seen = 0, hbase
+            local deadline = os.clock() + 4
+            while alive() and done < TIMING.hits do
+                if hitCount > seen then
+                    seen = hitCount
+                    done = done + 1
+                    fireHit(ev, hitIndex or done)
+                    deadline = os.clock() + 4
+                elseif os.clock() > deadline then
+                    break
+                end
+                task.wait()
+            end
+        else
+            -- Tidak ada aba-aba yang terbaca: urutan Hit dengan jeda tetap
+            for i = 1, TIMING.hits do
+                fireHit(ev, i, " timed")
+                if not nap(TIMING.hitGap) then return end
+            end
+        end
+        reelWindow = false
+        feat.setNote("Caught", C.text)
+        nap(TIMING.endWait)
+    end
+
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if fishing then
+                local ev = fishRemote("FishingEvent")
+                if not spot then
+                    feat.setNote("Set a spot first", C.warn)
+                    task.wait(1)
+                elseif not ev then
+                    feat.setNote("Fishing remote not found", C.warn)
+                    task.wait(2)
+                else
+                    local ok, err = pcall(cycle, ev)
+                    if not ok then
+                        warn("[Light] fishing: " .. tostring(err))
+                        task.wait(1)
+                    end
+                end
+            else
+                task.wait(0.5)
+            end
+        end
+    end)
+
+    -- ---------------- Craft Fishing Island ----------------
+    local CRAFT_ENABLED = false  -- craft dimatikan sementara
+    if not CRAFT_ENABLED then
+        local craftOff = createFeature(page, "Craft Fishing Island", {})
+        craftOff.setLocked(true)
+    else
+    local RECIPES = {
+        { id = 1, name = "Poseidon Cameraman" },
+        { id = 2, name = "Fish Crate" },
+    }
+
+    -- Coba baca bahan resep dari ModuleScript resep milik game (kalau ada)
+    local function recipeText(id)
+        local root = ReplicatedStorage:FindFirstChild("Fishing")
+        if not root then return nil end
+        for _, m in ipairs(root:GetDescendants()) do
+            if m:IsA("ModuleScript") and string.find(string.lower(m.Name), "recipe", 1, true) then
+                local ok, data = pcall(require, m)
+                if ok and type(data) == "table" then
+                    local rec = data[id]
+                    if rec == nil and type(data.Recipes) == "table" then rec = data.Recipes[id] end
+                    if type(rec) == "table" then
+                        local parts = {}
+                        local function walk(t, depth)
+                            for k, v in pairs(t) do
+                                if #parts >= 6 then return end
+                                if type(v) == "number" and type(k) == "string" then
+                                    parts[#parts + 1] = k .. " x" .. v
+                                elseif type(v) == "table" and depth < 2 then
+                                    walk(v, depth + 1)
+                                end
+                            end
+                        end
+                        walk(rec, 0)
+                        if #parts > 0 then return table.concat(parts, ", ") end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local craftCard = createCard(page, 34 + #RECIPES * 46 + 8)
+    make("TextLabel", {
+        Size = UDim2.new(1, -24, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Craft Fishing Island",
+        TextColor3 = C.text,
+        TextSize = 12,
         Font = Enum.Font.GothamMedium,
-    }, lockCard)
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, craftCard)
+
+    local crafting = false
+    for i, r in ipairs(RECIPES) do
+        local y = 34 + (i - 1) * 46
+        make("TextLabel", {
+            Size = UDim2.new(1, -160, 0, 18),
+            Position = UDim2.new(0, 12, 0, y + 4),
+            BackgroundTransparency = 1,
+            Text = r.name,
+            TextColor3 = C.white,
+            TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, craftCard)
+        local need = make("TextLabel", {
+            Size = UDim2.new(1, -160, 0, 14),
+            Position = UDim2.new(0, 12, 0, y + 23),
+            BackgroundTransparency = 1,
+            Text = "Recipe " .. r.id,
+            TextColor3 = C.muted,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, craftCard)
+        task.spawn(function()
+            local t = recipeText(r.id)
+            if t then need.Text = t end
+        end)
+
+        local qty = createInput(craftCard, {
+            Size = UDim2.new(0, 48, 0, 28),
+            Position = UDim2.new(1, -136, 0, y + 8),
+            Text = "1",
+            TextXAlignment = Enum.TextXAlignment.Center,
+            Font = Enum.Font.RobotoMono,
+        }, "1")
+        createButton(craftCard, {
+            Size = UDim2.new(0, 70, 0, 28),
+            Position = UDim2.new(1, -82, 0, y + 8),
+        }, "Craft", function()
+            if crafting then return end
+            local fn = fishRemote("FishingFunction")
+            if not fn then
+                notify("Craft", "Fishing remote not found.", 3)
+                return
+            end
+            local n = math.clamp(math.floor(tonumber(qty.Text) or 1), 1, 99)
+            crafting = true
+            task.spawn(function()
+                local done = 0
+                for _ = 1, n do
+                    if not ScreenGui.Parent then break end
+                    local ok, res = pcall(function()
+                        return fn:InvokeServer("Craft", { Recipe = r.id })
+                    end)
+                    if not accepted(ok, res) then break end
+                    done = done + 1
+                    if done < n then task.wait(0.3) end
+                end
+                if done == n then
+                    notify("Crafted", n .. "x " .. r.name, 2)
+                elseif done > 0 then
+                    notify("Craft stopped", done .. "/" .. n .. " " .. r.name .. " (missing materials?)", 3)
+                else
+                    notify("Craft failed", r.name .. ": missing materials or refused.", 3)
+                end
+                crafting = false
+            end)
+        end)
+    end
+
+    end
+    end
 end
 
 -- =================================================================
@@ -2359,7 +2879,7 @@ do
 end
 
 -- =================================================================
--- Endless: Control UTTM + Unit Mover
+-- Endless: Teleport UTTM + Unit Mover
 -- Lokasi dipilih manual: tekan Select / Add, lalu double-tap di tanah.
 --   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
 --   Unit Mover: jual unit lalu pasang lagi di lokasi lain (label ikut pindah)
@@ -2530,13 +3050,13 @@ do
         end)
     end
 
-    -- ---------------- Control UTTM (muncul otomatis kalau unitnya ada) ----------------
+    -- ---------------- Teleport UTTM (muncul otomatis kalau unitnya ada) ----------------
     local uttmCard = createCard(page, 80)
     local uttmTitle = make("TextLabel", {
         Size = UDim2.new(0, 150, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
-        Text = "Control",
+        Text = "Teleport",
         TextColor3 = C.white,
         TextSize = 12,
         Font = Enum.Font.GothamBold,
@@ -2545,7 +3065,7 @@ do
     -- Hanya kata "UTTM" yang berwarna: biru dan ungu yang saling menyatu dan
     -- bergeser pelan di seluruh teks (bukan pita warna yang lewat satu-satu).
     local TextService = game:GetService("TextService")
-    local prefixW = TextService:GetTextSize("Control ", 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
+    local prefixW = TextService:GetTextSize("Teleport ", 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     local uttmWord = make("TextLabel", {
         Size = UDim2.new(0, 60, 0, 34),
         Position = UDim2.new(0, 12 + prefixW, 0, 0),
@@ -4477,7 +4997,7 @@ local function cleanup()
 end
 env.LightHubCleanup = cleanup
 
-local MINI_W = 390
+local MINI_W = 340
 
 -- Diperkecil: kotak kecil berisi nama hub, wave, dan timer. Diperbesar: kembali normal.
 MinimizeBtn.MouseButton1Click:Connect(function()

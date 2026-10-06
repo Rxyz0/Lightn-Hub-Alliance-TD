@@ -579,7 +579,7 @@ applyTimerVisibility()
 
 -- Wave sekarang, hanya tampil saat window diperkecil
 local MiniWave = make("Frame", {
-    Size = UDim2.new(0, 76, 1, -1),
+    Size = UDim2.new(0, 70, 1, -1),
     Position = UDim2.new(0, 106, 0, 0),
     BackgroundTransparency = 1,
     Visible = false,
@@ -600,16 +600,6 @@ make("TextLabel", {
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, MiniWave)
-local MiniStreak = make("TextLabel", {
-    Size = UDim2.new(0, 42, 0, 10),
-    Position = UDim2.new(1, -42, 0, 3),
-    BackgroundTransparency = 1,
-    Text = "\u{1F525} 0",
-    TextColor3 = C.muted,
-    TextSize = 9,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Right,
-}, MiniWave)
 local MiniWaveValue = make("TextLabel", {
     Size = UDim2.new(1, 0, 0, 18),
     Position = UDim2.new(0, 0, 0, 12),
@@ -620,6 +610,107 @@ local MiniWaveValue = make("TextLabel", {
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, MiniWave)
+
+-- Streak: nyala api digambar dari kotak 1px (dua lapis), warnanya ikut tier streak.
+-- Pembatas: judul | wave | streak | timer. Hanya tampil saat diperkecil.
+do
+    local TIERS = {
+        { min = 48, outer = Color3.fromRGB(125, 75, 225),  inner = Color3.fromRGB(215, 185, 255) },  -- ungu violet
+        { min = 24, outer = Color3.fromRGB(55, 155, 235),  inner = Color3.fromRGB(190, 238, 255) },  -- biru kristal
+        { min = 14, outer = Color3.fromRGB(55, 175, 40),   inner = Color3.fromRGB(170, 255, 70) },   -- hijau toxic
+        { min = 9,  outer = Color3.fromRGB(240, 175, 20),  inner = Color3.fromRGB(255, 240, 120) },  -- kuning
+        { min = 4,  outer = Color3.fromRGB(255, 115, 25),  inner = Color3.fromRGB(255, 185, 70) },   -- oranye terang
+        { min = 1,  outer = Color3.fromRGB(185, 70, 35),   inner = Color3.fromRGB(245, 130, 50) },   -- bara
+        { min = 0,  outer = Color3.fromRGB(70, 70, 76),    inner = Color3.fromRGB(190, 190, 195) },  -- abu-abu
+    }
+    local OUTER = { {4,1}, {4,2}, {3,3}, {3,4}, {2,5}, {1,6}, {1,7}, {0,8}, {0,9}, {0,9}, {1,7}, {2,5} }
+    local INNER = { [6] = {4,1}, [7] = {3,3}, [8] = {3,3}, [9] = {2,5}, [10] = {2,5}, [11] = {3,3}, [12] = {3,3} }
+
+    local box = make("Frame", {
+        Size = UDim2.new(0, 74, 1, -1),
+        Position = UDim2.new(0, 192, 0, 0),
+        BackgroundTransparency = 1,
+        Visible = false,
+    }, Header)
+    make("Frame", {
+        Size = UDim2.new(0, 1, 0, 20),
+        Position = UDim2.new(0, -8, 0.5, -10),
+        BackgroundColor3 = C.line,
+        BorderSizePixel = 0,
+    }, box)
+    make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 10),
+        Position = UDim2.new(0, 0, 0, 4),
+        BackgroundTransparency = 1,
+        Text = "STREAK",
+        TextColor3 = C.muted,
+        TextSize = 8,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, box)
+
+    local flame = make("Frame", {
+        Size = UDim2.new(0, 9, 0, 12),
+        Position = UDim2.new(0, 0, 0, 15),
+        BackgroundTransparency = 1,
+    }, box)
+    local outerPx, innerPx = {}, {}
+    for r, row in ipairs(OUTER) do
+        outerPx[#outerPx + 1] = make("Frame", {
+            Size = UDim2.new(0, row[2], 0, 1),
+            Position = UDim2.new(0, row[1], 0, r - 1),
+            BackgroundColor3 = TIERS[#TIERS].outer,
+            BorderSizePixel = 0,
+        }, flame)
+    end
+    for r, row in pairs(INNER) do
+        innerPx[#innerPx + 1] = make("Frame", {
+            Size = UDim2.new(0, row[2], 0, 1),
+            Position = UDim2.new(0, row[1], 0, r - 1),
+            BackgroundColor3 = TIERS[#TIERS].inner,
+            BorderSizePixel = 0,
+        }, flame)
+    end
+
+    local value = make("TextLabel", {
+        Size = UDim2.new(1, -14, 0, 18),
+        Position = UDim2.new(0, 14, 0, 12),
+        BackgroundTransparency = 1,
+        Text = "0",
+        TextColor3 = C.muted,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, box)
+
+    local sepTimer = make("Frame", {
+        Size = UDim2.new(0, 1, 0, 20),
+        Position = UDim2.new(0, 276, 0.5, -10),
+        BackgroundColor3 = C.line,
+        BorderSizePixel = 0,
+        Visible = false,
+    }, Header)
+
+    local tierNow = nil
+    function ui.setStreak(n)
+        n = math.max(0, math.floor(tonumber(n) or 0))
+        value.Text = tostring(n)
+        value.TextColor3 = n > 0 and C.white or C.muted
+        local tier
+        for _, t in ipairs(TIERS) do
+            if n >= t.min then tier = t break end
+        end
+        if tier ~= tierNow then
+            tierNow = tier
+            for _, f in ipairs(outerPx) do f.BackgroundColor3 = tier.outer end
+            for _, f in ipairs(innerPx) do f.BackgroundColor3 = tier.inner end
+        end
+    end
+    function ui.showMini(mini)
+        box.Visible = mini
+        sepTimer.Visible = mini
+    end
+end
 
 -- Bar progres wave di tepi bawah, hanya saat diperkecil
 local MiniBarTrack = make("Frame", {
@@ -1479,6 +1570,233 @@ do
     statLabels.sells = cells[3].value
     statLabels.upgrades = cells[4].value
 
+    -- ---------------- Win / Lose: 15 match terakhir ----------------
+    local HISTORY_FILE = "LightHub_History.json"
+    local HISTORY_MAX = 15
+    local history = {}  -- terbaru di depan: { win, wave = "12/20", time = "00:42:10" }
+    if canFile then
+        pcall(function()
+            if isfile(HISTORY_FILE) then
+                local d = HttpService:JSONDecode(readfile(HISTORY_FILE))
+                if type(d) == "table" then
+                    for _, e in ipairs(d) do
+                        if #history >= HISTORY_MAX then break end
+                        if type(e) == "table" and type(e.win) == "boolean" then
+                            history[#history + 1] = {
+                                win = e.win,
+                                wave = tostring(e.wave or "?/?"),
+                                time = tostring(e.time or ""),
+                            }
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    local histOpen = false
+    local histCard = createCard(page, 34)
+    histCard.ClipsDescendants = true
+    local histHead = make("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+    }, histCard)
+    make("TextLabel", {
+        Size = UDim2.new(0, 110, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Win / Lose",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, histHead)
+    local histSummary = make("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 34),
+        Position = UDim2.new(0, 124, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.RobotoMono,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, histHead)
+    local histArrow = createChevron(histHead, -14)
+    local histRows = make("Frame", {
+        Size = UDim2.new(1, -24, 0, 24),
+        Position = UDim2.new(0, 12, 0, 34),
+        BackgroundTransparency = 1,
+        Visible = false,
+    }, histCard)
+
+    local function renderHistory()
+        local w, l = 0, 0
+        for _, e in ipairs(history) do
+            if e.win then w = w + 1 else l = l + 1 end
+        end
+        histSummary.Text = #history > 0 and (w .. "W  " .. l .. "L") or ""
+
+        for _, c in ipairs(histRows:GetChildren()) do c:Destroy() end
+        if #history == 0 then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text = "No matches yet",
+                TextColor3 = C.dim,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, histRows)
+        end
+        for i, e in ipairs(history) do
+            local row = make("Frame", {
+                Size = UDim2.new(1, 0, 0, 22),
+                Position = UDim2.new(0, 0, 0, (i - 1) * 24),
+                BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+                BorderSizePixel = 0,
+            }, histRows)
+            make("TextLabel", {
+                Size = UDim2.new(0.3, -8, 1, 0),
+                Position = UDim2.new(0, 8, 0, 0),
+                BackgroundTransparency = 1,
+                Text = e.win and "Win" or "Lose",
+                TextColor3 = e.win and C.white or C.muted,
+                TextSize = 11,
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, row)
+            make("TextLabel", {
+                Size = UDim2.new(0.3, 0, 1, 0),
+                Position = UDim2.new(0.3, 0, 0, 0),
+                BackgroundTransparency = 1,
+                Text = e.wave,
+                TextColor3 = C.text,
+                TextSize = 11,
+                Font = Enum.Font.RobotoMono,
+            }, row)
+            make("TextLabel", {
+                Size = UDim2.new(0.4, -8, 1, 0),
+                Position = UDim2.new(0.6, 0, 0, 0),
+                BackgroundTransparency = 1,
+                Text = e.time,
+                TextColor3 = C.muted,
+                TextSize = 11,
+                Font = Enum.Font.RobotoMono,
+                TextXAlignment = Enum.TextXAlignment.Right,
+            }, row)
+        end
+
+        histArrow.Rotation = histOpen and 180 or 0
+        histRows.Visible = histOpen
+        if histOpen then
+            local h = math.max(1, #history) * 24
+            histRows.Size = UDim2.new(1, -24, 0, h)
+            histCard.Size = UDim2.new(1, 0, 0, 34 + h + 8)
+        else
+            histCard.Size = UDim2.new(1, 0, 0, 34)
+        end
+    end
+    histHead.MouseButton1Click:Connect(function()
+        histOpen = not histOpen
+        renderHistory()
+    end)
+    renderHistory()
+
+    -- Deteksi akhir match: layar akhir (Replay + Lobby tampil). Menang/kalah dari
+    -- perubahan WinStreak, lalu teks layar akhir, lalu wave terakhir.
+    local function streakNow() return tonumber(LocalPlayer:GetAttribute("WinStreak")) or 0 end
+    local lastWave = { cur = nil, max = nil }
+    local streakStart, armed, ended, keyVerdict, lastRecord = streakNow(), false, false, nil, 0
+
+    local WIN_WORDS = { "victory", "you win", "mission complete", "stage clear" }
+    local LOSE_WORDS = { "defeat", "you lose", "game over", "mission failed" }
+    local function hasAny(txt, list)
+        for _, w in ipairs(list) do
+            if string.find(txt, w, 1, true) then return true end
+        end
+        return false
+    end
+
+    local function scanEnd()
+        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if not pg then return false, nil end
+        local hasR, hasL, verdict = false, false, nil
+        for _, d in ipairs(pg:GetDescendants()) do
+            if d:IsA("TextButton") or d:IsA("TextLabel") or d:IsA("ImageButton") then
+                local txt = d:IsA("ImageButton") and "" or string.lower(d.Text)
+                local nm = string.lower(d.Name)
+                local r = string.find(txt, "replay", 1, true) or string.find(nm, "replay", 1, true)
+                local l = string.find(txt, "lobby", 1, true) or string.find(nm, "lobby", 1, true)
+                local v = nil
+                if txt ~= "" then
+                    if hasAny(txt, WIN_WORDS) then v = "win"
+                    elseif hasAny(txt, LOSE_WORDS) then v = "lose" end
+                end
+                if (r or l or v) and isShown(d) then
+                    if r then hasR = true end
+                    if l then hasL = true end
+                    verdict = verdict or v
+                end
+            end
+        end
+        return hasR and hasL, verdict
+    end
+
+    local function recordMatch()
+        if os.clock() - lastRecord < 10 then return end
+        lastRecord = os.clock()
+        local s = streakNow()
+        local win
+        if s > streakStart then
+            win = true
+        elseif s < streakStart then
+            win = false
+        elseif keyVerdict then
+            win = (keyVerdict == "win")
+        elseif lastWave.cur and lastWave.max and lastWave.max > 0 then
+            win = lastWave.cur >= lastWave.max
+        else
+            win = false
+        end
+        table.insert(history, 1, {
+            win = win,
+            wave = (lastWave.cur and tostring(lastWave.cur) or "?") .. "/" .. (lastWave.max and tostring(lastWave.max) or "?"),
+            time = TimerLabel.Text,
+        })
+        while #history > HISTORY_MAX do table.remove(history) end
+        if canFile then
+            pcall(function() writefile(HISTORY_FILE, HttpService:JSONEncode(history)) end)
+        end
+        renderHistory()
+    end
+
+    if inMatch then
+        runLoop(function()
+            if not ended and waveNow.cur then
+                if not armed then
+                    armed = true
+                    streakStart = streakNow()
+                    lastWave.cur, lastWave.max = nil, nil
+                end
+                lastWave.cur = waveNow.cur
+                lastWave.max = waveNow.max or lastWave.max
+            end
+            local isEnd, v = scanEnd()
+            if isEnd and not ended then
+                ended = true
+                keyVerdict = v
+                task.delay(1.5, recordMatch)  -- tunggu WinStreak diperbarui
+            elseif isEnd then
+                keyVerdict = keyVerdict or v
+            elseif ended then
+                ended, armed, keyVerdict = false, false, nil
+            end
+            return 1.5
+        end)
+    end
+
     -- Remote Knit (versi paket bisa berubah, jadi dicari lewat nama)
     local function knitRF(service, name)
         local pk = ReplicatedStorage:FindFirstChild("Packages")
@@ -2301,9 +2619,14 @@ do
             Size = UDim2.new(1, 0, 0, 230),
             BackgroundTransparency = 1,
         }, page)
-        local big = createLockIcon(area, UDim2.new(0.5, 0, 0.5, 0), 7)
-        big.AnchorPoint = Vector2.new(0.5, 0.5)
-        big.Visible = true
+        make("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "Disable",
+            TextColor3 = C.white,
+            TextSize = 34,
+            Font = Enum.Font.GothamBold,
+        }, area)
     else
     local GuiService = game:GetService("GuiService")
     local FISH_FILE = "LightHub_Fish.json"
@@ -4971,9 +5294,7 @@ runLoop(function()
     if ui.minimized then
         local w, m = waveNow.cur, waveNow.max
         MiniWaveValue.Text = w and (w .. (m and ("/" .. m) or "")) or "-"
-        local streak = tonumber(LocalPlayer:GetAttribute("WinStreak")) or 0
-        MiniStreak.Text = "\u{1F525} " .. streak
-        MiniStreak.TextColor3 = streak > 0 and Color3.fromRGB(255, 170, 60) or C.muted
+        ui.setStreak(LocalPlayer:GetAttribute("WinStreak"))
         local frac = (w and m and m > 0) and math.clamp(w / m, 0, 1) or 0
         tween(MiniBarFill, 0.4, { Size = UDim2.new(frac, 0, 1, 0) })
     end
@@ -4997,7 +5318,7 @@ local function cleanup()
 end
 env.LightHubCleanup = cleanup
 
-local MINI_W = 340
+local MINI_W = 420
 
 -- Diperkecil: kotak kecil berisi nama hub, wave, dan timer. Diperbesar: kembali normal.
 MinimizeBtn.MouseButton1Click:Connect(function()
@@ -5009,6 +5330,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     MinBox.Visible = mini
     VersionLabel.Visible = not mini
     MiniWave.Visible = mini
+    ui.showMini(mini)
     MiniBarTrack.Visible = mini
     applyTimerVisibility()
     tween(MainFrame, 0.15, {

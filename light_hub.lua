@@ -1332,7 +1332,7 @@ end
 -- Halaman + sidebar
 -- =================================================================
 local tabs = {}
-local TAB_ORDER = { "Main", "Gacha", "Inventory", "Endless", "Macro", "AFK", "Settings" }
+local TAB_ORDER = { "Main", "Gacha", "Inventory", "Fishing", "Endless", "Macro", "AFK", "Settings" }
 
 local function selectTab(name)
     closeOverlay()
@@ -1398,6 +1398,15 @@ for i, name in ipairs(TAB_ORDER) do
 
     tabs[name] = { item = item, bar = bar, label = label, page = page }
     item.MouseButton1Click:Connect(function() selectTab(name) end)
+end
+
+-- =================================================================
+-- Remote fishing: ReplicatedStorage.Fishing.Remotes.<nama>
+-- =================================================================
+local function fishRemote(name)
+    local root = ReplicatedStorage:FindFirstChild("Fishing")
+    local remotes = root and root:FindFirstChild("Remotes")
+    return remotes and remotes:FindFirstChild(name)
 end
 
 -- =================================================================
@@ -2115,15 +2124,26 @@ do
 end
 
 -- =================================================================
--- Inventory: Auto Use Potion (di atas), Fish Inventory, Sell Fish, Craft
+-- Inventory: Fish Inventory (dropdown) + Sell
 -- =================================================================
 do
     local page = tabs["Inventory"].page
 
-    -- Fish Inventory: dibaca dari Players.<kamu>.FishingData.Fish
-    local fishCard = createCard(page, 60)
+    -- Fish Inventory: dropdown minimalis, jumlah per JENIS (bukan kg) supaya ringan.
+    -- Klik jenis ikan -> isi jumlah -> Sell. Data dari Players.<kamu>.FishingData.Fish
+    local fishOpen, selectedFish, selling = false, nil, false
+    local fishList, fishSig = {}, nil
+
+    local fishCard = createCard(page, 34)
+    fishCard.ClipsDescendants = true
+    local fishHead = make("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+    }, fishCard)
     make("TextLabel", {
-        Size = UDim2.new(0, 150, 0, 34),
+        Size = UDim2.new(0, 110, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = "Fish Inventory",
@@ -2131,24 +2151,189 @@ do
         TextSize = 12,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
-    }, fishCard)
+    }, fishHead)
     local fishTotal = make("TextLabel", {
-        Size = UDim2.new(0, 190, 0, 34),
-        Position = UDim2.new(1, -202, 0, 0),
+        Size = UDim2.new(1, -158, 0, 34),
+        Position = UDim2.new(0, 124, 0, 0),
         BackgroundTransparency = 1,
         Text = "",
         TextColor3 = C.muted,
         TextSize = 10,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Right,
-    }, fishCard)
+    }, fishHead)
+    local fishArrow = createChevron(fishHead, -14)
+
     local fishRows = make("Frame", {
-        Size = UDim2.new(1, -24, 0, 16),
+        Size = UDim2.new(1, -24, 0, 24),
         Position = UDim2.new(0, 12, 0, 34),
         BackgroundTransparency = 1,
+        Visible = false,
     }, fishCard)
 
-    local fishSig = nil
+    -- Panel jual: nama ikan terpilih, jumlah, Sell, All
+    local sellPanel = make("Frame", {
+        Size = UDim2.new(1, -24, 0, 30),
+        BackgroundTransparency = 1,
+        Visible = false,
+    }, fishCard)
+    local sellName = make("TextLabel", {
+        Size = UDim2.new(1, -176, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.white,
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, sellPanel)
+    local qtyBox = createInput(sellPanel, {
+        Size = UDim2.new(0, 60, 0, 26),
+        Position = UDim2.new(1, -168, 0, 2),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Font = Enum.Font.RobotoMono,
+    }, "qty")
+
+    -- Cari bobot ikan kalau game menyimpannya (attribute / child / folder FishingData)
+    local function fishWeight(v, fd)
+        for k, val in pairs(v:GetAttributes()) do
+            if type(val) == "number" and string.find(string.lower(k), "weight", 1, true) then return val end
+        end
+        for _, c in ipairs(v:GetChildren()) do
+            if c:IsA("ValueBase") and string.find(string.lower(c.Name), "weight", 1, true)
+                and type(c.Value) == "number" then
+                return c.Value
+            end
+        end
+        if fd then
+            for _, c in ipairs(fd:GetChildren()) do
+                if string.find(string.lower(c.Name), "weight", 1, true) then
+                    local w = c:FindFirstChild(v.Name)
+                    if w and w:IsA("ValueBase") and type(w.Value) == "number" then return w.Value end
+                    local a = c:GetAttribute(v.Name)
+                    if type(a) == "number" then return a end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function sellFish(wantAll)
+        if selling or not selectedFish then return end
+        local name = selectedFish
+        local fd = LocalPlayer:FindFirstChild("FishingData")
+        local folder = fd and fd:FindFirstChild("Fish")
+        local v = folder and folder:FindFirstChild(name)
+        if not v or v.Value <= 0 then
+            notify("Sell Fish", "No " .. name .. " left.", 2)
+            return
+        end
+        local fn = fishRemote("FishingFunction")
+        if not fn then
+            notify("Sell Fish", "Fishing remote not found.", 3)
+            return
+        end
+        local amount = wantAll and v.Value or math.floor(tonumber(qtyBox.Text) or 1)
+        amount = math.clamp(amount, 1, v.Value)
+        selling = true
+        task.spawn(function()
+            local args = { Fish = name, Amount = amount }
+            local w = fishWeight(v, fd)
+            if w then args.Weight = w end
+            local ok, res = pcall(function() return fn:InvokeServer("SellFish", args) end)
+            if accepted(ok, res) then
+                notify("Fish Sold", "Sold " .. amount .. "x " .. name, 2)
+            else
+                notify("Sell failed", "Server refused the sale of " .. name .. ". Use 'Log fish data' in Fishing and send the output.", 4)
+            end
+            selling = false
+        end)
+    end
+
+    createButton(sellPanel, {
+        Size = UDim2.new(0, 48, 0, 26),
+        Position = UDim2.new(1, -104, 0, 2),
+    }, "Sell", function() sellFish(false) end)
+    createButton(sellPanel, {
+        Size = UDim2.new(0, 48, 0, 26),
+        Position = UDim2.new(1, -52, 0, 2),
+    }, "All", function() sellFish(true) end)
+
+    local function layoutFish()
+        fishArrow.Rotation = fishOpen and 180 or 0
+        fishRows.Visible = fishOpen
+        sellPanel.Visible = fishOpen and selectedFish ~= nil
+        if not fishOpen then
+            fishCard.Size = UDim2.new(1, 0, 0, 34)
+            return
+        end
+        local rowsH = math.max(1, #fishList) * 24
+        fishRows.Size = UDim2.new(1, -24, 0, rowsH)
+        sellPanel.Position = UDim2.new(0, 12, 0, 34 + rowsH + 6)
+        fishCard.Size = UDim2.new(1, 0, 0, 34 + rowsH + (selectedFish and 38 or 4) + 6)
+    end
+
+    local function rebuildFish()
+        for _, c in ipairs(fishRows:GetChildren()) do c:Destroy() end
+        if #fishList == 0 then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text = "No fish yet",
+                TextColor3 = C.dim,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, fishRows)
+        end
+        for i, f in ipairs(fishList) do
+            if i > 60 then break end
+            local sel = (f.n == selectedFish)
+            local row = make("TextButton", {
+                Size = UDim2.new(1, 0, 0, 22),
+                Position = UDim2.new(0, 0, 0, (i - 1) * 24),
+                BackgroundColor3 = sel and C.hover or C.control,
+                BorderSizePixel = 0,
+                Text = "",
+                AutoButtonColor = false,
+            }, fishRows)
+            styleControl(row)
+            make("TextLabel", {
+                Size = UDim2.new(0.7, -8, 1, 0),
+                Position = UDim2.new(0, 8, 0, 0),
+                BackgroundTransparency = 1,
+                Text = f.n,
+                TextColor3 = sel and C.white or C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, row)
+            make("TextLabel", {
+                Size = UDim2.new(0.3, -8, 1, 0),
+                Position = UDim2.new(0.7, 0, 0, 0),
+                BackgroundTransparency = 1,
+                Text = tostring(f.c),
+                TextColor3 = C.muted,
+                TextSize = 11,
+                Font = Enum.Font.RobotoMono,
+                TextXAlignment = Enum.TextXAlignment.Right,
+            }, row)
+            row.MouseButton1Click:Connect(function()
+                selectedFish = f.n
+                sellName.Text = f.n
+                qtyBox.PlaceholderText = "1-" .. f.c
+                rebuildFish()
+                layoutFish()
+            end)
+        end
+    end
+
+    fishHead.MouseButton1Click:Connect(function()
+        fishOpen = not fishOpen
+        layoutFish()
+    end)
+
     runLoop(function()
         local fd = LocalPlayer:FindFirstChild("FishingData")
         local folder = fd and fd:FindFirstChild("Fish")
@@ -2161,7 +2346,10 @@ do
                 end
             end
         end
-        table.sort(list, function(a, b) return a.c > b.c end)
+        table.sort(list, function(a, b)
+            if a.c ~= b.c then return a.c > b.c end
+            return a.n < b.n
+        end)
 
         local parts = {}
         for _, f in ipairs(list) do parts[#parts + 1] = f.n .. "=" .. f.c end
@@ -2169,61 +2357,349 @@ do
         if sig == fishSig then return 2 end
         fishSig = sig
 
-        for _, c in ipairs(fishRows:GetChildren()) do c:Destroy() end
-        if not folder then
-            fishTotal.Text = "No fishing data"
-        else
-            fishTotal.Text = #list .. " types  |  " .. total .. " total"
+        fishList = list
+        fishTotal.Text = folder and (#list .. " types  |  " .. total .. " total") or "No fishing data"
+        if selectedFish then
+            local still = false
+            for _, f in ipairs(list) do
+                if f.n == selectedFish then still = true; qtyBox.PlaceholderText = "1-" .. f.c end
+            end
+            if not still then selectedFish = nil end
         end
-        if #list == 0 then
-            make("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 16),
-                BackgroundTransparency = 1,
-                Text = folder and "No fish yet" or "Fishing data not found",
-                TextColor3 = C.dim,
-                TextSize = 10,
-                Font = Enum.Font.GothamMedium,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, fishRows)
-        end
-        for i, f in ipairs(list) do
-            if i > 14 then break end
-            make("TextLabel", {
-                Size = UDim2.new(0.7, 0, 0, 16),
-                Position = UDim2.new(0, 0, 0, (i - 1) * 16),
-                BackgroundTransparency = 1,
-                Text = f.n,
-                TextColor3 = C.text,
-                TextSize = 11,
-                Font = Enum.Font.GothamMedium,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                TextTruncate = Enum.TextTruncate.AtEnd,
-            }, fishRows)
-            make("TextLabel", {
-                Size = UDim2.new(0.3, 0, 0, 16),
-                Position = UDim2.new(0.7, 0, 0, (i - 1) * 16),
-                BackgroundTransparency = 1,
-                Text = tostring(f.c),
-                TextColor3 = C.muted,
-                TextSize = 11,
-                Font = Enum.Font.RobotoMono,
-                TextXAlignment = Enum.TextXAlignment.Right,
-            }, fishRows)
-        end
-        local n = math.max(1, math.min(#list, 14))
-        fishRows.Size = UDim2.new(1, -24, 0, n * 16)
-        fishCard.Size = UDim2.new(1, 0, 0, 34 + n * 16 + 10)
+        rebuildFish()
+        layoutFish()
         return 2
     end)
+end
 
-    -- Belum ada remote jual ikan / craft: tampil terkunci sampai remote-nya ada
-    local sell = createFeature(page, "Sell Fish", {})
-    sell.setLocked(true, "soon")
-    sell.setNote("Needs the sell remote", C.dim)
+-- =================================================================
+-- Fishing: Auto Fishing + Craft Fishing Island
+--   Urutan dari log: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
+--   -> Hit{Index 1..10, ClickTime} (sekitar 1 detik per Hit)
+-- =================================================================
+do
+    local page = tabs["Fishing"].page
+    local GuiService = game:GetService("GuiService")
+    local FISH_FILE = "LightHub_Fish.json"
 
-    local craft = createFeature(page, "Craft", {})
-    craft.setLocked(true, "soon")
-    craft.setNote("Coming soon", C.dim)
+    -- Jeda antar langkah (detik). Ubah di sini kalau game menolak / terlalu lambat.
+    local TIMING = {
+        castToLuck = 3,    -- setelah Cast sampai LuckHold
+        luckHold = 0.09,   -- jarak LuckHold -> LuckRelease
+        luckToHit = 3,     -- setelah LuckRelease sampai Hit pertama
+        hitGap = 0.9,      -- jarak antar Hit
+        hits = 10,         -- jumlah Hit per tangkapan
+        endWait = 1.5,     -- jeda sebelum Cast berikutnya
+    }
+
+    -- ---------------- Spot lemparan (disimpan di file kalau executor mendukung) ----------------
+    local spot = nil
+    if canFile then
+        pcall(function()
+            if isfile(FISH_FILE) then
+                local d = HttpService:JSONDecode(readfile(FISH_FILE))
+                if type(d) == "table" and type(d.x) == "number" and type(d.y) == "number" and type(d.z) == "number" then
+                    spot = Vector3.new(d.x, d.y, d.z)
+                end
+            end
+        end)
+    end
+    local function saveSpot()
+        if canFile and spot then
+            pcall(function()
+                writefile(FISH_FILE, HttpService:JSONEncode({ x = spot.X, y = spot.Y, z = spot.Z }))
+            end)
+        end
+    end
+
+    -- ---------------- Auto Fishing ----------------
+    local fishing = false
+    local feat
+    feat = createFeature(page, "Auto Fishing", {
+        bodyHeight = 62,
+        onToggle = function(v)
+            fishing = v
+            if not v then feat.setNote("", C.muted) end
+        end,
+    })
+
+    local spotLabel = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 22),
+        Position = UDim2.new(0, 0, 0, 36),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.RobotoMono,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, feat.body)
+    local function setSpotText()
+        spotLabel.Text = spot
+            and string.format("Spot  %.1f, %.1f, %.1f", spot.X, spot.Y, spot.Z)
+            or "Spot  not set"
+    end
+    setSpotText()
+
+    local picking = false
+    createButton(feat.body, {
+        Size = UDim2.new(0, 96, 0, 28),
+        Position = UDim2.new(0, 0, 0, 2),
+    }, "Set spot", function()
+        picking = true
+        notify("Set spot", "Tap the water where the line should land.", 5)
+    end)
+    createButton(feat.body, {
+        Size = UDim2.new(0, 110, 0, 28),
+        Position = UDim2.new(0, 102, 0, 2),
+    }, "My position", function()
+        local ch = LocalPlayer.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            spot = hrp.Position
+            saveSpot()
+            setSpotText()
+        end
+    end)
+
+    table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
+        if not picking or processed then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+        picking = false
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local pos2
+        if t == Enum.UserInputType.Touch then
+            local inset = GuiService:GetGuiInset()
+            pos2 = Vector2.new(input.Position.X, input.Position.Y) + inset
+        else
+            pos2 = UserInputService:GetMouseLocation()
+        end
+        local ray = cam:ViewportPointToRay(pos2.X, pos2.Y)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { LocalPlayer.Character }
+        params.IgnoreWater = false
+        local hit = workspace:Raycast(ray.Origin, ray.Direction * 1500, params)
+        if hit then
+            spot = hit.Position
+            saveSpot()
+            setSpotText()
+            notify("Set spot", "Spot saved.", 2)
+        else
+            notify("Set spot", "Couldn't read that spot. Try again.", 3)
+        end
+    end))
+
+    local function alive() return fishing and ScreenGui.Parent ~= nil end
+    local function nap(t)
+        local untilT = os.clock() + t
+        while os.clock() < untilT do
+            if not alive() then return false end
+            task.wait(0.1)
+        end
+        return alive()
+    end
+
+    local function cycle(ev)
+        feat.setNote("Casting", C.text)
+        ev:FireServer("Cast", { Position = spot })
+        if not nap(TIMING.castToLuck) then return end
+        feat.setNote("Luck", C.text)
+        ev:FireServer("LuckHold", { ClickTime = workspace:GetServerTimeNow() })
+        if not nap(TIMING.luckHold) then return end
+        ev:FireServer("LuckRelease", { ClickTime = workspace:GetServerTimeNow() })
+        if not nap(TIMING.luckToHit) then return end
+        for i = 1, TIMING.hits do
+            feat.setNote("Reeling " .. i .. "/" .. TIMING.hits, C.text)
+            ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
+            if not nap(TIMING.hitGap) then return end
+        end
+        feat.setNote("Caught", C.text)
+        nap(TIMING.endWait)
+    end
+
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if fishing then
+                local ev = fishRemote("FishingEvent")
+                if not spot then
+                    feat.setNote("Set a spot first", C.warn)
+                    task.wait(1)
+                elseif not ev then
+                    feat.setNote("Fishing remote not found", C.warn)
+                    task.wait(2)
+                else
+                    local ok, err = pcall(cycle, ev)
+                    if not ok then
+                        warn("[Light] fishing: " .. tostring(err))
+                        task.wait(1)
+                    end
+                end
+            else
+                task.wait(0.5)
+            end
+        end
+    end)
+
+    -- ---------------- Craft Fishing Island ----------------
+    local RECIPES = {
+        { id = 1, name = "Poseidon Cameraman" },
+        { id = 2, name = "Fish Crate" },
+    }
+
+    -- Coba baca bahan resep dari ModuleScript resep milik game (kalau ada)
+    local function recipeText(id)
+        local root = ReplicatedStorage:FindFirstChild("Fishing")
+        if not root then return nil end
+        for _, m in ipairs(root:GetDescendants()) do
+            if m:IsA("ModuleScript") and string.find(string.lower(m.Name), "recipe", 1, true) then
+                local ok, data = pcall(require, m)
+                if ok and type(data) == "table" then
+                    local rec = data[id]
+                    if rec == nil and type(data.Recipes) == "table" then rec = data.Recipes[id] end
+                    if type(rec) == "table" then
+                        local parts = {}
+                        local function walk(t, depth)
+                            for k, v in pairs(t) do
+                                if #parts >= 6 then return end
+                                if type(v) == "number" and type(k) == "string" then
+                                    parts[#parts + 1] = k .. " x" .. v
+                                elseif type(v) == "table" and depth < 2 then
+                                    walk(v, depth + 1)
+                                end
+                            end
+                        end
+                        walk(rec, 0)
+                        if #parts > 0 then return table.concat(parts, ", ") end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local craftCard = createCard(page, 34 + #RECIPES * 46 + 8)
+    make("TextLabel", {
+        Size = UDim2.new(1, -24, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Craft Fishing Island",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, craftCard)
+
+    local crafting = false
+    for i, r in ipairs(RECIPES) do
+        local y = 34 + (i - 1) * 46
+        make("TextLabel", {
+            Size = UDim2.new(1, -160, 0, 18),
+            Position = UDim2.new(0, 12, 0, y + 4),
+            BackgroundTransparency = 1,
+            Text = r.name,
+            TextColor3 = C.white,
+            TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, craftCard)
+        local need = make("TextLabel", {
+            Size = UDim2.new(1, -160, 0, 14),
+            Position = UDim2.new(0, 12, 0, y + 23),
+            BackgroundTransparency = 1,
+            Text = "Recipe " .. r.id,
+            TextColor3 = C.muted,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, craftCard)
+        task.spawn(function()
+            local t = recipeText(r.id)
+            if t then need.Text = t end
+        end)
+
+        local qty = createInput(craftCard, {
+            Size = UDim2.new(0, 48, 0, 28),
+            Position = UDim2.new(1, -136, 0, y + 8),
+            Text = "1",
+            TextXAlignment = Enum.TextXAlignment.Center,
+            Font = Enum.Font.RobotoMono,
+        }, "1")
+        createButton(craftCard, {
+            Size = UDim2.new(0, 70, 0, 28),
+            Position = UDim2.new(1, -82, 0, y + 8),
+        }, "Craft", function()
+            if crafting then return end
+            local fn = fishRemote("FishingFunction")
+            if not fn then
+                notify("Craft", "Fishing remote not found.", 3)
+                return
+            end
+            local n = math.clamp(math.floor(tonumber(qty.Text) or 1), 1, 99)
+            crafting = true
+            task.spawn(function()
+                local done = 0
+                for _ = 1, n do
+                    if not ScreenGui.Parent then break end
+                    local ok, res = pcall(function()
+                        return fn:InvokeServer("Craft", { Recipe = r.id })
+                    end)
+                    if not accepted(ok, res) then break end
+                    done = done + 1
+                    if done < n then task.wait(0.3) end
+                end
+                if done == n then
+                    notify("Crafted", n .. "x " .. r.name, 2)
+                elseif done > 0 then
+                    notify("Craft stopped", done .. "/" .. n .. " " .. r.name .. " (missing materials?)", 3)
+                else
+                    notify("Craft failed", r.name .. ": missing materials or refused.", 3)
+                end
+                crafting = false
+            end)
+        end)
+    end
+
+    -- ---------------- Log data (untuk debug / melengkapi resep dan jual ikan) ----------------
+    local function dump(inst, depth, out)
+        if #out > 120 then return end
+        local line = string.rep("  ", depth) .. inst.Name .. " [" .. inst.ClassName .. "]"
+        if inst:IsA("ValueBase") then line = line .. " = " .. tostring(inst.Value) end
+        for k, v in pairs(inst:GetAttributes()) do line = line .. " @" .. k .. "=" .. tostring(v) end
+        out[#out + 1] = line
+        if depth < 3 then
+            for _, c in ipairs(inst:GetChildren()) do dump(c, depth + 1, out) end
+        end
+    end
+    local function dumpTable(t, depth, out)
+        if #out > 120 or depth > 3 then return end
+        for k, v in pairs(t) do
+            out[#out + 1] = string.rep("  ", depth) .. tostring(k) .. " = " .. (type(v) == "table" and "{...}" or tostring(v))
+            if type(v) == "table" then dumpTable(v, depth + 1, out) end
+        end
+    end
+
+    createButton(page, { Size = UDim2.new(1, 0, 0, 28) }, "Log fish data (console)", function()
+        local out = {}
+        local fd = LocalPlayer:FindFirstChild("FishingData")
+        if fd then dump(fd, 0, out) else out[#out + 1] = "FishingData not found" end
+        local root = ReplicatedStorage:FindFirstChild("Fishing")
+        if root then
+            for _, m in ipairs(root:GetDescendants()) do
+                if m:IsA("ModuleScript") and string.find(string.lower(m.Name), "recipe", 1, true) then
+                    out[#out + 1] = "-- module " .. m:GetFullName()
+                    local ok, data = pcall(require, m)
+                    if ok and type(data) == "table" then dumpTable(data, 1, out) end
+                end
+            end
+        end
+        print("[Light] fish data\n" .. table.concat(out, "\n"))
+        notify("Log fish data", "Printed to the console (F9).", 3)
+    end)
 end
 
 -- =================================================================
@@ -2524,20 +3000,32 @@ do
         Size = UDim2.new(0, 150, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
-        Text = "Teleport UTTM",
+        Text = "Teleport",
         TextColor3 = C.white,
         TextSize = 12,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, uttmCard)
-    -- Judul: biru muda dan ungu violet yang menyatu. Dua warna saling bertukar
-    -- pelan-pelan (tanpa pita warna yang berjalan satu-satu).
-    local UTTM_BLUE = Color3.fromRGB(135, 200, 255)
-    local UTTM_VIOLET = Color3.fromRGB(178, 160, 255)
+    -- Hanya kata "UTTM" yang berwarna: biru dan ungu yang saling menyatu dan
+    -- bergeser pelan di seluruh teks (bukan pita warna yang lewat satu-satu).
+    local TextService = game:GetService("TextService")
+    local prefixW = TextService:GetTextSize("Teleport ", 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
+    local uttmWord = make("TextLabel", {
+        Size = UDim2.new(0, 60, 0, 34),
+        Position = UDim2.new(0, 12 + prefixW, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "UTTM",
+        TextColor3 = C.white,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, uttmCard)
+    local UTTM_BLUE = Color3.fromRGB(70, 150, 240)
+    local UTTM_VIOLET = Color3.fromRGB(150, 110, 235)
     local uttmGrad = make("UIGradient", {
         Color = ColorSequence.new(UTTM_BLUE, UTTM_VIOLET),
         Rotation = 0,
-    }, uttmTitle)
+    }, uttmWord)
     runLoop(function()
         if uttmCard.Visible then
             local k = (math.sin(os.clock() * 0.9) + 1) / 2
@@ -3695,24 +4183,24 @@ do
         onToggle = function(v) applyClaimState(v, true) end,
     })
 
-    -- Hanya jumlah gift yang sudah diambil + daftar hadiahnya
-    -- Angka memakai gaya yang sama dengan timer (GothamBold 14 putih)
+    -- Baris atas: angka (RobotoMono, sama dengan angka di UI lain) + dropdown hadiah
+    local giftOpen, giftRows = false, 1
+    local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
+
     local CountLabel = make("TextLabel", {
-        Size = UDim2.new(0, 150, 0, 22),
+        Size = UDim2.new(1, -110, 0, 24),
         BackgroundTransparency = 1,
         RichText = true,
         Text = "",
         TextColor3 = C.white,
         TextSize = 14,
-        Font = Enum.Font.GothamBold,
+        Font = Enum.Font.RobotoMono,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, feature.body)
 
-    -- Tombol dropdown untuk melihat hadiah yang sudah didapat
-    local giftOpen = false
     local DropBtn = make("TextButton", {
-        Size = UDim2.new(0, 96, 0, 22),
-        Position = UDim2.new(1, -96, 0, 0),
+        Size = UDim2.new(0, 100, 0, 24),
+        Position = UDim2.new(1, -100, 0, 0),
         BackgroundColor3 = C.control,
         BorderSizePixel = 0,
         Text = "Rewards",
@@ -3722,39 +4210,30 @@ do
         TextXAlignment = Enum.TextXAlignment.Left,
         AutoButtonColor = false,
     }, feature.body)
-    make("UIPadding", { PaddingLeft = UDim.new(0, 8) }, DropBtn)
+    make("UIPadding", { PaddingLeft = UDim.new(0, 10) }, DropBtn)
     make("UIStroke", {
         Color = C.controlLine,
         Thickness = 1,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, DropBtn)
-    local DropArrow = createChevron(DropBtn, -6)
+    local DropArrow = createChevron(DropBtn, -8)
     DropBtn.MouseEnter:Connect(function() DropBtn.BackgroundColor3 = C.hover end)
     DropBtn.MouseLeave:Connect(function() DropBtn.BackgroundColor3 = C.control end)
-    local RewardLabel = make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 14),
-        Position = UDim2.new(0, 0, 0, 28),
-        Visible = false,
+
+    -- Daftar hadiah: satu baris per gift yang sudah diklaim
+    local GiftList = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 22),
+        Position = UDim2.new(0, 0, 0, 30),
         BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = C.muted,
-        TextSize = 10,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextTruncate = Enum.TextTruncate.AtEnd,
+        Visible = false,
     }, feature.body)
 
-    local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
-    local giftLines = 0
-
-    -- Tinggi kartu mengikuti dropdown: tertutup = hanya hitungan, terbuka = + daftar hadiah
     local function layoutGifts()
-        RewardLabel.Visible = giftOpen
+        GiftList.Visible = giftOpen
         DropArrow.Rotation = giftOpen and 180 or 0
-        local h = math.max(1, giftLines) * 13 + 2
-        RewardLabel.Size = UDim2.new(1, 0, 0, h)
-        local bodyH = giftOpen and (28 + h) or 24
+        local listH = math.max(1, giftRows) * 22
+        GiftList.Size = UDim2.new(1, 0, 0, listH)
+        local bodyH = giftOpen and (30 + listH) or 24
         feature.body.Size = UDim2.new(1, -24, 0, bodyH)
         feature.card.Size = UDim2.new(1, 0, 0, 34 + bodyH + 10)
     end
@@ -3765,22 +4244,62 @@ do
     end)
 
     local function renderGifts()
-        local lines = {}
+        local entries, parts = {}, {}
         for i = 1, GIFT_COUNT do
-            if rewards[i] then
-                lines[#lines + 1] = "Gift " .. i .. "   " .. rewards[i]
-            elseif i <= claimedCount then
-                lines[#lines + 1] = "Gift " .. i .. "   claimed"
+            if rewards[i] or i <= claimedCount then
+                entries[#entries + 1] = { i = i, text = rewards[i] }
+                parts[#parts + 1] = i .. ":" .. tostring(rewards[i])
             end
         end
-        local sig = claimedCount .. "#" .. table.concat(lines, "|")
+        local sig = claimedCount .. "#" .. table.concat(parts, "|")
         if sig == giftSig then return end
         giftSig = sig
 
         CountLabel.Text = tostring(claimedCount) .. "/" .. GIFT_COUNT
-            .. ' <font size="11" color="rgb(130,130,136)">gifts claimed</font>'
-        RewardLabel.Text = #lines > 0 and table.concat(lines, "\n") or "No rewards yet"
-        giftLines = #lines
+            .. ' <font size="10" face="GothamMedium" color="rgb(130,130,136)">claimed</font>'
+
+        for _, c in ipairs(GiftList:GetChildren()) do c:Destroy() end
+        if #entries == 0 then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20),
+                BackgroundTransparency = 1,
+                Text = "No rewards yet",
+                TextColor3 = C.dim,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, GiftList)
+        end
+        for r, e in ipairs(entries) do
+            local row = make("Frame", {
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 0, 0, (r - 1) * 22),
+                BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+                BorderSizePixel = 0,
+            }, GiftList)
+            make("TextLabel", {
+                Size = UDim2.new(0, 28, 1, 0),
+                Position = UDim2.new(0, 8, 0, 0),
+                BackgroundTransparency = 1,
+                Text = "#" .. e.i,
+                TextColor3 = C.muted,
+                TextSize = 11,
+                Font = Enum.Font.RobotoMono,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, row)
+            make("TextLabel", {
+                Size = UDim2.new(1, -46, 1, 0),
+                Position = UDim2.new(0, 38, 0, 0),
+                BackgroundTransparency = 1,
+                Text = e.text or "Claimed",
+                TextColor3 = e.text and C.text or C.muted,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, row)
+        end
+        giftRows = #entries
         layoutGifts()
     end
 

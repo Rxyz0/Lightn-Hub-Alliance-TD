@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v4.0
+-- LIGHTN HUB v4.1
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -14,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.0"
+local VERSION = "4.1"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }

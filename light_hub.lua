@@ -2131,6 +2131,7 @@ do
 
     -- Fish Inventory: dropdown minimalis, jumlah per JENIS (bukan kg) supaya ringan.
     -- Klik jenis ikan -> isi jumlah -> Sell. Data dari Players.<kamu>.FishingData.Fish
+    local SELL_ENABLED = false  -- jual ikan dimatikan sementara
     local fishOpen, selectedFish, selling = false, nil, false
     local fishList, fishSig = {}, nil
 
@@ -2219,7 +2220,7 @@ do
     end
 
     local function sellFish(wantAll)
-        if selling or not selectedFish then return end
+        if not SELL_ENABLED or selling or not selectedFish then return end
         local name = selectedFish
         local fd = LocalPlayer:FindFirstChild("FishingData")
         local folder = fd and fd:FindFirstChild("Fish")
@@ -2244,7 +2245,7 @@ do
             if accepted(ok, res) then
                 notify("Fish Sold", "Sold " .. amount .. "x " .. name, 2)
             else
-                notify("Sell failed", "Server refused the sale of " .. name .. ". Use 'Log fish data' in Fishing and send the output.", 4)
+                notify("Sell failed", "The server refused the sale of " .. name .. ".", 3)
             end
             selling = false
         end)
@@ -2320,6 +2321,7 @@ do
                 TextXAlignment = Enum.TextXAlignment.Right,
             }, row)
             row.MouseButton1Click:Connect(function()
+                if not SELL_ENABLED then return end
                 selectedFish = f.n
                 sellName.Text = f.n
                 qtyBox.PlaceholderText = "1-" .. f.c
@@ -2370,11 +2372,15 @@ do
         layoutFish()
         return 2
     end)
+
+    local sellOff = createFeature(page, "Sell Fish", {})
+    sellOff.setLocked(true, "soon")
+    sellOff.setNote("Disabled for now", C.dim)
 end
 
 -- =================================================================
 -- Fishing: Auto Fishing + Craft Fishing Island
---   Urutan dari log: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
+--   Urutan: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
 --   -> Hit{Index 1..10, ClickTime} (sekitar 1 detik per Hit)
 -- =================================================================
 do
@@ -2387,7 +2393,7 @@ do
         castToLuck = 3,    -- setelah Cast sampai LuckHold
         luckHold = 0.09,   -- jarak LuckHold -> LuckRelease
         luckToHit = 3,     -- setelah LuckRelease sampai Hit pertama
-        hitGap = 0.9,      -- jarak antar Hit
+        hitGap = 1.0,      -- jarak antar Hit / tekan tombol tarik
         hits = 10,         -- jumlah Hit per tangkapan
         endWait = 1.5,     -- jeda sebelum Cast berikutnya
     }
@@ -2502,18 +2508,82 @@ do
         return alive()
     end
 
+    -- ---------------- Sinyal dari server ----------------
+    -- Tombol tarik = remote Hit. Server bisa mengirim sinyal ke client lewat
+    -- FishingEvent (ikan menggigit, target Hit). Sinyal itu dipakai sebagai
+    -- aba-aba; kalau game tidak mengirim apa-apa, dipakai jeda tetap.
+    local cueCount, lastCue, cueMode = 0, nil, false
+    local cueEvent = fishRemote("FishingEvent")
+    if cueEvent and cueEvent:IsA("RemoteEvent") then
+        table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
+            cueCount = cueCount + 1
+            lastCue = table.pack(...)
+        end))
+    end
+
+    local function cueIndex(pack)
+        if not pack then return nil end
+        for i = 1, pack.n do
+            local v = pack[i]
+            if type(v) == "table" and type(v.Index) == "number" then return v.Index end
+        end
+        return nil
+    end
+
+    -- true kalau ada sinyal baru setelah hitungan "base"
+    local function waitCue(base, timeout)
+        local untilT = os.clock() + timeout
+        while cueCount <= base do
+            if os.clock() >= untilT then return false end
+            if not nap(0.05) then return false end
+        end
+        return true
+    end
+
+    local function fireHit(ev, i)
+        feat.setNote("Reeling " .. i .. "/" .. TIMING.hits, C.text)
+        ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
+    end
+
     local function cycle(ev)
+        local base = cueCount
         feat.setNote("Casting", C.text)
         ev:FireServer("Cast", { Position = spot })
-        if not nap(TIMING.castToLuck) then return end
+
+        -- Tunggu ikan menggigit: sinyal server kalau game memakainya, kalau tidak jeda tetap
+        local bite = waitCue(base, cueMode and 20 or TIMING.castToLuck)
+        if not alive() then return end
+        if bite then cueMode = true end
+
         feat.setNote("Luck", C.text)
         ev:FireServer("LuckHold", { ClickTime = workspace:GetServerTimeNow() })
         if not nap(TIMING.luckHold) then return end
         ev:FireServer("LuckRelease", { ClickTime = workspace:GetServerTimeNow() })
-        if not nap(TIMING.luckToHit) then return end
-        for i = 1, TIMING.hits do
-            feat.setNote("Reeling " .. i .. "/" .. TIMING.hits, C.text)
-            ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
+
+        base = cueCount
+        local reelCue = waitCue(base, cueMode and 6 or TIMING.luckToHit)
+        if not alive() then return end
+
+        local done = 0
+        if reelCue then
+            -- Tiap sinyal dari server dibalas satu Hit (pakai Index dari sinyal kalau ada)
+            local seen = base
+            local deadline = os.clock() + 4
+            while alive() and done < TIMING.hits do
+                if cueCount > seen then
+                    seen = cueCount
+                    done = done + 1
+                    fireHit(ev, cueIndex(lastCue) or done)
+                    deadline = os.clock() + 4
+                elseif os.clock() > deadline then
+                    break
+                end
+                if not nap(0.05) then return end
+            end
+        end
+        -- Sisa Hit (atau semuanya, kalau tidak ada sinyal) dengan jeda tetap
+        for i = done + 1, TIMING.hits do
+            fireHit(ev, i)
             if not nap(TIMING.hitGap) then return end
         end
         feat.setNote("Caught", C.text)
@@ -2544,6 +2614,12 @@ do
     end)
 
     -- ---------------- Craft Fishing Island ----------------
+    local CRAFT_ENABLED = false  -- craft dimatikan sementara
+    if not CRAFT_ENABLED then
+        local craftOff = createFeature(page, "Craft Fishing Island", {})
+        craftOff.setLocked(true, "soon")
+        craftOff.setNote("Disabled for now", C.dim)
+    else
     local RECIPES = {
         { id = 1, name = "Poseidon Cameraman" },
         { id = 2, name = "Fish Crate" },
@@ -2664,42 +2740,7 @@ do
         end)
     end
 
-    -- ---------------- Log data (untuk debug / melengkapi resep dan jual ikan) ----------------
-    local function dump(inst, depth, out)
-        if #out > 120 then return end
-        local line = string.rep("  ", depth) .. inst.Name .. " [" .. inst.ClassName .. "]"
-        if inst:IsA("ValueBase") then line = line .. " = " .. tostring(inst.Value) end
-        for k, v in pairs(inst:GetAttributes()) do line = line .. " @" .. k .. "=" .. tostring(v) end
-        out[#out + 1] = line
-        if depth < 3 then
-            for _, c in ipairs(inst:GetChildren()) do dump(c, depth + 1, out) end
-        end
     end
-    local function dumpTable(t, depth, out)
-        if #out > 120 or depth > 3 then return end
-        for k, v in pairs(t) do
-            out[#out + 1] = string.rep("  ", depth) .. tostring(k) .. " = " .. (type(v) == "table" and "{...}" or tostring(v))
-            if type(v) == "table" then dumpTable(v, depth + 1, out) end
-        end
-    end
-
-    createButton(page, { Size = UDim2.new(1, 0, 0, 28) }, "Log fish data (console)", function()
-        local out = {}
-        local fd = LocalPlayer:FindFirstChild("FishingData")
-        if fd then dump(fd, 0, out) else out[#out + 1] = "FishingData not found" end
-        local root = ReplicatedStorage:FindFirstChild("Fishing")
-        if root then
-            for _, m in ipairs(root:GetDescendants()) do
-                if m:IsA("ModuleScript") and string.find(string.lower(m.Name), "recipe", 1, true) then
-                    out[#out + 1] = "-- module " .. m:GetFullName()
-                    local ok, data = pcall(require, m)
-                    if ok and type(data) == "table" then dumpTable(data, 1, out) end
-                end
-            end
-        end
-        print("[Light] fish data\n" .. table.concat(out, "\n"))
-        notify("Log fish data", "Printed to the console (F9).", 3)
-    end)
 end
 
 -- =================================================================
@@ -3077,30 +3118,29 @@ do
     end
 
     -- ---------------- Mode drone ----------------
-    -- Status drone dibaca dari attribute UTTM (nama mengandung "drone") kalau ada.
-    -- Kalau tidak ada, status dilacak dari panggilan CinemaRelocate("Drones") yang
-    -- lewat (klik manual pemain maupun dari script ini). Status awal tidak
-    -- diketahui sampai drone di-toggle sekali, dan dianggap OFF.
+    -- Satu klik Teleport menjalankan semuanya: drone dimatikan (kalau aktif),
+    -- teleport, lalu drone dinyalakan lagi. Kalau drone tidak aktif, tidak ada
+    -- yang dinyalakan.
     local droneState = env.LightHubDrone
     if not droneState then
         droneState = { on = nil }
         env.LightHubDrone = droneState
     end
     droneState.active = true
+    droneState.internal = false
 
+    -- Catat klik Drones manual dari pemain (panggilan dari script ini diabaikan)
     if hookmetamethod and getnamecallmethod and not env.LightHubDroneHooked then
         pcall(function()
             local old
             old = hookmetamethod(game, "__namecall", function(self, ...)
                 local method = getnamecallmethod()
-                if method == "InvokeServer" and droneState.active
+                if method == "InvokeServer" and droneState.active and not droneState.internal
                     and typeof(self) == "Instance" and self.Name == "CinemaRelocate" then
                     local args = table.pack(...)
                     if args[1] == "Drones" then
                         local res = table.pack(old(self, ...))
-                        if accepted(true, res[1]) then
-                            droneState.on = not droneState.on
-                        end
+                        if res[1] ~= false then droneState.on = not droneState.on end
                         return table.unpack(res, 1, res.n)
                     end
                 end
@@ -3110,62 +3150,105 @@ do
         end)
     end
 
+    -- Kamera tidak lagi mengikuti karakter = sedang di mode drone
+    local function cameraInDrone()
+        local cam = workspace.CurrentCamera
+        local ch = LocalPlayer.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if not cam or not hum then return false end
+        if cam.CameraType == Enum.CameraType.Scriptable then return true end
+        return cam.CameraSubject ~= nil and cam.CameraSubject ~= hum
+    end
+
     local function isDroneOn(tw)
         for name, v in pairs(tw:GetAttributes()) do
             if type(v) == "boolean" and string.find(string.lower(name), "drone", 1, true) then
                 return v
             end
         end
-        return droneState.on == true
+        return cameraInDrone() or droneState.on == true
     end
 
-    -- Tanpa hook, status dibalik manual setelah panggilan dari script ini
-    local function toggleDrone(tw)
+    -- Berhasil kalau remote tidak error dan tidak menolak secara eksplisit
+    local function toggleDrone(tw, newState)
+        droneState.internal = true
         local ok, res = invoke("CinemaRelocate", "Drones", tw, nil)
-        if accepted(ok, res) and not env.LightHubDroneHooked then
-            droneState.on = not droneState.on
+        droneState.internal = false
+        local good = ok and not (type(res) == "table" and (res.Success == false or res.success == false))
+        if good then droneState.on = newState end
+        return good
+    end
+
+    local function msgSaysDrone(res)
+        local t = ""
+        if type(res) == "string" then
+            t = res
+        elseif type(res) == "table" then
+            t = tostring(res.Message or res.message or res.Error or res.error or "")
         end
-        return accepted(ok, res)
+        return string.find(string.lower(t), "drone", 1, true) ~= nil
     end
 
     local function uttmTeleport(s)
         if uttmBusy then return end
         uttmBusy = true
         task.spawn(function()
-            uttmSay("Working...", C.muted)
             local tw = findUttm()
             if not tw then
                 uttmSay("UTTM not found", C.warn)
-            else
-                -- Drone aktif: matikan dulu supaya bisa teleport, nyalakan lagi sesudahnya
-                local wasDrone = isDroneOn(tw)
-                if wasDrone then
-                    uttmSay("Drone off...", C.muted)
-                    toggleDrone(tw)
-                    task.wait(0.35)
-                end
+                uttmBusy = false
+                return
+            end
+            uttmSay("Working...", C.muted)
 
-                local placed = false
+            -- 1. Drone aktif -> matikan dulu
+            local droneOff = false
+            if isDroneOn(tw) then
+                uttmSay("Drone off...", C.muted)
+                if toggleDrone(tw, false) then droneOff = true end
+                task.wait(0.7)
+            end
+
+            -- 2. Start; kalau ditolak karena drone masih aktif, matikan lalu coba lagi
+            local started = false
+            for _ = 1, 5 do
                 local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
-                if not accepted(ok, res) then
-                    local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
-                    uttmSay("On cooldown" .. ago, C.warn)
+                if accepted(ok, res) then
+                    started = true
+                    break
+                end
+                if not droneOff and (msgSaysDrone(res) or cameraInDrone() or droneState.on == true) then
+                    uttmSay("Drone off...", C.muted)
+                    if toggleDrone(tw, false) then droneOff = true end
+                    task.wait(0.7)
+                elseif droneOff then
+                    task.wait(0.5)
                 else
-                    local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
-                    if accepted(ok2, res2) then
-                        placed = true
-                        lastUttmUse = os.clock()
-                        uttmSay("Teleported to " .. s.n, C.text)
-                    else
-                        uttmSay("Couldn't place it there", C.warn)
-                    end
+                    break
                 end
+            end
 
-                if wasDrone then
-                    task.wait(0.35)
-                    toggleDrone(tw)
-                    if placed then uttmSay("Teleported, drone back on", C.text) end
+            -- 3. Pindahkan
+            local placed = false
+            if started then
+                local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
+                placed = accepted(ok2, res2)
+                if placed then
+                    lastUttmUse = os.clock()
+                    uttmSay("Teleported to " .. s.n, C.text)
+                else
+                    uttmSay("Couldn't place it there", C.warn)
                 end
+            else
+                local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
+                uttmSay("On cooldown" .. ago, C.warn)
+            end
+
+            -- 4. Nyalakan drone lagi kalau tadi dimatikan oleh script
+            if droneOff then
+                task.wait(0.6)
+                toggleDrone(findUttm() or tw, true)
+                if placed then uttmSay("Teleported, drone back on", C.text) end
             end
             uttmBusy = false
         end)

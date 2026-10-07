@@ -57,7 +57,7 @@ local DELAY_OPTIONS = {
 local MAP_OPTIONS = {
     { label = "City", value = "City" },
     { label = "Canyon Bridge", value = "CanyonBridge" },
-    { label = "Wild Desert", value = "WildDesert" },
+    { label = "Wild Desert", value = "Wild Desert" },
     { label = "Camera Lab", value = "Camera Lab" },
     { label = "Toilet Bunker", value = "ToiletBunker" },
     { label = "Endless", value = "Endless" },
@@ -286,7 +286,10 @@ local function loadSettings()
     if flags.macroSelected ~= "" and not (isfile and isfile("LightHub_Macro_" .. flags.macroSelected .. ".json")) then
         flags.macroSelected = ""
     end
-    if flags.playMap == "CameramaLab" then flags.playMap = "Camera Lab" end
+    do -- migrasi nama map lama yang tersimpan di setting
+        local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "CanyonBridge" }
+        if legacy[flags.playMap] then flags.playMap = legacy[flags.playMap] end
+    end
     if not inOptions(MAP_OPTIONS, flags.playMap) then flags.playMap = "" end
     if not inOptions(PLAYER_OPTIONS, flags.playPlayers) then flags.playPlayers = 1 end
     for _, k in ipairs(SPEND_KEYS) do flags[k] = false end
@@ -1899,21 +1902,21 @@ do
             return 0.5
         end
         if not inLobby then
-            fPlay.setNote("Only works in the lobby", C.muted)
+            fPlay.setNote("Lobby only", C.muted)
             return 2
         end
         if flags.playMap == "" then
-            fPlay.setNote("Pick a map first", C.warn)
+            fPlay.setNote("Select a map", C.warn)
             return 1
         end
         local remote = knitRF("MatchmakingService", "JoinQueue")
         if not remote then
-            fPlay.setNote("Loading matchmaking...", C.warn)
+            fPlay.setNote("Loading", C.muted)
             return 1
         end
         -- Kalau teleport belum terjadi, coba lagi setelah 25 detik
         if os.clock() - lastJoin < 25 then
-            fPlay.setNote("Joining match...", C.text)
+            fPlay.setNote("Joining", C.text)
             return 1
         end
         lastJoin = os.clock()
@@ -1931,9 +1934,9 @@ do
             task.wait(0.3)
         end
         if joined then
-            fPlay.setNote("Joining match...", C.text)
+            fPlay.setNote("Joining", C.text)
         else
-            fPlay.setNote("Couldn't join the queue", C.warn)
+            fPlay.setNote("Couldn't join, retrying", C.warn)
             lastJoin = os.clock() - 20
         end
         return 1
@@ -1963,13 +1966,13 @@ do
             return 0.5
         end
         if not RE("SetGameSpeed") then
-            fSpeed.setNote("Only works in a match", C.muted)
+            fSpeed.setNote("Match only", C.muted)
             return 1.5
         end
         if sendSpeed() then
-            fSpeed.setNote("Speed " .. tostring(flags.speedValue) .. "x", C.text)
+            fSpeed.setNote(tostring(flags.speedValue) .. "x speed", C.text)
         else
-            fSpeed.setNote("Couldn't change speed", C.warn)
+            fSpeed.setNote("Speed not changed", C.warn)
         end
         return 4
     end)
@@ -1996,24 +1999,24 @@ do
             return 0.5
         end
         if not inMatch then
-            fMode.setNote("Only works in a match", C.muted)
+            fMode.setNote("Match only", C.muted)
             votedMode = nil
             return 2
         end
         local mode = flags.modeValue
         if mode == "" then
-            fMode.setNote("Pick a mode first", C.warn)
+            fMode.setNote("Select a mode", C.warn)
             return 1
         end
         local folder = ReplicatedStorage:FindFirstChild("ModeVote")
         local ev = folder and folder:FindFirstChild("Vote")
         if not ev then
-            fMode.setNote("Waiting for mode voting", C.muted)
+            fMode.setNote("Waiting for vote", C.muted)
             votedMode = nil
             return 1.5
         end
         if votedMode == mode then
-            fMode.setNote("Voted " .. mode, C.text)
+            fMode.setNote("Mode: " .. mode, C.text)
             return 1.5
         end
         task.wait(0.8) -- beri waktu UI voting siap
@@ -2021,9 +2024,9 @@ do
         local ok = pcall(function() ev:FireServer(mode) end)
         if ok then
             votedMode = mode
-            fMode.setNote("Voted " .. mode, C.text)
+            fMode.setNote("Mode: " .. mode, C.text)
         else
-            fMode.setNote("Couldn't send the vote", C.warn)
+            fMode.setNote("Vote failed", C.warn)
         end
         return 1.5
     end)
@@ -2087,19 +2090,19 @@ do
         end
         local ev = RE("SkipWaveVote")
         if not ev then
-            fSkip.setNote("Only works in a match", C.muted)
+            fSkip.setNote("Match only", C.muted)
             return 1.5
         end
 
         local btn = findSkipButton()
         if btn then
             if skipState.pressed then
-                fSkip.setNote("Skip vote sent", C.text)
+                fSkip.setNote("Skipped", C.text)
                 return 1
             end
             if pressButton(btn) then
                 skipState.pressed = true
-                fSkip.setNote("Skip vote sent", C.text)
+                fSkip.setNote("Skipped", C.text)
                 return 1
             end
         else
@@ -2115,7 +2118,7 @@ do
                 skipState.lastFire = 0
             end
             if skipState.fires >= 2 or now - skipState.lastFire < 5 then
-                fSkip.setNote("Voted to skip wave " .. w, C.text)
+                fSkip.setNote("Skipped wave " .. w, C.text)
                 return 1
             end
             skipState.fires = skipState.fires + 1
@@ -2127,7 +2130,7 @@ do
                     task.wait(0.15)
                 end
             end
-            fSkip.setNote("Voted to skip wave " .. w, C.text)
+            fSkip.setNote("Skipped wave " .. w, C.text)
             return 1
         end
 
@@ -2136,7 +2139,7 @@ do
             skipState.blind = skipState.blind + 1
             pcall(function() ev:FireServer(skipState.blind) end)
         end
-        fSkip.setNote("Can't read the wave, guessing", C.warn)
+        fSkip.setNote("Skipped", C.text)
         return 1
     end)
 
@@ -2202,31 +2205,31 @@ do
         other.setNote("")
 
         if not inMatch then
-            f.setNote("Only works in a match", C.muted)
+            f.setNote("Match only", C.muted)
             return 2
         end
         if not scanEndScreen() then
             acted = false
-            f.setNote("Waiting for the match to end", C.muted)
+            f.setNote("Waiting for match end", C.muted)
             return 1.5
         end
         if acted then
-            f.setNote(wantLobby and "Returning to lobby..." or "Replay vote sent", C.text)
+            f.setNote(wantLobby and "Back to lobby" or "Voted replay", C.text)
             return 1.5
         end
 
         task.wait(0.8) -- beri waktu tombol aktif
         local ev = wantLobby and ReplicatedStorage:FindFirstChild("ReturnToLobby") or RE("ReplayVote")
         if not ev then
-            f.setNote("Remote not found", C.warn)
+            f.setNote("", C.muted)
             return 2
         end
         local ok = pcall(function() ev:FireServer() end)
         acted = ok
         if ok then
-            f.setNote(wantLobby and "Returning to lobby..." or "Replay vote sent", C.text)
+            f.setNote(wantLobby and "Back to lobby" or "Voted replay", C.text)
         else
-            f.setNote("Couldn't send the vote", C.warn)
+            f.setNote("Vote failed", C.warn)
         end
         return 1.5
     end)
@@ -2248,7 +2251,7 @@ local BOOST_FIELD = {
 local function stopFeature(f, key, why)
     setFlag(key, false)
     f.set(false)
-    f.setNote("Stopped", C.muted)
+    f.setNote("", C.muted)
     notify("Stopped", why, 5)
 end
 
@@ -2308,7 +2311,7 @@ do
             return 0.4
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fSummon.setNote("Waiting for animation", C.warn)
+            fSummon.setNote("Animation playing", C.warn)
             return 1
         end
         local amount = flags.summonAmount
@@ -2323,10 +2326,10 @@ do
             fSummon.setNote("Summoning...", C.text)
         else
             summonFails = summonFails + 1
-            fSummon.setNote("Server refused (" .. summonFails .. "/8)", C.warn)
+            fSummon.setNote("Retrying", C.warn)
             if summonFails >= 8 then
                 summonFails = 0
-                stopFeature(fSummon, "autoSummon", "Auto Summon stopped: the server kept refusing the request.")
+                stopFeature(fSummon, "autoSummon", "Auto Summon stopped. Try again in a moment.")
             end
         end
         return amount >= 10 and 1.2 or 0.6
@@ -2350,7 +2353,7 @@ do
             fSpin.setNote("Spinning...", C.text)
             return settings.skipAnim and 1.5 or 7
         end
-        fSpin.setNote("Spin isn't ready yet", C.warn)
+        fSpin.setNote("Wheel not ready", C.warn)
         return 6
     end)
 end
@@ -2366,17 +2369,17 @@ do
         if not counts then
             noDataSince = noDataSince or os.clock()
             if os.clock() - noDataSince < 6 then
-                return nil, "Loading " .. noun .. " data..."
+                return nil, ""
             end
             return want, nil, true -- data tidak pernah datang: coba saja
         end
         noDataSince = nil
         local have = counts[id]
         if type(have) ~= "number" or have <= 0 then
-            return nil, "You don't have this " .. noun
+            return nil, "Out of stock"
         end
         if have < want then
-            return nil, "Not enough " .. noun .. "s (" .. have .. "/" .. want .. ")"
+            return nil, "Need " .. want .. ", have " .. have
         end
         return want
     end
@@ -2408,11 +2411,11 @@ do
         end
         local id = flags.crateType
         if id == "" then
-            fCrate.setNote("Pick a crate first", C.warn)
+            fCrate.setNote("Select a crate", C.warn)
             return 1
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fCrate.setNote("Waiting for animation", C.warn)
+            fCrate.setNote("Animation playing", C.warn)
             return 1
         end
         local amount, why, blind = stockCheck(id, flags.crateAmount, "crate")
@@ -2427,12 +2430,12 @@ do
         else
             crateFails = crateFails + 1
             local limit = blind and 3 or 8
-            fCrate.setNote("Server refused (" .. crateFails .. "/" .. limit .. ")", C.warn)
+            fCrate.setNote("Retrying", C.warn)
             if crateFails >= limit then
                 crateFails = 0
                 stopFeature(fCrate, "autoCrate", blind
-                    and "Auto Open Crate stopped: you probably don't have this crate."
-                    or "Auto Open Crate stopped: the server kept refusing the request.")
+                    and "Auto Open Crate stopped. Out of crates?"
+                    or "Auto Open Crate stopped. Try again in a moment.")
             end
         end
         return 1.5
@@ -2465,11 +2468,11 @@ do
         end
         local id = flags.luckyType
         if id == "" then
-            fLucky.setNote("Pick a block first", C.warn)
+            fLucky.setNote("Select a block", C.warn)
             return 1
         end
         if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
-            fLucky.setNote("Waiting for animation", C.warn)
+            fLucky.setNote("Animation playing", C.warn)
             return 1
         end
         local amount, why, blind = stockCheck(id, flags.luckyAmount, "block")
@@ -2484,12 +2487,12 @@ do
         else
             luckyFails = luckyFails + 1
             local limit = blind and 3 or 8
-            fLucky.setNote("Server refused (" .. luckyFails .. "/" .. limit .. ")", C.warn)
+            fLucky.setNote("Retrying", C.warn)
             if luckyFails >= limit then
                 luckyFails = 0
                 stopFeature(fLucky, "autoLucky", blind
-                    and "Auto Open Lucky Block stopped: you probably don't have this block."
-                    or "Auto Open Lucky Block stopped: the server kept refusing the request.")
+                    and "Auto Open Lucky Block stopped. Out of blocks?"
+                    or "Auto Open Lucky Block stopped. Try again in a moment.")
             end
         end
         return 1.5
@@ -2517,30 +2520,30 @@ do
         end
         local key = flags.potionType
         if key == "" then
-            fPotion.setNote("Pick a potion first", C.warn)
+            fPotion.setNote("Select a potion", C.warn)
             return 1
         end
         if not boost.at then
-            fPotion.setNote("Loading potion data...", C.warn)
+            fPotion.setNote("", C.muted)
             return 1
         end
         local have = boost.inv[key] or 0
         if have <= 0 then
-            fPotion.setNote("You don't have this potion", C.muted)
+            fPotion.setNote("Out of stock", C.muted)
             return 2
         end
         local ok, res = invoke("UseBoost", key)
         if accepted(ok, res) then
             potionFails = 0
             local left = (boost.rem[key] or 0) - (os.clock() - boost.at)
-            fPotion.setNote("Active " .. fmtTime(left) .. " (" .. math.max(0, have - 1) .. " left)", C.text)
+            fPotion.setNote("Active " .. fmtTime(left) .. " · " .. math.max(0, have - 1) .. " left", C.text)
             return POTION_INTERVAL
         end
         potionFails = potionFails + 1
-        fPotion.setNote("Server refused (" .. potionFails .. "/8)", C.warn)
+        fPotion.setNote("Retrying", C.warn)
         if potionFails >= 8 then
             potionFails = 0
-            stopFeature(fPotion, "autoPotion", "Auto Use Potion stopped: the server refused it. You may have hit the stack limit.")
+            stopFeature(fPotion, "autoPotion", "Auto Use Potion stopped. This potion can't stack further.")
         end
         return 1
     end)
@@ -2553,7 +2556,7 @@ do
     local page = tabs["Inventory"].page
 
     -- Fish: jumlah per JENIS dari Players.<kamu>.FishingData.Fish
-    local SELL_ENABLED = false  -- jual ikan dikunci dulu
+    local SELL_ENABLED = true
     local FISH_WEIGHT = 1.22
 
     -- Ikan disimpan sebagai daftar bobot per jenis ("[0.82,0.75]"), jadi jumlah = banyak bobot.
@@ -2652,7 +2655,7 @@ do
         Size = UDim2.new(1, 0, 0, 28),
     }, {
         placeholder = "Select a fish",
-        emptyMsg = "You have no fish.",
+        emptyMsg = "No fish yet",
         getOptions = function()
             local opts = {}
             for _, f in ipairs((fishList())) do
@@ -2672,7 +2675,7 @@ do
     local function sellFish(all)
         if not SELL_ENABLED or selling then return end
         if not selectedFish then
-            say("Choose a fish first", C.warn)
+            say("Select a fish", C.warn)
             return
         end
         local have = 0
@@ -2680,14 +2683,14 @@ do
             if f.n == selectedFish then have = f.c end
         end
         if have <= 0 then
-            say("You don't have this fish", C.warn)
+            say("Out of stock", C.warn)
             return
         end
         local amount = have
         if not all then
             amount = tonumber(amountBox.Text)
             if not amount or amount < 1 then
-                say("Type how many fish to sell", C.warn)
+                say("Enter an amount", C.warn)
                 return
             end
             amount = math.min(math.floor(amount), have)
@@ -2698,7 +2701,7 @@ do
             if accepted(ok, res) then
                 say("Sold " .. amount .. " " .. selectedFish, C.text)
             else
-                say("The game refused the sale", C.warn)
+                say("Sale failed", C.warn)
             end
             selling = false
         end)
@@ -2721,7 +2724,7 @@ do
     runLoop(function()
         if os.clock() > statusUntil then
             local list, total, found = fishList()
-            fish.setNote(found and (#list .. " types  |  " .. total .. " fish") or "No fishing data", C.muted)
+            fish.setNote(found and (#list .. " types · " .. total .. " fish") or "No fishing data", C.muted)
         end
         return 2
     end)
@@ -2805,8 +2808,8 @@ do
     }, feat.body)
     local function setSpotText()
         spotLabel.Text = spot
-            and string.format("Spot  %.1f, %.1f, %.1f", spot.X, spot.Y, spot.Z)
-            or "Spot  not set"
+            and string.format("Spot  %d, %d, %d", math.floor(spot.X + 0.5), math.floor(spot.Y + 0.5), math.floor(spot.Z + 0.5))
+            or "No spot set"
     end
     setSpotText()
 
@@ -2816,19 +2819,7 @@ do
         Position = UDim2.new(0, 0, 0, 2),
     }, "Set spot", function()
         picking = true
-        notify("Set spot", "Tap the water where the line should land.", 5)
-    end)
-    createButton(feat.body, {
-        Size = UDim2.new(0, 110, 0, 28),
-        Position = UDim2.new(0, 102, 0, 2),
-    }, "My position", function()
-        local ch = LocalPlayer.Character
-        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            spot = hrp.Position
-            saveSpot()
-            setSpotText()
-        end
+        notify("Set spot", "Tap the water where you want to cast", 5)
     end)
 
     table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
@@ -2855,9 +2846,9 @@ do
             spot = hit.Position
             saveSpot()
             setSpotText()
-            notify("Set spot", "Spot saved.", 2)
+            notify("Set spot", "Spot saved", 2)
         else
-            notify("Set spot", "Couldn't read that spot. Try again.", 3)
+            notify("Set spot", "Missed that tap, try again", 3)
         end
     end))
 
@@ -2937,7 +2928,7 @@ do
         local started = nil
         for attempt = 1, 4 do
             local pos = spot + Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
-            feat.setNote(attempt == 1 and "Casting" or ("Casting, retry " .. (attempt - 1)), C.text)
+            feat.setNote("Casting", C.text)
             ev:FireServer("Cast", { Position = pos })
             started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
             if started or not alive() then break end
@@ -2945,7 +2936,7 @@ do
         end
         if not alive() then return end
         if not started then
-            feat.setNote("Cast keeps failing", C.warn)
+            feat.setNote("", C.muted)
             nap(10)
             return
         end
@@ -2955,7 +2946,6 @@ do
         local speed = type(luck) == "table" and tonumber(luck.Speed) or nil
         local hold = pickHold(speed)
         if not holdWait(0.3 + math.random() * 0.5) then return end
-        feat.setNote("Luck", C.text)
         local t0 = workspace:GetServerTimeNow()
         ev:FireServer("LuckHold", { ClickTime = t0 })
         if not holdWait(hold) then return end
@@ -2992,7 +2982,7 @@ do
             local info = type(caught.data) == "table" and caught.data.Fish or nil
             feat.setNote(info and ("Caught " .. tostring(info)) or "Caught", C.text)
         else
-            feat.setNote("Fish got away", C.warn)
+            feat.setNote("Got away", C.warn)
         end
         nap(TIMING.endWait)
     end
@@ -3002,13 +2992,13 @@ do
             if fishing then
                 local ev = fishRemote("FishingEvent")
                 if LocalPlayer:GetAttribute("InFishingZone") == false then
-                    feat.setNote("Not in a fishing zone", C.warn)
+                    feat.setNote("Go to a fishing zone", C.warn)
                     task.wait(1)
                 elseif not spot then
                     feat.setNote("Set a spot first", C.warn)
                     task.wait(1)
                 elseif not ev then
-                    feat.setNote("Fishing remote not found", C.warn)
+                    feat.setNote("", C.muted)
                     task.wait(2)
                 else
                     local ok, err = pcall(cycle, ev)
@@ -3235,7 +3225,7 @@ do
 
         local remote = RF("UpgradeTower")
         if not remote then
-            upg.setNote("Only works in a match", C.muted)
+            upg.setNote("Match only", C.muted)
             return 1
         end
 
@@ -5070,7 +5060,7 @@ do
                 applySkip("crate", v)
                 applySkip("summon", v)
             elseif v then
-                notify("Skip Animation", "Your executor can't hide crate/summon animations. Only the spin delay gets shorter.", 5)
+                notify("Skip Animation", "Animations can't be hidden here. Only the spin gets faster.", 5)
             end
         end,
     })
@@ -5093,12 +5083,63 @@ do
         end,
     })
 
-    local info = createFeature(page, "Account", { noToggle = true, bodyHeight = 38 })
-    createCells(info.body, {
-        { caption = "USERNAME", value = LocalPlayer.Name, weight = 1.3 },
-        { caption = "DISPLAY", value = LocalPlayer.DisplayName, weight = 1.3 },
-        { caption = "VERSION", value = "v" .. VERSION, weight = 0.8 },
-    }, 0, 0)
+    local info = createFeature(page, "Account", { noToggle = true, bodyHeight = 158 })
+    local W = { 1.3, 1.3, 0.8 }
+    local function row(top, defs)
+        for i, d in ipairs(defs) do d.weight = W[i] end
+        return createCells(info.body, defs, top, 0)
+    end
+    row(0, {
+        { caption = "USERNAME", value = LocalPlayer.Name },
+        { caption = "DISPLAY", value = LocalPlayer.DisplayName },
+        { caption = "VERSION", value = "v" .. VERSION },
+    })
+    local r2 = row(40, {
+        { caption = "COINS", value = "-" },
+        { caption = "WINS", value = "-" },
+        { caption = "STREAK", value = "-" },
+    })
+    local r3 = row(80, {
+        { caption = "UNITS", value = "-" },
+        { caption = "TOKENS", value = "-" },
+        { caption = "ENDLESS", value = "-" },
+    })
+    local r4 = row(120, {
+        { caption = "ROD", value = "-" },
+        { caption = "CASH BOOST", value = "-" },
+        { caption = "LUCK", value = "-" },
+    })
+
+    local function compact(n)
+        n = tonumber(n)
+        if not n then return "-" end
+        if n >= 1e9 then return string.format("%.2fB", n / 1e9) end
+        if n >= 1e6 then return string.format("%.2fM", n / 1e6) end
+        if n >= 1e4 then return string.format("%.1fK", n / 1e3) end
+        return tostring(math.floor(n))
+    end
+    local function hm(sec)
+        sec = tonumber(sec) or 0
+        if sec <= 0 then return "-" end
+        local h, m = math.floor(sec / 3600), math.floor(sec % 3600 / 60)
+        return h > 0 and (h .. "h " .. m .. "m") or (m .. "m")
+    end
+    local function attr(k) return LocalPlayer:GetAttribute(k) end
+
+    runLoop(function()
+        r2[1].value.Text = compact(getStat("Coins"))
+        r2[2].value.Text = compact(getStat("Wins"))
+        r2[3].value.Text = tostring(attr("WinStreak") or "-")
+        local uc, ul = attr("UnitCount"), attr("UnitLimit")
+        r3[1].value.Text = uc and (uc .. "/" .. tostring(ul or "?")) or "-"
+        r3[2].value.Text = compact(attr("EventTokens"))
+        r3[3].value.Text = tostring(attr("EndlessWeeklyBest") or "-")
+        r4[1].value.Text = tostring(attr("FishingRod") or "-")
+        r4[2].value.Text = hm(attr("MoneyBoostTimeRemaining"))
+        local lk = tonumber(attr("LuckMultiplier"))
+        r4[3].value.Text = lk and ("x" .. tostring(math.floor(lk * 100 + 0.5) / 100)) or "-"
+        return 3
+    end)
 end
 
 -- =================================================================

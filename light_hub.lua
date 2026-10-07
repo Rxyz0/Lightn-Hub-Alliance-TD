@@ -2491,23 +2491,79 @@ do
     local SELL_ENABLED = false  -- jual ikan dikunci dulu
     local FISH_WEIGHT = 1.22
 
+    -- Ikan disimpan sebagai daftar bobot per jenis ("[0.82,0.75]"), jadi jumlah = banyak bobot.
+    -- Data dicari di hasil GetData (maksimal sekali per 30 detik supaya ringan).
+    local dataCache, dataAt, dataBusy = nil, -100, false
+
+    local function findFish(t, depth)
+        if type(t) ~= "table" or depth > 4 then return nil end
+        local n = 0
+        for k, v in pairs(t) do
+            n = n + 1
+            if n > 400 then break end
+            if type(k) == "string" and type(v) == "string"
+                and string.sub(v, 1, 1) == "[" and string.sub(v, -1) == "]" then
+                return t
+            end
+        end
+        for _, v in pairs(t) do
+            if type(v) == "table" then
+                local r = findFish(v, depth + 1)
+                if r then return r end
+            end
+        end
+        return nil
+    end
+
+    local function refreshData()
+        if dataBusy or os.clock() - dataAt < 30 then return end
+        dataBusy = true
+        dataAt = os.clock()
+        task.spawn(function()
+            local ok, res = invoke("GetData")
+            local t = ok and type(res) == "table" and findFish(res, 0) or nil
+            if t then
+                local list, total = {}, 0
+                for k, v in pairs(t) do
+                    if type(k) == "string" and type(v) == "string" then
+                        local c = 0
+                        for _ in string.gmatch(v, "[%d%.]+") do c = c + 1 end
+                        if c > 0 then
+                            list[#list + 1] = { n = k, c = c }
+                            total = total + c
+                        end
+                    end
+                end
+                table.sort(list, function(a, b)
+                    if a.c ~= b.c then return a.c > b.c end
+                    return a.n < b.n
+                end)
+                dataCache = { list = list, total = total }
+            end
+            dataBusy = false
+        end)
+    end
+
     local function fishList()
         local fd = LocalPlayer:FindFirstChild("FishingData")
         local folder = fd and fd:FindFirstChild("Fish")
-        local list, total = {}, 0
         if folder then
+            local list, total = {}, 0
             for _, v in ipairs(folder:GetChildren()) do
                 if (v:IsA("IntValue") or v:IsA("NumberValue")) and v.Value > 0 then
                     list[#list + 1] = { n = v.Name, c = math.floor(v.Value) }
                     total = total + math.floor(v.Value)
                 end
             end
+            table.sort(list, function(a, b)
+                if a.c ~= b.c then return a.c > b.c end
+                return a.n < b.n
+            end)
+            return list, total, true
         end
-        table.sort(list, function(a, b)
-            if a.c ~= b.c then return a.c > b.c end
-            return a.n < b.n
-        end)
-        return list, total, folder ~= nil
+        refreshData()
+        if dataCache then return dataCache.list, dataCache.total, true end
+        return {}, 0, false
     end
 
     local function fishInvoke(action, args)
@@ -2613,7 +2669,7 @@ end
 -- =================================================================
 do
     local page = tabs["Fishing"].page
-    local FISHING_ENABLED = false  -- tab Fishing dikunci total
+    local FISHING_ENABLED = true  -- false = tab Fishing dikunci
     if not FISHING_ENABLED then
         local area = make("Frame", {
             Size = UDim2.new(1, 0, 0, 230),
@@ -2633,12 +2689,9 @@ do
 
     -- Jeda antar langkah (detik). Ubah di sini kalau game menolak / terlalu lambat.
     local TIMING = {
-        castToLuck = 3,    -- setelah Cast sampai LuckHold
-        luckHold = 0.09,   -- jarak LuckHold -> LuckRelease
-        luckToHit = 3,     -- setelah LuckRelease sampai Hit pertama
-        hitGap = 1.0,      -- jarak antar Hit / tekan tombol tarik
-        hits = 10,         -- jumlah Hit per tangkapan
-        endWait = 1.5,     -- jeda sebelum Cast berikutnya
+        reactMin = 0.55,     -- jeda minimal setelah target muncul sebelum Hit (detik)
+        reactSpread = 0.2,   -- tambahan acak supaya tidak kaku
+        endWait = 1.5,       -- jeda sebelum lempar berikutnya
     }
 
     -- ---------------- Spot lemparan (disimpan di file kalau executor mendukung) ----------------
@@ -2751,180 +2804,101 @@ do
         return alive()
     end
 
-    -- ---------------- Aba-aba "hit" ----------------
-    -- Hit harus dikirim tepat saat prompt "hit" muncul, bukan setelah jeda tetap
-    -- (jeda bikin ikan lepas). Aba-aba dibaca dari dua sumber:
-    --   1. elemen UI yang namanya / teksnya "hit" mulai tampil
-    --   2. event server -> client di FishingEvent yang memuat kata "hit"
-    -- Hanya dihitung selama fase menarik ikan (setelah LuckRelease).
-    local reelWindow = false
-    local hitCount, hitIndex, lastHitAt, hitSeen = 0, nil, 0, false
-    local cueCount, lastCue = 0, nil  -- semua event server (dipakai sebagai tanda ikan menggigit)
-
-    local function hitWord(str)
-        if type(str) ~= "string" or str == "" then return false end
-        str = string.lower(str)
-        return string.find(str, "%f[%a]hit%f[%A]") ~= nil
-            or string.find(str, "^hit") ~= nil
-            or string.find(str, "hit$") ~= nil
-    end
-
-    local function markHit(idx)
-        if not reelWindow then return end
-        local now = os.clock()
-        if now - lastHitAt < 0.35 then return end
-        lastHitAt = now
-        hitIndex = idx
-        hitCount = hitCount + 1
-    end
-
-    local function cueIndex(pack)
-        if not pack then return nil end
-        for i = 1, pack.n do
-            local v = pack[i]
-            if type(v) == "table" and type(v.Index) == "number" then return v.Index end
-        end
-        return nil
-    end
-
+    -- ---------------- Event dari server ----------------
+    -- Urutan di game:
+    --   Cast -> CastStarted{Luck={Speed,...}} -> LuckHold -> LuckHeld -> LuckRelease
+    --   -> LuckLocked{Luck,Fill} -> Target{Index,Total,StartTime} -> Hit{Index,ClickTime}
+    --   -> StageHit -> Target berikutnya ... -> Catch{Fish,Xp,Weight}
+    -- Fill bar luck = gelombang segitiga dari (lama tahan x Speed): penuh tepat di
+    -- 1/Speed detik. Luck = 0.5 + 1.5 x Fill (maksimal x2.0).
+    -- Target: tiap target dibalas satu Hit setelah target muncul (StartTime).
+    local queue = {}
     local cueEvent = fishRemote("FishingEvent")
     if cueEvent and cueEvent:IsA("RemoteEvent") then
         table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
-            local pack = table.pack(...)
-            cueCount = cueCount + 1
-            lastCue = pack
-            for i = 1, pack.n do
-                if type(pack[i]) == "string" and hitWord(pack[i]) then
-                    markHit(cueIndex(pack))
-                    break
-                end
-            end
+            local p = table.pack(...)
+            queue[#queue + 1] = { name = type(p[1]) == "string" and p[1] or "", data = p[2] }
+            if #queue > 60 then table.remove(queue, 1) end
         end))
     end
 
-    -- Elemen UI kandidat: nama "hit", teks "hit", atau label di dalam UI fishing
-    local watched, watchList = {}, {}
-    local function pathHasFish(path)
-        return string.find(path, "fish", 1, true) or string.find(path, "reel", 1, true)
-            or string.find(path, "minigame", 1, true)
-    end
-    local function isTextObj(d) return d:IsA("TextLabel") or d:IsA("TextButton") end
-    local function consider(d)
-        if watched[d] or not d:IsA("GuiObject") then return end
-        local ok = hitWord(d.Name)
-            or (isTextObj(d) and (hitWord(d.Text) or pathHasFish(string.lower(d:GetFullName()))))
-        if ok then
-            watched[d] = true
-            watchList[#watchList + 1] = { d = d, was = false }
-        end
-    end
-
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if pg then
-        pcall(function()
-            for _, d in ipairs(pg:GetDescendants()) do consider(d) end
-        end)
-        table.insert(conns, pg.DescendantAdded:Connect(function(d)
-            task.defer(function() pcall(consider, d) end)
-        end))
-    end
-
-    task.spawn(function()
-        while ScreenGui.Parent do
-            if not fishing then
-                reelWindow = false
-                task.wait(0.5)
-            else
-                for i = #watchList, 1, -1 do
-                    local w = watchList[i]
-                    local d = w.d
-                    if not d.Parent then
-                        table.remove(watchList, i)
-                        watched[d] = nil
-                    else
-                        local on = isShown(d) and (hitWord(d.Name) or (isTextObj(d) and hitWord(d.Text)))
-                        on = on and true or false
-                        if on and not w.was then markHit(nil) end
-                        w.was = on
-                    end
-                end
-                if reelWindow then task.wait() else task.wait(0.2) end
+    local function waitEvent(match, timeout)
+        local untilT = os.clock() + timeout
+        while true do
+            for i = 1, #queue do
+                if match(queue[i]) then return table.remove(queue, i) end
             end
+            if os.clock() >= untilT or not alive() then return nil end
+            task.wait(0.03)
         end
-    end)
-
-    -- true kalau ada event server baru setelah hitungan "base"
-    local function waitCue(base, timeout)
-        local untilT = os.clock() + timeout
-        while cueCount <= base do
-            if os.clock() >= untilT then return false end
-            if not nap(0.05) then return false end
-        end
-        return true
     end
 
-    local function waitHit(base, timeout)
-        local untilT = os.clock() + timeout
-        while hitCount <= base do
-            if os.clock() >= untilT or not alive() then return false end
+    local function holdWait(t)
+        local untilT = os.clock() + t
+        while os.clock() < untilT do
+            if not alive() then return false end
             task.wait()
         end
         return true
     end
 
-    local function fireHit(ev, i, tag)
-        feat.setNote("Reeling " .. i .. "/" .. TIMING.hits .. (tag or ""), C.text)
-        ev:FireServer("Hit", { Index = i, ClickTime = workspace:GetServerTimeNow() })
-    end
-
-    local biteSeen = false
     local function cycle(ev)
-        reelWindow = false
-        local base = cueCount
+        for i = #queue, 1, -1 do queue[i] = nil end
         feat.setNote("Casting", C.text)
         ev:FireServer("Cast", { Position = spot })
 
-        -- Tunggu ikan menggigit: event server kalau ada, kalau tidak jeda tetap
-        local bite = waitCue(base, biteSeen and 20 or TIMING.castToLuck)
+        local started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
         if not alive() then return end
-        if bite then biteSeen = true end
-
-        feat.setNote("Luck", C.text)
-        ev:FireServer("LuckHold", { ClickTime = workspace:GetServerTimeNow() })
-        if not nap(TIMING.luckHold) then return end
-        ev:FireServer("LuckRelease", { ClickTime = workspace:GetServerTimeNow() })
-
-        -- Fase tarik: Hit dikirim begitu aba-aba "hit" muncul
-        local hbase = hitCount
-        reelWindow = true
-        feat.setNote("Waiting hit", C.text)
-        local first = waitHit(hbase, hitSeen and 12 or (TIMING.luckToHit + 3))
-        if not alive() then return end
-
-        if first then
-            hitSeen = true
-            local done, seen = 0, hbase
-            local deadline = os.clock() + 4
-            while alive() and done < TIMING.hits do
-                if hitCount > seen then
-                    seen = hitCount
-                    done = done + 1
-                    fireHit(ev, hitIndex or done)
-                    deadline = os.clock() + 4
-                elseif os.clock() > deadline then
-                    break
-                end
-                task.wait()
-            end
-        else
-            -- Tidak ada aba-aba yang terbaca: urutan Hit dengan jeda tetap
-            for i = 1, TIMING.hits do
-                fireHit(ev, i, " timed")
-                if not nap(TIMING.hitGap) then return end
-            end
+        if not started then
+            feat.setNote("Cast failed", C.warn)
+            nap(2)
+            return
         end
-        reelWindow = false
-        feat.setNote("Caught", C.text)
+
+        -- Luck: tahan tepat 1/Speed detik supaya bar penuh
+        local luck = type(started.data) == "table" and started.data.Luck or nil
+        local speed = type(luck) == "table" and tonumber(luck.Speed) or nil
+        local hold = (speed and speed > 0) and (1 / speed) or 0.68
+        if not holdWait(0.25) then return end
+        feat.setNote("Luck", C.text)
+        local t0 = workspace:GetServerTimeNow()
+        ev:FireServer("LuckHold", { ClickTime = t0 })
+        if not holdWait(hold) then return end
+        ev:FireServer("LuckRelease", { ClickTime = t0 + hold })
+
+        local locked = waitEvent(function(e) return e.name == "LuckLocked" end, 3)
+        if locked and type(locked.data) == "table" and tonumber(locked.data.Luck) then
+            feat.setNote(string.format("Luck x%.2f", locked.data.Luck), C.text)
+        end
+
+        -- Tarik ikan: tiap Target dibalas satu Hit setelah target itu muncul
+        local function isStep(e) return e.name == "Target" or e.name == "Catch" end
+        feat.setNote("Waiting for a bite", C.text)
+        local step = waitEvent(isStep, 45)
+        local caught = nil
+        while step and alive() do
+            if step.name == "Catch" then
+                caught = step
+                break
+            end
+            local d = step.data
+            if type(d) == "table" and tonumber(d.Index) then
+                local start = tonumber(d.StartTime) or workspace:GetServerTimeNow()
+                local fireAt = start + TIMING.reactMin + math.random() * TIMING.reactSpread
+                while alive() and workspace:GetServerTimeNow() < fireAt do task.wait() end
+                if not alive() then return end
+                feat.setNote("Reeling " .. d.Index .. "/" .. tostring(d.Total or "?"), C.text)
+                ev:FireServer("Hit", { Index = d.Index, ClickTime = workspace:GetServerTimeNow() })
+            end
+            step = waitEvent(isStep, 6)
+        end
+        if not alive() then return end
+        if caught then
+            local info = type(caught.data) == "table" and caught.data.Fish or nil
+            feat.setNote(info and ("Caught " .. tostring(info)) or "Caught", C.text)
+        else
+            feat.setNote("Fish got away", C.warn)
+        end
         nap(TIMING.endWait)
     end
 
@@ -2932,7 +2906,10 @@ do
         while ScreenGui.Parent do
             if fishing then
                 local ev = fishRemote("FishingEvent")
-                if not spot then
+                if LocalPlayer:GetAttribute("InFishingZone") == false then
+                    feat.setNote("Not in a fishing zone", C.warn)
+                    task.wait(1)
+                elseif not spot then
                     feat.setNote("Set a spot first", C.warn)
                     task.wait(1)
                 elseif not ev then

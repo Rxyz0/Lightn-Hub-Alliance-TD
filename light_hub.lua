@@ -1388,21 +1388,50 @@ local function createPill(par, props, text, initial, onChange)
     for k, v in pairs(props) do btn[k] = v end
     styleControl(btn)
 
-    local function refresh()
-        btn.BackgroundColor3 = state and Color3.fromRGB(226, 226, 228) or C.control
-        btn.TextColor3 = state and C.ink or C.muted
+    -- Saat aktif: gradient biru-es ke lavender yang bergeser pelan
+    local grad = make("UIGradient", {
+        Color = ColorSequence.new(Color3.fromRGB(238, 242, 252), Color3.fromRGB(166, 184, 232)),
+        Rotation = 0,
+        Offset = Vector2.new(-0.25, 0),
+        Enabled = false,
+    }, btn)
+    local slide = TweenService:Create(grad,
+        TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+        { Offset = Vector2.new(0.25, 0) })
+
+    local function refresh(animate)
+        if state then
+            btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            grad.Enabled = true
+            slide:Play()
+        else
+            slide:Cancel()
+            grad.Enabled = false
+            grad.Offset = Vector2.new(-0.25, 0)
+            btn.BackgroundColor3 = C.control
+        end
+        local tc = state and C.ink or C.muted
+        if animate then tween(btn, 0.15, { TextColor3 = tc }) else btn.TextColor3 = tc end
     end
+
+    btn.MouseButton1Down:Connect(function()
+        tween(btn, 0.06, { Size = UDim2.new(btn.Size.X.Scale, btn.Size.X.Offset - 2, btn.Size.Y.Scale, btn.Size.Y.Offset - 2) })
+    end)
+    local baseSize = btn.Size
+    local function release() tween(btn, 0.12, { Size = baseSize }) end
+    btn.MouseButton1Up:Connect(release)
+    btn.MouseLeave:Connect(release)
 
     btn.MouseButton1Click:Connect(function()
         state = not state
-        refresh()
+        refresh(true)
         if onChange then onChange(state) end
     end)
 
-    refresh()
+    refresh(false)
     return {
         get = function() return state end,
-        set = function(v) state = v and true or false; refresh() end,
+        set = function(v) state = v and true or false; refresh(true) end,
     }
 end
 
@@ -1427,6 +1456,225 @@ local function createButton(par, props, text, onClick)
         if onClick then onClick() end
     end)
     return btn
+end
+
+-- Tombol aksi dengan umpan balik: kilat warna saat ditekan, lalu gradient
+-- bergeser selama aksinya masih berjalan. Aksi dijalankan langsung saat klik
+-- (task.spawn), jadi animasinya tidak pernah menunda aksinya.
+local function createFxButton(par, props, text, onClick, c1, c2)
+    c1 = c1 or Color3.fromRGB(70, 150, 240)
+    c2 = c2 or Color3.fromRGB(150, 110, 235)
+    local btn = make("TextButton", {
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+        Text = text,
+        TextColor3 = C.text,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        AutoButtonColor = false,
+        ClipsDescendants = true,
+    }, par)
+    for k, v in pairs(props) do btn[k] = v end
+    styleControl(btn)
+
+    local fx = make("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = C.white,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Active = false,
+    }, btn)
+    local grad = make("UIGradient", {
+        Color = ColorSequence.new(c1, c2),
+        Rotation = 0,
+        Offset = Vector2.new(-0.35, 0),
+    }, fx)
+    local slide = TweenService:Create(grad,
+        TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+        { Offset = Vector2.new(0.35, 0) })
+
+    local busy = false
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.hover end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.control end)
+    btn.MouseButton1Down:Connect(function()
+        tween(fx, 0.05, { BackgroundTransparency = 0.3 })
+    end)
+    btn.MouseButton1Click:Connect(function()
+        if busy then return end
+        busy = true
+        fx.BackgroundTransparency = 0.2
+        slide:Play()
+        task.spawn(function()
+            local ok, err = pcall(onClick or function() end)
+            if not ok then warn("[LightHub] " .. tostring(err)) end
+            busy = false
+            slide:Cancel()
+            pcall(function()
+                grad.Offset = Vector2.new(-0.35, 0)
+                tween(fx, 0.45, { BackgroundTransparency = 1 })
+            end)
+        end)
+    end)
+    return btn
+end
+
+-- Switch kecil (tampilannya sama dengan toggle di kartu fitur)
+local function createMiniSwitch(par, props, initial, onChange)
+    local track = make("Frame", {
+        Size = UDim2.new(0, 34, 0, 16),
+        BackgroundColor3 = Color3.fromRGB(34, 34, 37),
+        BorderSizePixel = 0,
+    }, par)
+    for k, v in pairs(props) do track[k] = v end
+    local stroke = make("UIStroke", {
+        Color = C.controlLine, Thickness = 1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, track)
+    local knob = make("Frame", {
+        Size = UDim2.new(0, 10, 0, 10),
+        Position = UDim2.new(0, 3, 0.5, -5),
+        BackgroundColor3 = C.muted,
+        BorderSizePixel = 0,
+    }, track)
+    local hit = make("TextButton", {
+        Size = UDim2.new(1, 12, 1, 12),
+        Position = UDim2.new(0, -6, 0, -6),
+        BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2,
+    }, track)
+    local api = { state = false }
+    function api.set(v, animate)
+        api.state = v and true or false
+        local tc = api.state and Color3.fromRGB(232, 232, 234) or Color3.fromRGB(34, 34, 37)
+        local kc = api.state and Color3.fromRGB(14, 14, 15) or C.muted
+        local sc = api.state and tc or C.controlLine
+        local kp = api.state and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
+        if animate then
+            tween(track, 0.12, { BackgroundColor3 = tc })
+            tween(stroke, 0.12, { Color = sc })
+            tween(knob, 0.12, { BackgroundColor3 = kc, Position = kp })
+        else
+            track.BackgroundColor3, stroke.Color = tc, sc
+            knob.BackgroundColor3, knob.Position = kc, kp
+        end
+    end
+    hit.MouseButton1Click:Connect(function()
+        local nv = not api.state
+        api.set(nv, true)
+        if onChange then onChange(nv) end
+    end)
+    api.set(initial, false)
+    return api
+end
+
+-- Jendela kecil melayang (jalan pintas): bisa digeser seperti jendela utama
+-- dan ditutup dengan tombol x. Isinya daftar tombol aksi.
+local function createFloat(title, startPos)
+    local W = 150
+    local f = make("Frame", {
+        Size = UDim2.new(0, W, 0, 60),
+        Position = startPos,
+        BackgroundColor3 = C.white,
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+        Active = true,
+        Visible = false,
+        ZIndex = 5,
+    }, ScreenGui)
+    swing(f, Color3.fromRGB(24, 24, 27), Color3.fromRGB(46, 46, 50), 90, 38, 0.2, 2.1)
+    make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+
+    local bar = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundTransparency = 1,
+        Active = true,
+    }, f)
+    make("TextLabel", {
+        Size = UDim2.new(1, -36, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = C.text,
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, bar)
+    local close = make("TextButton", {
+        Size = UDim2.new(0, 24, 0, 24),
+        Position = UDim2.new(1, -27, 0, 2),
+        BackgroundTransparency = 1,
+        Text = "×",
+        TextColor3 = C.muted,
+        TextSize = 16,
+        Font = Enum.Font.GothamMedium,
+        AutoButtonColor = false,
+    }, f)
+    close.MouseEnter:Connect(function() close.TextColor3 = C.white end)
+    close.MouseLeave:Connect(function() close.TextColor3 = C.muted end)
+    close.MouseButton1Click:Connect(function() f.Visible = false end)
+    make("Frame", {
+        Size = UDim2.new(1, -16, 0, 1),
+        Position = UDim2.new(0, 8, 0, 28),
+        BackgroundColor3 = C.line,
+        BorderSizePixel = 0,
+    }, f)
+    local body = make("Frame", {
+        Size = UDim2.new(1, -16, 0, 0),
+        Position = UDim2.new(0, 8, 0, 34),
+        BackgroundTransparency = 1,
+    }, f)
+
+    -- Geser lewat baris judul
+    local dragging, dragStart, startAbs = false, nil, nil
+    bar.InputBegan:Connect(function(input)
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startAbs = f.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
+            local d = input.Position - dragStart
+            f.Position = UDim2.new(startAbs.X.Scale, startAbs.X.Offset + d.X,
+                startAbs.Y.Scale, startAbs.Y.Offset + d.Y)
+        end
+    end))
+
+    local api = { frame = f }
+    function api.setItems(items)
+        for _, c in ipairs(body:GetChildren()) do c:Destroy() end
+        local h
+        if #items == 0 then
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text = "Nothing saved yet",
+                TextColor3 = C.dim,
+                TextSize = 10,
+                Font = Enum.Font.GothamMedium,
+            }, body)
+            h = 22
+        else
+            for i, it in ipairs(items) do
+                createFxButton(body, {
+                    Size = UDim2.new(1, 0, 0, 26),
+                    Position = UDim2.new(0, 0, 0, (i - 1) * 30),
+                }, it.text, it.fn, it.c1, it.c2)
+            end
+            h = #items * 30 - 4
+        end
+        body.Size = UDim2.new(1, -16, 0, h)
+        f.Size = UDim2.new(0, W, 0, 34 + h + 8)
+    end
+    function api.toggle() f.Visible = not f.Visible end
+    return api
 end
 
 -- Kotak input teks (multiline untuk JSON)
@@ -3264,11 +3512,13 @@ do
 end
 
 -- =================================================================
--- Endless: Teleport UTTM + Unit Mover
+-- Endless: Teleport UTTM + Unit Mower + Auto use ability
 -- Lokasi dipilih manual: tekan Select / Add, lalu double-tap di tanah.
 --   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
---   Unit Mover: jual unit lalu pasang lagi di lokasi lain (label ikut pindah)
+--   Unit Mower: rekam penempatan, lalu jual + pasang ulang serentak di posisi rekaman
 -- =================================================================
+-- Dipakai Unit Mower untuk merekam PlaceTower manual; hook-nya dipasang di bagian Macro
+local placeHook = { active = false, handler = nil, install = nil }
 local SPOTS_FILE = "LightHub_Spots.json"
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
@@ -3277,7 +3527,7 @@ do
     local mouse = LocalPlayer:GetMouse()
 
     -- ---------------- Penyimpanan ----------------
-    local spots = { uttm = {}, movers = {} }
+    local spots = { uttm = {}, mowers = {}, home = {} }
 
     local function readLocs(src)
         local out = {}
@@ -3291,14 +3541,32 @@ do
         return out
     end
 
+    local function readUnits(src)
+        local out = {}
+        if type(src) ~= "table" then return out end
+        for _, u in ipairs(src) do
+            if type(u) == "table" and type(u.n) == "string" and type(u.x) == "number"
+                and type(u.y) == "number" and type(u.z) == "number" then
+                local cf = nil
+                if type(u.cf) == "table" and #u.cf == 12 then cf = u.cf end
+                out[#out + 1] = { n = u.n, x = u.x, y = u.y, z = u.z, cf = cf }
+            end
+        end
+        return out
+    end
+
     if canFile and isfile(SPOTS_FILE) then
         local ok, data = pcall(function() return HttpService:JSONDecode(readfile(SPOTS_FILE)) end)
         if ok and type(data) == "table" then
             spots.uttm = readLocs(data.uttm)
-            if type(data.movers) == "table" then
-                for _, m in ipairs(data.movers) do
-                    if type(m) == "table" and type(m.unit) == "string" and type(m.id) == "number" then
-                        spots.movers[#spots.movers + 1] = { id = m.id, unit = m.unit, locs = readLocs(m.locs) }
+            spots.home = readUnits(data.home)
+            if type(data.mowers) == "table" then
+                for _, m in ipairs(data.mowers) do
+                    if type(m) == "table" and type(m.id) == "number" then
+                        local units = readUnits(m.units)
+                        if #units > 0 then
+                            spots.mowers[#spots.mowers + 1] = { id = m.id, units = units }
+                        end
                     end
                 end
             end
@@ -3437,6 +3705,7 @@ do
 
     -- ---------------- Teleport UTTM (muncul otomatis kalau unitnya ada) ----------------
     local uttmCard = createCard(page, 80)
+    local uttmFloat, refreshUttmFloat
     local uttmTitle = make("TextLabel", {
         Size = UDim2.new(0, 150, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
@@ -3483,7 +3752,7 @@ do
 
     local uttmNote = make("TextLabel", {
         Size = UDim2.new(0, 190, 0, 34),
-        Position = UDim2.new(1, -202, 0, 0),
+        Position = UDim2.new(1, -266, 0, 0),
         BackgroundTransparency = 1,
         Text = "",
         TextColor3 = C.muted,
@@ -3492,6 +3761,12 @@ do
         TextXAlignment = Enum.TextXAlignment.Right,
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, uttmCard)
+    createButton(uttmCard, {
+        Size = UDim2.new(0, 50, 0, 24),
+        Position = UDim2.new(1, -62, 0, 5),
+    }, "Popup", function()
+        if uttmFloat then uttmFloat.toggle() end
+    end)
     local function uttmSay(t, color)
         uttmNote.Text = t or ""
         uttmNote.TextColor3 = color or C.muted
@@ -3652,6 +3927,519 @@ do
             end
             uttmBusy = false
         end)
+    end
+
+    local uttmRebuild
+    uttmRebuild = function()
+        for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
+        for i, s in ipairs(spots.uttm) do
+            addLocRow(uttmRows, spots.uttm, s, (i - 1) * 32, uttmTeleport,
+                function(msg) uttmSay(msg, C.text) end, uttmRebuild)
+        end
+        local y = #spots.uttm * 32
+        createButton(uttmRows, {
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, y),
+        }, "+ Add location", function()
+            startPick(function(pos)
+                table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
+                saveSpots()
+                uttmRebuild()
+                uttmSay("Location added", C.text)
+            end)
+        end)
+        uttmRows.Size = UDim2.new(1, -24, 0, y + 28)
+        uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
+        if refreshUttmFloat then refreshUttmFloat() end
+    end
+    uttmRebuild()
+    uttmCard.Visible = false
+
+    uttmFloat = createFloat("UTTM teleport", UDim2.new(1, -340, 0, 90))
+    refreshUttmFloat = function()
+        local items = {}
+        for i, sp in ipairs(spots.uttm) do
+            items[#items + 1] = { text = "Tp-" .. i, fn = function() uttmTeleport(sp) end,
+                c1 = UTTM_BLUE, c2 = UTTM_VIOLET }
+        end
+        uttmFloat.setItems(items)
+    end
+    refreshUttmFloat()
+
+    runLoop(function()
+        local found = findUttm() ~= nil
+        if uttmCard.Visible ~= found then uttmCard.Visible = found end
+        return 1
+    end)
+
+    -- ---------------- Unit Mower ----------------
+    -- Rekam penempatan sendiri (Record placement), simpan jadi "Place mower N".
+    -- Klik Place: unit yang sedang terpasang dijual lalu dipasang lagi di posisi
+    -- rekaman, semuanya serentak, lalu di-upgrade lagi ke level semula.
+    -- Back default: kembalikan semua unit ke posisi saat tombol Save ditekan.
+    do
+        local GREEN_A, GREEN_B = Color3.fromRGB(46, 128, 94), Color3.fromRGB(128, 212, 164)
+        local RED_A, RED_B = Color3.fromRGB(150, 24, 44), Color3.fromRGB(255, 176, 208)
+
+        local mowerCard = createCard(page, 140)
+        make("TextLabel", {
+            Size = UDim2.new(0, 120, 0, 34),
+            Position = UDim2.new(0, 12, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "Unit Mower",
+            TextColor3 = C.white,
+            TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, mowerCard)
+        local mowerNote = make("TextLabel", {
+            Size = UDim2.new(0, 190, 0, 34),
+            Position = UDim2.new(1, -266, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            TextColor3 = C.muted,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, mowerCard)
+        local function say(t, color)
+            mowerNote.Text = t or ""
+            mowerNote.TextColor3 = color or C.muted
+        end
+
+        local mowerFloat
+        createButton(mowerCard, {
+            Size = UDim2.new(0, 50, 0, 24),
+            Position = UDim2.new(1, -62, 0, 5),
+        }, "Popup", function()
+            if mowerFloat then mowerFloat.toggle() end
+        end)
+
+        -- ---------- Unit di lapangan ----------
+        local function myTowers()
+            local out = {}
+            local folder = workspace:FindFirstChild("Towers")
+            if folder then
+                for _, t in ipairs(folder:GetChildren()) do
+                    if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                        local ok, p = pcall(function() return t:GetPivot().Position end)
+                        if ok then out[#out + 1] = { tower = t, name = t.Name, pos = p } end
+                    end
+                end
+            end
+            return out
+        end
+
+        local function flat(p, x, z)
+            return math.sqrt((p.X - x) ^ 2 + (p.Z - z) ^ 2)
+        end
+
+        local function nearestTower(name, x, z, r)
+            local best, bd
+            for _, u in ipairs(myTowers()) do
+                if u.name == name then
+                    local d = flat(u.pos, x, z)
+                    if d <= r and (not bd or d < bd) then best, bd = u.tower, d end
+                end
+            end
+            return best
+        end
+
+        -- Titik tanah di bawah unit (sama seperti titik yang dibaca dari tap di tanah)
+        local function groundOf(pos)
+            local ok, hit = pcall(function()
+                local params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                local ex = {}
+                local tf = workspace:FindFirstChild("Towers")
+                if tf then ex[#ex + 1] = tf end
+                if LocalPlayer.Character then ex[#ex + 1] = LocalPlayer.Character end
+                params.FilterDescendantsInstances = ex
+                return workspace:Raycast(pos + Vector3.new(0, 6, 0), Vector3.new(0, -200, 0), params)
+            end)
+            if ok and hit then return hit.Position.Y end
+            return pos.Y
+        end
+
+        local function targetCF(tg)
+            if type(tg.cf) == "table" and #tg.cf == 12 then
+                local ok, cf = pcall(function() return CFrame.new(table.unpack(tg.cf)) end)
+                if ok then return cf end
+            end
+            return CFrame.new(tg.x, tg.y, tg.z)
+        end
+
+        -- Jalankan fn untuk semua item secara bersamaan, tunggu sampai semuanya selesai
+        local function parallel(list, fn, timeout)
+            local left = #list
+            if left == 0 then return end
+            for _, item in ipairs(list) do
+                task.spawn(function()
+                    pcall(fn, item)
+                    left = left - 1
+                end)
+            end
+            local t0 = os.clock()
+            while left > 0 and os.clock() - t0 < (timeout or 45) do task.wait(0.1) end
+        end
+
+        -- Cocokkan unit yang terpasang dengan target (nama sama, paling dekat)
+        local function plan(targets)
+            local pool = myTowers()
+            local remaining, same = {}, 0
+            for _, tg in ipairs(targets) do
+                local done = false
+                for i, u in ipairs(pool) do
+                    if u.name == tg.n and flat(u.pos, tg.x, tg.z) < 1.5 then
+                        table.remove(pool, i)
+                        done = true
+                        break
+                    end
+                end
+                if done then same = same + 1 else remaining[#remaining + 1] = tg end
+            end
+            local moves, missing = {}, 0
+            for _, tg in ipairs(remaining) do
+                local bi, bd
+                for i, u in ipairs(pool) do
+                    if u.name == tg.n then
+                        local d = flat(u.pos, tg.x, tg.z)
+                        if not bd or d < bd then bi, bd = i, d end
+                    end
+                end
+                if bi then
+                    moves[#moves + 1] = { unit = pool[bi], tg = tg }
+                    table.remove(pool, bi)
+                else
+                    missing = missing + 1
+                end
+            end
+            return moves, same, missing
+        end
+
+        local running = false
+
+        -- Jual semua -> pasang semua -> upgrade semua, masing-masing serentak
+        local function execute(label, targets)
+            if running then
+                say("Still working", C.warn)
+                return
+            end
+            local moves, same, missing = plan(targets)
+            if #moves == 0 then
+                local msg = (same > 0) and "Already in place" or "No matching units"
+                say(msg, C.muted)
+                notify("Unit Mower", label .. ": " .. msg, 3)
+                return
+            end
+            running = true
+            say(label .. ": moving " .. #moves, C.muted)
+
+            parallel(moves, function(m)
+                local tw = m.unit.tower
+                m.level = tw:GetAttribute("Level")
+                invoke("SellTower", tw)
+                for _ = 1, 12 do
+                    if not tw.Parent then break end
+                    task.wait(0.25)
+                end
+                m.sold = not tw.Parent
+                if m.sold then
+                    local p0 = m.unit.pos
+                    pushMacro({ t = "sell", n = m.unit.name, p = { p0.X, p0.Y, p0.Z } })
+                end
+            end, 15)
+
+            parallel(moves, function(m)
+                if not m.sold then return end
+                local tg = m.tg
+                local cf = targetCF(tg)
+                for _ = 1, 20 do -- menunggu cash cukup, maksimal sekitar 25 detik
+                    invoke("PlaceTower", tg.n, cf)
+                    for _ = 1, 8 do
+                        task.wait(0.1)
+                        m.placed = nearestTower(tg.n, tg.x, tg.z, 3)
+                        if m.placed then break end
+                    end
+                    if m.placed then break end
+                    task.wait(0.4)
+                end
+                if m.placed then
+                    pushMacro({ t = "place", n = tg.n, cf = { cf:GetComponents() } })
+                end
+            end, 40)
+
+            parallel(moves, function(m)
+                local tw, lvl = m.placed, m.level
+                if not tw or type(lvl) ~= "number" then return end
+                local t0 = os.clock()
+                while os.clock() - t0 < 25 do
+                    local cur = tw:GetAttribute("Level")
+                    local price = tw:GetAttribute("UpgradePrice")
+                    if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then
+                        break
+                    end
+                    local ok, res = invoke("UpgradeTower", tw)
+                    if ok and res == true then
+                        pushMacro({ t = "up", n = m.unit.name, p = { m.tg.x, m.tg.y, m.tg.z } })
+                    end
+                    task.wait(0.35)
+                end
+            end, 30)
+
+            local placed = 0
+            for _, m in ipairs(moves) do
+                if m.placed then placed = placed + 1 end
+            end
+            running = false
+            local msg = label .. ": " .. placed .. "/" .. #moves .. " moved"
+            if missing > 0 then msg = msg .. ", " .. missing .. " missing" end
+            say(msg, placed == #moves and C.text or C.warn)
+            notify("Unit Mower", msg, 4)
+        end
+
+        -- ---------- Default (posisi awal) ----------
+        local function snapshotHome()
+            spots.home = {}
+            for _, u in ipairs(myTowers()) do
+                spots.home[#spots.home + 1] = {
+                    n = u.name, x = u.pos.X, y = groundOf(u.pos), z = u.pos.Z,
+                }
+            end
+            saveSpots()
+            return #spots.home
+        end
+
+        local function backHome()
+            if #spots.home == 0 then
+                say("No default saved", C.warn)
+                notify("Unit Mower", "Save a default layout first", 3)
+                return
+            end
+            execute("Default", spots.home)
+        end
+
+        local function placeMower(m)
+            execute("Mower " .. m.id, m.units)
+        end
+
+        -- ---------- Rekam penempatan ----------
+        local recBuf, recOn = {}, false
+        local recSwitch
+
+        placeHook.handler = function(nm, a1, a2)
+            if not recOn then return end
+            if nm == "PlaceTower" then
+                if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
+                local comps = { a2:GetComponents() }
+                for _ = 1, 8 do
+                    task.wait(0.25)
+                    if nearestTower(a1, comps[1], comps[3], 3) then
+                        recBuf[#recBuf + 1] = { n = a1, x = comps[1], y = comps[2], z = comps[3], cf = comps }
+                        say("Recording: " .. #recBuf .. " units", C.text)
+                        return
+                    end
+                end
+            elseif nm == "SellTower" then
+                if typeof(a1) ~= "Instance" then return end
+                local ok, p = pcall(function() return a1:GetPivot().Position end)
+                if not ok then return end
+                for i = #recBuf, 1, -1 do
+                    if recBuf[i].n == a1.Name and flat(p, recBuf[i].x, recBuf[i].z) <= 3 then
+                        table.remove(recBuf, i)
+                    end
+                end
+                say("Recording: " .. #recBuf .. " units", C.text)
+            end
+        end
+
+        local rebuildMower, refreshMowerFloat
+
+        local function nextMowerId()
+            local n = 1
+            while true do
+                local used = false
+                for _, m in ipairs(spots.mowers) do
+                    if m.id == n then used = true end
+                end
+                if not used then return n end
+                n = n + 1
+            end
+        end
+
+        local function startRecording()
+            if not (placeHook.install and placeHook.install()) then
+                notify("Unit Mower", "Recording isn't supported on this executor", 4)
+                return false
+            end
+            recBuf = {}
+            recOn = true
+            placeHook.active = true
+            say("Recording: place your units", C.text)
+            return true
+        end
+
+        local function stopRecording()
+            recOn = false
+            placeHook.active = false
+            if #recBuf == 0 then
+                say("Nothing recorded", C.muted)
+                return
+            end
+            local m = { id = nextMowerId(), units = recBuf }
+            recBuf = {}
+            spots.mowers[#spots.mowers + 1] = m
+            table.sort(spots.mowers, function(a, b) return a.id < b.id end)
+            saveSpots()
+            rebuildMower()
+            refreshMowerFloat()
+            say("Mower " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
+        end
+
+        -- ---------- UI ----------
+        local rows = make("Frame", {
+            Size = UDim2.new(1, -24, 0, 64),
+            Position = UDim2.new(0, 12, 0, 34),
+            BackgroundTransparency = 1,
+        }, mowerCard)
+
+        local function rowLabel(y, text)
+            make("TextLabel", {
+                Size = UDim2.new(0, 104, 0, 28),
+                Position = UDim2.new(0, 0, 0, y),
+                BackgroundTransparency = 1,
+                Text = text,
+                TextColor3 = C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, rows)
+        end
+
+        local function armed(btn, idle, ms)
+            -- konfirmasi dua langkah: ketuk sekali jadi "Sure?", ketuk lagi untuk lanjut
+            local on = false
+            return function()
+                if on then
+                    on = false
+                    return true
+                end
+                on = true
+                btn.Text = "Sure?"
+                task.delay(ms or 3, function()
+                    on = false
+                    if btn.Parent then btn.Text = idle end
+                end)
+                return false
+            end
+        end
+
+        rebuildMower = function()
+            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
+
+            -- Record placement [toggle]
+            rowLabel(0, "Record placement")
+            recSwitch = createMiniSwitch(rows, {
+                Position = UDim2.new(0, 110, 0, 6),
+            }, recOn, function(v)
+                if v then
+                    if not startRecording() then recSwitch.set(false, true) end
+                else
+                    stopRecording()
+                end
+            end)
+
+            -- Back default [Back] [Save/Edit]
+            rowLabel(32, "Back default")
+            createFxButton(rows, {
+                Size = UDim2.new(0, 60, 0, 28),
+                Position = UDim2.new(0, 110, 0, 32),
+            }, "Back", backHome, GREEN_A, GREEN_B)
+            local hasHome = #spots.home > 0
+            local homeBtn
+            local confirmEdit
+            homeBtn = createFxButton(rows, {
+                Size = UDim2.new(0, 60, 0, 28),
+                Position = UDim2.new(0, 176, 0, 32),
+            }, hasHome and "Edit" or "Save", function()
+                if hasHome and not confirmEdit() then return end
+                local n = snapshotHome()
+                say("Default saved (" .. n .. " units)", C.text)
+                notify("Unit Mower", "Default saved: " .. n .. " units", 3)
+                rebuildMower()
+                refreshMowerFloat()
+            end, GREEN_A, GREEN_B)
+            confirmEdit = armed(homeBtn, "Edit")
+            if hasHome then
+                make("TextLabel", {
+                    Size = UDim2.new(1, -250, 0, 28),
+                    Position = UDim2.new(0, 246, 0, 32),
+                    BackgroundTransparency = 1,
+                    Text = #spots.home .. " units",
+                    TextColor3 = C.dim,
+                    TextSize = 10,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, rows)
+            end
+
+            -- Place mower N [Place] [Delete]
+            for i, m in ipairs(spots.mowers) do
+                local y = 64 + (i - 1) * 32
+                rowLabel(y, "Place mower " .. m.id)
+                createFxButton(rows, {
+                    Size = UDim2.new(0, 60, 0, 28),
+                    Position = UDim2.new(0, 110, 0, y),
+                }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET)
+                local del
+                local confirmDel
+                del = createFxButton(rows, {
+                    Size = UDim2.new(0, 60, 0, 28),
+                    Position = UDim2.new(0, 176, 0, y),
+                }, "Delete", function()
+                    if not confirmDel() then return end
+                    for j, v in ipairs(spots.mowers) do
+                        if v == m then
+                            table.remove(spots.mowers, j)
+                            break
+                        end
+                    end
+                    saveSpots()
+                    rebuildMower()
+                    refreshMowerFloat()
+                    say("Mower " .. m.id .. " deleted", C.muted)
+                end, RED_A, RED_B)
+                confirmDel = armed(del, "Delete")
+                make("TextLabel", {
+                    Size = UDim2.new(1, -250, 0, 28),
+                    Position = UDim2.new(0, 246, 0, y),
+                    BackgroundTransparency = 1,
+                    Text = #m.units .. " units",
+                    TextColor3 = C.dim,
+                    TextSize = 10,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, rows)
+            end
+
+            local h = 64 + #spots.mowers * 32
+            rows.Size = UDim2.new(1, -24, 0, h)
+            mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
+        end
+
+        mowerFloat = createFloat("Auto placement", UDim2.new(1, -190, 0, 90))
+        refreshMowerFloat = function()
+            local items = { { text = "Bth", fn = backHome, c1 = GREEN_A, c2 = GREEN_B } }
+            for _, m in ipairs(spots.mowers) do
+                items[#items + 1] = { text = "Pm-" .. m.id, fn = function() placeMower(m) end,
+                    c1 = UTTM_BLUE, c2 = UTTM_VIOLET }
+            end
+            mowerFloat.setItems(items)
+        end
+
+        rebuildMower()
+        refreshMowerFloat()
     end
 
     do
@@ -3856,294 +4644,6 @@ do
         return 1
     end)
     end
-
-    local uttmRebuild
-    uttmRebuild = function()
-        for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
-        for i, s in ipairs(spots.uttm) do
-            addLocRow(uttmRows, spots.uttm, s, (i - 1) * 32, uttmTeleport,
-                function(msg) uttmSay(msg, C.text) end, uttmRebuild)
-        end
-        local y = #spots.uttm * 32
-        createButton(uttmRows, {
-            Size = UDim2.new(1, 0, 0, 28),
-            Position = UDim2.new(0, 0, 0, y),
-        }, "+ Add location", function()
-            startPick(function(pos)
-                table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
-                saveSpots()
-                uttmRebuild()
-                uttmSay("Location added", C.text)
-            end)
-        end)
-        uttmRows.Size = UDim2.new(1, -24, 0, y + 28)
-        uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
-    end
-    uttmRebuild()
-    uttmCard.Visible = false
-
-    runLoop(function()
-        local found = findUttm() ~= nil
-        if uttmCard.Visible ~= found then uttmCard.Visible = found end
-        return 1
-    end)
-
-    -- ---------------- Unit Mover ----------------
-    -- Pilih unit di dropdown -> muncul kartu "Mover N - nama unit" dengan unit
-    -- yang sudah terkunci. Tiap mover punya daftar lokasinya sendiri dan
-    -- beberapa mover bisa dipindahkan bersamaan.
-    local unitLabels = setmetatable({}, { __mode = "k" })
-    local labelCount = {}
-
-    local function scanUnits()
-        local out = {}
-        local folder = workspace:FindFirstChild("Towers")
-        if not folder then return out end
-        for _, t in ipairs(folder:GetChildren()) do
-            if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
-                local label = unitLabels[t]
-                if not label then
-                    labelCount[t.Name] = (labelCount[t.Name] or 0) + 1
-                    label = t.Name .. " " .. labelCount[t.Name]
-                    unitLabels[t] = label
-                end
-                out[#out + 1] = { tower = t, name = t.Name, label = label }
-            end
-        end
-        table.sort(out, function(a, b) return a.label < b.label end)
-        return out
-    end
-
-    local function unitOptions()
-        local t = {}
-        for _, u in ipairs(scanUnits()) do t[#t + 1] = { label = u.label, value = u.label } end
-        return t
-    end
-
-    -- Jual unit, pasang lagi di lokasi baru, lalu upgrade lagi ke level semula
-    local function moveUnit(label, s)
-        local unit
-        for _, u in ipairs(scanUnits()) do
-            if u.label == label then
-                unit = u
-                break
-            end
-        end
-        if not unit then return false, "Unit not found: " .. tostring(label) end
-
-        local tw, name = unit.tower, unit.name
-        local okp, p0 = pcall(function() return tw:GetPivot().Position end)
-        if not okp then return false, "Unit not found" end
-        local lvl = tw:GetAttribute("Level")
-
-        invoke("SellTower", tw)
-        for _ = 1, 8 do
-            if not tw.Parent then break end
-            task.wait(0.25)
-        end
-        if tw.Parent then return false, "Couldn't sell it" end
-        pushMacro({ t = "sell", n = name, p = { p0.X, p0.Y, p0.Z } })
-
-        local cf = CFrame.new(s.x, s.y, s.z)
-        local placed
-        for _ = 1, 20 do -- menunggu cash cukup, maksimal sekitar 20 detik
-            invoke("PlaceTower", name, cf)
-            task.wait(0.6)
-            placed = findTowerNear(name, s.x, s.z, 4)
-            if placed then break end
-            task.wait(0.4)
-        end
-        if not placed then return false, "Sold it, but couldn't place (cash?)" end
-        unitLabels[placed] = label
-        pushMacro({ t = "place", n = name, cf = { cf:GetComponents() } })
-
-        if type(lvl) == "number" then
-            local t0 = os.clock()
-            while os.clock() - t0 < 25 do
-                local cur = placed:GetAttribute("Level")
-                local price = placed:GetAttribute("UpgradePrice")
-                if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then break end
-                local ok, res = invoke("UpgradeTower", placed)
-                if ok and res == true then
-                    pushMacro({ t = "up", n = name, p = { s.x, s.y, s.z } })
-                end
-                task.wait(0.4)
-            end
-        end
-        return true, "moved to " .. s.n
-    end
-
-    -- Kartu header: judul + dropdown "tambah mover"
-    local moverHead = createCard(page, 72)
-    make("TextLabel", {
-        Size = UDim2.new(0, 150, 0, 34),
-        Position = UDim2.new(0, 12, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "Unit Mover",
-        TextColor3 = C.text,
-        TextSize = 12,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, moverHead)
-    local moverNoteLbl = make("TextLabel", {
-        Size = UDim2.new(0, 190, 0, 34),
-        Position = UDim2.new(1, -202, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "Pick a unit to lock it to a mover",
-        TextColor3 = C.dim,
-        TextSize = 10,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-    }, moverHead)
-    local function moverSay(t, color)
-        moverNoteLbl.Text = t or ""
-        moverNoteLbl.TextColor3 = color or C.muted
-    end
-
-    local buildMover
-
-    local function nextMoverId()
-        local n = 0
-        for _, m in ipairs(spots.movers) do
-            if m.id > n then n = m.id end
-        end
-        return n + 1
-    end
-
-    local unitSel
-    unitSel = createSelect(moverHead, {
-        Size = UDim2.new(1, -24, 0, 28),
-        Position = UDim2.new(0, 12, 0, 34),
-    }, {
-        placeholder = "Add mover: select a unit",
-        getOptions = unitOptions,
-        emptyMsg = "No units placed yet.",
-        onChange = function(v)
-            unitSel.set(nil)
-            for _, m in ipairs(spots.movers) do
-                if m.unit == v then
-                    moverSay("That unit already has a mover", C.warn)
-                    return
-                end
-            end
-            local data = { id = nextMoverId(), unit = v, locs = {} }
-            table.insert(spots.movers, data)
-            saveSpots()
-            buildMover(data, true)
-            moverSay("Mover " .. data.id .. " added", C.text)
-        end,
-    })
-
-    -- Kartu per mover: header ringkas yang bisa dibuka/tutup
-    buildMover = function(data, openNow)
-        local card = createCard(page, 34)
-        local expanded = openNow and true or false
-        local busy = false
-
-        local head = make("TextButton", {
-            Size = UDim2.new(1, 0, 0, 34),
-            BackgroundTransparency = 1,
-            Text = "",
-            AutoButtonColor = false,
-        }, card)
-        make("TextLabel", {
-            Size = UDim2.new(1, -44, 0, 34),
-            Position = UDim2.new(0, 12, 0, 0),
-            BackgroundTransparency = 1,
-            Text = "Mover " .. data.id .. " - " .. data.unit,
-            TextColor3 = C.text,
-            TextSize = 12,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, head)
-        local chev = createChevron(head, -12)
-        chev.Position = UDim2.new(1, -12, 0, 17)
-
-        local rows = make("Frame", {
-            Size = UDim2.new(1, -24, 0, 28),
-            Position = UDim2.new(0, 12, 0, 34),
-            BackgroundTransparency = 1,
-        }, card)
-
-        local rebuild
-        rebuild = function()
-            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
-            if not expanded then
-                rows.Visible = false
-                chev.Rotation = 0
-                card.Size = UDim2.new(1, 0, 0, 34)
-                return
-            end
-            rows.Visible = true
-            chev.Rotation = 180
-
-            local function onTeleport(s)
-                if busy then return end
-                busy = true
-                task.spawn(function()
-                    moverSay("Mover " .. data.id .. ": moving...", C.muted)
-                    local ok, msg = moveUnit(data.unit, s)
-                    moverSay("Mover " .. data.id .. ": " .. msg, ok and C.text or C.warn)
-                    busy = false
-                end)
-            end
-
-            for i, s in ipairs(data.locs) do
-                addLocRow(rows, data.locs, s, (i - 1) * 32, onTeleport,
-                    function(msg) moverSay("Mover " .. data.id .. ": " .. msg, C.text) end, rebuild)
-            end
-
-            local y = #data.locs * 32
-            createButton(rows, {
-                Size = UDim2.new(0.6, -3, 0, 28),
-                Position = UDim2.new(0, 0, 0, y),
-            }, "+ Add location", function()
-                startPick(function(pos)
-                    table.insert(data.locs, { n = nextLocName(data.locs), x = pos.X, y = pos.Y, z = pos.Z })
-                    saveSpots()
-                    rebuild()
-                end)
-            end)
-
-            local armed = false
-            local delMover
-            delMover = createButton(rows, {
-                Size = UDim2.new(0.4, -3, 0, 28),
-                Position = UDim2.new(0.6, 3, 0, y),
-            }, "Delete mover", function()
-                if not armed then
-                    armed = true
-                    delMover.Text = "Sure?"
-                    task.delay(3, function()
-                        armed = false
-                        if delMover.Parent then delMover.Text = "Delete mover" end
-                    end)
-                    return
-                end
-                for j, m in ipairs(spots.movers) do
-                    if m == data then
-                        table.remove(spots.movers, j)
-                        break
-                    end
-                end
-                saveSpots()
-                card:Destroy()
-            end)
-
-            rows.Size = UDim2.new(1, -24, 0, y + 28)
-            card.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
-        end
-
-        head.MouseButton1Click:Connect(function()
-            expanded = not expanded
-            rebuild()
-        end)
-        rebuild()
-    end
-
-    for _, data in ipairs(spots.movers) do buildMover(data, false) end
 end
 
 -- =================================================================
@@ -4421,14 +4921,16 @@ do
             local orig
             orig = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 local method = getnamecallmethod()
-                if method == "InvokeServer" and mstate.rec and typeof(self) == "Instance"
-                    and self.ClassName == "RemoteFunction" then
+                if method == "InvokeServer" and (mstate.rec or placeHook.active)
+                    and typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
                     local nm = self.Name
                     if nm == "PlaceTower" or nm == "UpgradeTower" or nm == "SellTower" then
                         local a1, a2 = ...
-                        local h = mstate.handler
-                        if h and not (checkcaller and checkcaller()) then
-                            task.defer(h, nm, a1, a2)
+                        if not (checkcaller and checkcaller()) then
+                            local h = mstate.handler
+                            if mstate.rec and h then task.defer(h, nm, a1, a2) end
+                            local ph = placeHook.handler
+                            if placeHook.active and ph then task.defer(ph, nm, a1, a2) end
                         end
                     end
                 end
@@ -4439,6 +4941,8 @@ do
         mstate.hooked = ok
         return ok
     end
+
+    placeHook.install = installHook
 
     -- ---------------- UI ----------------
     local selFile, refreshSel, selLabel

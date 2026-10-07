@@ -51,10 +51,15 @@ local DELAY_OPTIONS = {
     { label = "0.2s", value = 0.2 },
     { label = "0.1s", value = 0.1 },
 }
--- Nama map dari log JoinQueue("Endless", 1) dan JoinQueue("ToiletBunker", 1)
+-- Nama map mengikuti format JoinQueue("Endless", 1) dan JoinQueue("ToiletBunker", 1):
+-- tanpa spasi. Selain Endless dan ToiletBunker, namanya diturunkan dari pola itu.
 local MAP_OPTIONS = {
+    { label = "City", value = "City" },
+    { label = "Canyon Bridge", value = "CanyonBridge" },
+    { label = "Wild Desert", value = "WildDesert" },
+    { label = "Camerama Lab", value = "CameramaLab" },
+    { label = "Toilet Bunker", value = "ToiletBunker" },
     { label = "Endless", value = "Endless" },
-    { label = "Crazy (Toilet Bunker)", value = "ToiletBunker" },
 }
 local PLAYER_OPTIONS = {
     { label = "1", value = 1 },
@@ -2691,6 +2696,8 @@ do
     local TIMING = {
         reactMin = 0.55,     -- jeda minimal setelah target muncul sebelum Hit (detik)
         reactSpread = 0.2,   -- tambahan acak supaya tidak kaku
+        holdMin = 1.5,       -- lama tahan luck paling singkat (detik)
+        holdMax = 2.0,       -- lama tahan luck paling lama (detik)
         endWait = 3,         -- jeda setelah ikan tertangkap sebelum lempar lagi
     }
 
@@ -2842,6 +2849,26 @@ do
         return true
     end
 
+    -- Lama tahan luck: acak antara holdMin dan holdMax. Dari semua kemungkinan di
+    -- rentang itu, dipilih yang bar luck-nya paling penuh (gelombang segitiga dari
+    -- lama tahan x Speed) lalu diacak lagi di antara yang hampir sama bagusnya.
+    local function pickHold(speed)
+        local lo, hi = TIMING.holdMin, TIMING.holdMax
+        if not speed or speed <= 0 then return lo + math.random() * (hi - lo) end
+        local cands, best = {}, -1
+        for i = 0, 10 do
+            local h = lo + (hi - lo) * i / 10
+            local fill = 1 - math.abs(((h * speed) % 2) - 1)
+            cands[#cands + 1] = { h = h, f = fill }
+            if fill > best then best = fill end
+        end
+        local pool = {}
+        for _, c in ipairs(cands) do
+            if c.f >= best - 0.08 then pool[#pool + 1] = c.h end
+        end
+        return pool[math.random(#pool)] + (math.random() - 0.5) * 0.04
+    end
+
     local function cycle(ev)
         for i = #queue, 1, -1 do queue[i] = nil end
 
@@ -2863,11 +2890,11 @@ do
             return
         end
 
-        -- Luck: tahan tepat 1/Speed detik supaya bar penuh
+        -- Luck: tahan 1.5 - 2 detik dengan variasi
         local luck = type(started.data) == "table" and started.data.Luck or nil
         local speed = type(luck) == "table" and tonumber(luck.Speed) or nil
-        local hold = (speed and speed > 0) and (1 / speed) or 0.68
-        if not holdWait(0.25) then return end
+        local hold = pickHold(speed)
+        if not holdWait(0.3 + math.random() * 0.5) then return end
         feat.setNote("Luck", C.text)
         local t0 = workspace:GetServerTimeNow()
         ev:FireServer("LuckHold", { ClickTime = t0 })

@@ -51,13 +51,14 @@ local DELAY_OPTIONS = {
     { label = "0.2s", value = 0.2 },
     { label = "0.1s", value = 0.1 },
 }
--- Nama map mengikuti format JoinQueue("Endless", 1) dan JoinQueue("ToiletBunker", 1):
--- tanpa spasi. Selain Endless dan ToiletBunker, namanya diturunkan dari pola itu.
+-- Nama map di game TIDAK konsisten: "Endless" & "ToiletBunker" tanpa spasi,
+-- tapi "Camera Lab" pakai spasi (dari log asli). Karena itu nama asli dicari
+-- otomatis saat join (lihat resolveMapNames di bagian Auto Play).
 local MAP_OPTIONS = {
     { label = "City", value = "City" },
     { label = "Canyon Bridge", value = "CanyonBridge" },
     { label = "Wild Desert", value = "WildDesert" },
-    { label = "Camerama Lab", value = "CameramaLab" },
+    { label = "Camera Lab", value = "Camera Lab" },
     { label = "Toilet Bunker", value = "ToiletBunker" },
     { label = "Endless", value = "Endless" },
 }
@@ -285,6 +286,7 @@ local function loadSettings()
     if flags.macroSelected ~= "" and not (isfile and isfile("LightHub_Macro_" .. flags.macroSelected .. ".json")) then
         flags.macroSelected = ""
     end
+    if flags.playMap == "CameramaLab" then flags.playMap = "Camera Lab" end
     if not inOptions(MAP_OPTIONS, flags.playMap) then flags.playMap = "" end
     if not inOptions(PLAYER_OPTIONS, flags.playPlayers) then flags.playPlayers = 1 end
     for _, k in ipairs(SPEND_KEYS) do flags[k] = false end
@@ -1841,6 +1843,54 @@ do
         })
     end)
 
+    -- Cari nama map asli dari server (GetMapQueueCounts), lalu fallback ke
+    -- kandidat: nama apa adanya, versi pakai spasi, versi tanpa spasi.
+    local function normName(x)
+        return (string.lower(tostring(x)):gsub("[%s_%-]", ""))
+    end
+    local serverNames, serverNamesAt = {}, 0
+    local function refreshServerNames()
+        if os.clock() - serverNamesAt < 30 and #serverNames > 0 then return end
+        serverNamesAt = os.clock()
+        local rf = knitRF("MatchmakingService", "GetMapQueueCounts")
+        if not rf then return end
+        local ok, res = pcall(function() return rf:InvokeServer(flags.playPlayers) end)
+        if not ok or type(res) ~= "table" then return end
+        local found, seen = {}, {}
+        local function add(n)
+            if type(n) == "string" and n ~= "" and not seen[n] then
+                seen[n] = true
+                found[#found + 1] = n
+            end
+        end
+        for k, v in pairs(res) do
+            if type(k) == "string" then add(k) end
+            if type(v) == "string" then add(v) end
+            if type(v) == "table" then
+                add(v.Name); add(v.name); add(v.Map); add(v.map); add(v.MapName)
+            end
+        end
+        if #found > 0 then serverNames = found end
+    end
+
+    local workingName = {}  -- value -> nama yang terbukti berhasil
+    local function mapCandidates(value)
+        local list, seen = {}, {}
+        local function add(n)
+            if n and n ~= "" and not seen[n] then seen[n] = true; list[#list + 1] = n end
+        end
+        add(workingName[value])
+        pcall(refreshServerNames)
+        local target = normName(value)
+        for _, n in ipairs(serverNames) do
+            if normName(n) == target then add(n) end
+        end
+        add(value)
+        add((value:gsub("(%l)(%u)", "%1 %2")))   -- ToiletBunker -> Toilet Bunker
+        add((value:gsub("%s+", "")))             -- Camera Lab -> CameraLab
+        return list
+    end
+
     local lastJoin = 0
     runLoop(function()
         if not flags.autoPlay then
@@ -1867,10 +1917,20 @@ do
             return 1
         end
         lastJoin = os.clock()
-        local ok, res = pcall(function()
-            return remote:InvokeServer(flags.playMap, flags.playPlayers)
-        end)
-        if ok and res ~= false then
+        local value = flags.playMap
+        local joined = false
+        for _, name in ipairs(mapCandidates(value)) do
+            local ok, res = pcall(function()
+                return remote:InvokeServer(name, flags.playPlayers)
+            end)
+            if ok and res ~= false then
+                workingName[value] = name
+                joined = true
+                break
+            end
+            task.wait(0.3)
+        end
+        if joined then
             fPlay.setNote("Joining match...", C.text)
         else
             fPlay.setNote("Couldn't join the queue", C.warn)

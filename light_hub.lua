@@ -2691,7 +2691,7 @@ do
     local TIMING = {
         reactMin = 0.55,     -- jeda minimal setelah target muncul sebelum Hit (detik)
         reactSpread = 0.2,   -- tambahan acak supaya tidak kaku
-        endWait = 1.5,       -- jeda sebelum lempar berikutnya
+        endWait = 3,         -- jeda setelah ikan tertangkap sebelum lempar lagi
     }
 
     -- ---------------- Spot lemparan (disimpan di file kalau executor mendukung) ----------------
@@ -2844,14 +2844,22 @@ do
 
     local function cycle(ev)
         for i = #queue, 1, -1 do queue[i] = nil end
-        feat.setNote("Casting", C.text)
-        ev:FireServer("Cast", { Position = spot })
 
-        local started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
+        -- Lempar: kalau server tidak membalas CastStarted, coba lagi (maks 4x) dengan
+        -- posisi sedikit digeser
+        local started = nil
+        for attempt = 1, 4 do
+            local pos = spot + Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
+            feat.setNote(attempt == 1 and "Casting" or ("Casting, retry " .. (attempt - 1)), C.text)
+            ev:FireServer("Cast", { Position = pos })
+            started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
+            if started or not alive() then break end
+            if not nap(3) then return end
+        end
         if not alive() then return end
         if not started then
-            feat.setNote("Cast failed", C.warn)
-            nap(2)
+            feat.setNote("Cast keeps failing", C.warn)
+            nap(10)
             return
         end
 

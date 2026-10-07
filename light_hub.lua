@@ -3654,50 +3654,217 @@ do
         end)
     end
 
-    -- ---------------- Spin (dipanggil langsung, tanpa lewat UI game) ----------------
-    local autoSpin = false
-    local function uttmSpin(silent)
-        local tw = findUttm()
-        if not tw then
-            if not silent then uttmSay("UTTM not found", C.warn) end
-            return false
+    do
+    -- ---------------- Auto Use Ability ----------------
+    -- Sword = ability UTTM (CinemaRelocate "Spin"), Spinner = Speaker Woman 2.0
+    -- (UseTowerAbility). Kedua unit dicari di workspace.Towers milik sendiri.
+    local SPW_NAME = "Speaker Woman 2.0"
+    local SPW_DARK = Color3.fromRGB(150, 24, 44)
+    local SPW_PINK = Color3.fromRGB(255, 176, 208)
+
+    local function ownedTowers(name)
+        local out = {}
+        local folder = workspace:FindFirstChild("Towers")
+        if folder then
+            for _, t in ipairs(folder:GetChildren()) do
+                if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                    out[#out + 1] = t
+                end
+            end
         end
-        local ok, res = invoke("CinemaRelocate", "Spin", tw, nil)
-        local good = accepted(ok, res)
-        if not silent then
-            uttmSay(good and "Spin used" or "Spin on cooldown", good and C.text or C.warn)
-        end
-        return good
+        return out
     end
 
-    runLoop(function()
-        if autoSpin and not uttmBusy and findUttm() then
-            uttmSpin(true)
+    local function uttmSpin()
+        local tw = findUttm()
+        if not tw then return false end
+        local ok, res = invoke("CinemaRelocate", "Spin", tw, nil)
+        return accepted(ok, res)
+    end
+
+    local function spwUse()
+        for _, tw in ipairs(ownedTowers(SPW_NAME)) do
+            invoke("UseTowerAbility", tw)
         end
+    end
+
+    local abilityCard = createCard(page, 112)
+    abilityCard.Visible = false
+    make("TextLabel", {
+        Size = UDim2.new(0, 150, 0, 34),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "Auto use ability",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, abilityCard)
+
+    local abilityRows = {}
+    local function allOn()
+        local any = false
+        for _, r in ipairs(abilityRows) do
+            if r.frame.Visible then
+                any = true
+                if not r.sw.state then return false end
+            end
+        end
+        return any
+    end
+
+    local allBtn
+    local function refreshAll()
+        if allBtn then allBtn.Text = allOn() and "Disable all" or "Enable all" end
+    end
+
+    -- Switch kecil, tampilannya sama dengan toggle di kartu fitur
+    local function makeSwitch(parent, onChange)
+        local track = make("Frame", {
+            Size = UDim2.new(0, 34, 0, 16),
+            Position = UDim2.new(1, -48, 0, 9),
+            BackgroundColor3 = Color3.fromRGB(34, 34, 37),
+            BorderSizePixel = 0,
+        }, parent)
+        local stroke = make("UIStroke", {
+            Color = C.controlLine, Thickness = 1,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        }, track)
+        local knob = make("Frame", {
+            Size = UDim2.new(0, 10, 0, 10),
+            Position = UDim2.new(0, 3, 0.5, -5),
+            BackgroundColor3 = C.muted,
+            BorderSizePixel = 0,
+        }, track)
+        local hit = make("TextButton", {
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2,
+        }, parent)
+        local api = { state = false }
+        function api.set(v, animate)
+            api.state = v and true or false
+            local tc = api.state and Color3.fromRGB(232, 232, 234) or Color3.fromRGB(34, 34, 37)
+            local kc = api.state and Color3.fromRGB(14, 14, 15) or C.muted
+            local sc = api.state and tc or C.controlLine
+            local kp = api.state and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
+            if animate then
+                tween(track, 0.12, { BackgroundColor3 = tc })
+                tween(stroke, 0.12, { Color = sc })
+                tween(knob, 0.12, { BackgroundColor3 = kc, Position = kp })
+            else
+                track.BackgroundColor3, stroke.Color = tc, sc
+                knob.BackgroundColor3, knob.Position = kc, kp
+            end
+        end
+        hit.MouseButton1Click:Connect(function()
+            api.set(not api.state, true)
+            refreshAll()
+            if onChange then onChange(api.state) end
+        end)
+        return api
+    end
+
+    local TS = game:GetService("TextService")
+    local function addAbilityRow(word, c1, c2, abilityText, found, onChange)
+        local frame = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 34),
+            BackgroundTransparency = 1,
+            Visible = false,
+        }, abilityCard)
+        local wordW = TS:GetTextSize(word, 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
+        local wl = make("TextLabel", {
+            Size = UDim2.new(0, wordW + 4, 1, 0),
+            Position = UDim2.new(0, 12, 0, 0),
+            BackgroundTransparency = 1,
+            Text = word, TextColor3 = C.white, TextSize = 12,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, frame)
+        local grad = make("UIGradient", { Color = ColorSequence.new(c1, c2), Rotation = 0 }, wl)
+        make("TextLabel", {
+            Size = UDim2.new(1, -(12 + wordW + 14 + 56), 1, 0),
+            Position = UDim2.new(0, 12 + wordW + 10, 0, 0),
+            BackgroundTransparency = 1,
+            Text = abilityText, TextColor3 = C.muted, TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, frame)
+        local row = { frame = frame, sw = makeSwitch(frame, onChange), grad = grad,
+            c1 = c1, c2 = c2, found = found }
+        abilityRows[#abilityRows + 1] = row
+        return row
+    end
+
+    local autoSword, autoSpinner = false, false
+    addAbilityRow("UTTM", UTTM_BLUE, UTTM_VIOLET, "Spin ability",
+        function() return findUttm() ~= nil end,
+        function(v) autoSword = v end)
+    addAbilityRow("SPW2.0", SPW_DARK, SPW_PINK, "Spinner ability",
+        function() return #ownedTowers(SPW_NAME) > 0 end,
+        function(v) autoSpinner = v end)
+
+    allBtn = createButton(abilityCard, {
+        Size = UDim2.new(0, 84, 0, 24),
+        Position = UDim2.new(1, -96, 0, 5),
+    }, "Enable all", function()
+        local target = not allOn()
+        for i, r in ipairs(abilityRows) do
+            if r.frame.Visible then
+                r.sw.set(target, true)
+                if i == 1 then autoSword = target else autoSpinner = target end
+            end
+        end
+        refreshAll()
+    end)
+
+    -- Gradient bergeser pelan seperti di kartu Teleport UTTM
+    runLoop(function()
+        local k = (math.sin(os.clock() * 0.9) + 1) / 2
+        for _, r in ipairs(abilityRows) do
+            local a, b = r.c1:Lerp(r.c2, k), r.c1:Lerp(r.c2, 1 - k)
+            r.grad.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, a),
+                ColorSequenceKeypoint.new(0.5, a:Lerp(b, 0.5)),
+                ColorSequenceKeypoint.new(1, b),
+            })
+        end
+        return 0.05
+    end)
+
+    -- Kartu dan barisnya muncul sendiri begitu unitnya dipasang, hilang kalau dijual
+    runLoop(function()
+        local n = 0
+        for _, r in ipairs(abilityRows) do
+            local has = r.found()
+            if r.frame.Visible ~= has then r.frame.Visible = has end
+            if has then
+                r.frame.Position = UDim2.new(0, 0, 0, 38 + n * 34)
+                n = n + 1
+            end
+        end
+        local h = n > 0 and (38 + n * 34 + 8) or 34
+        if abilityCard.Visible ~= (n > 0) then abilityCard.Visible = n > 0 end
+        abilityCard.Size = UDim2.new(1, 0, 0, h)
+        refreshAll()
+        return 0.5
+    end)
+
+    runLoop(function()
+        if autoSword and not uttmBusy and findUttm() then pcall(uttmSpin) end
+        if autoSpinner then pcall(spwUse) end
         return 1
     end)
+    end
 
     local uttmRebuild
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
-        local autoBtn
-        createButton(uttmRows, {
-            Size = UDim2.new(0.5, -3, 0, 28),
-            Position = UDim2.new(0, 0, 0, 0),
-        }, "Spin", function() task.spawn(uttmSpin, false) end)
-        autoBtn = createButton(uttmRows, {
-            Size = UDim2.new(0.5, -3, 0, 28),
-            Position = UDim2.new(0.5, 3, 0, 0),
-        }, autoSpin and "Auto Spin: ON" or "Auto Spin: OFF", function()
-            autoSpin = not autoSpin
-            autoBtn.Text = autoSpin and "Auto Spin: ON" or "Auto Spin: OFF"
-            uttmSay(autoSpin and "Auto spin on" or "Auto spin off", C.text)
-        end)
         for i, s in ipairs(spots.uttm) do
-            addLocRow(uttmRows, spots.uttm, s, 32 + (i - 1) * 32, uttmTeleport,
+            addLocRow(uttmRows, spots.uttm, s, (i - 1) * 32, uttmTeleport,
                 function(msg) uttmSay(msg, C.text) end, uttmRebuild)
         end
-        local y = 32 + #spots.uttm * 32
+        local y = #spots.uttm * 32
         createButton(uttmRows, {
             Size = UDim2.new(1, 0, 0, 28),
             Position = UDim2.new(0, 0, 0, y),
@@ -5083,28 +5250,76 @@ do
         end,
     })
 
-    local info = createFeature(page, "Account", { noToggle = true, bodyHeight = 158 })
-    local W = { 1.3, 1.3, 0.8 }
+    local info = createCard(page, 214)
+    local avatar = make("Frame", {
+        Size = UDim2.new(0, 48, 0, 48),
+        Position = UDim2.new(0, 12, 0, 12),
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+    }, info)
+    styleControl(avatar)
+    make("ImageLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150",
+    }, avatar)
+    make("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 20),
+        Position = UDim2.new(0, 70, 0, 14),
+        BackgroundTransparency = 1,
+        Text = LocalPlayer.DisplayName,
+        TextColor3 = C.white,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, info)
+    make("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 14),
+        Position = UDim2.new(0, 70, 0, 36),
+        BackgroundTransparency = 1,
+        Text = "@" .. LocalPlayer.Name,
+        TextColor3 = C.muted,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, info)
+    make("TextLabel", {
+        Size = UDim2.new(0, 70, 0, 14),
+        Position = UDim2.new(1, -82, 0, 14),
+        BackgroundTransparency = 1,
+        Text = "v" .. VERSION,
+        TextColor3 = C.dim,
+        TextSize = 10,
+        Font = Enum.Font.RobotoMono,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, info)
+    make("Frame", {
+        Size = UDim2.new(1, -24, 0, 1),
+        Position = UDim2.new(0, 12, 0, 72),
+        BackgroundColor3 = C.line,
+        BorderSizePixel = 0,
+    }, info)
+    local grid = make("Frame", {
+        Size = UDim2.new(1, -24, 0, 128),
+        Position = UDim2.new(0, 12, 0, 80),
+        BackgroundTransparency = 1,
+    }, info)
     local function row(top, defs)
-        for i, d in ipairs(defs) do d.weight = W[i] end
-        return createCells(info.body, defs, top, 0)
+        return createCells(grid, defs, top, 0)
     end
-    row(0, {
-        { caption = "USERNAME", value = LocalPlayer.Name },
-        { caption = "DISPLAY", value = LocalPlayer.DisplayName },
-        { caption = "VERSION", value = "v" .. VERSION },
-    })
-    local r2 = row(40, {
+    local r2 = row(0, {
         { caption = "COINS", value = "-" },
         { caption = "WINS", value = "-" },
         { caption = "STREAK", value = "-" },
     })
-    local r3 = row(80, {
+    local r3 = row(42, {
         { caption = "UNITS", value = "-" },
         { caption = "TOKENS", value = "-" },
-        { caption = "ENDLESS", value = "-" },
+        { caption = "ENDLESS BEST", value = "-" },
     })
-    local r4 = row(120, {
+    local r4 = row(84, {
         { caption = "ROD", value = "-" },
         { caption = "CASH BOOST", value = "-" },
         { caption = "LUCK", value = "-" },

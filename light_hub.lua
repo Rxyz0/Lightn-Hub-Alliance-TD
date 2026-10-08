@@ -1394,6 +1394,46 @@ local function createSelect(par, props, cfg)
     }
 end
 
+-- Tombol lipat bergaya Select: judul di kiri, jumlah + panah di kanan.
+-- Klik membuka/menutup daftar yang ada di bawahnya (pemanggil yang membangun ulang).
+local function createCollapse(par, props, title, count, isOpen, onToggle)
+    local btn = make("TextButton", {
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+    }, par)
+    for k, v in pairs(props) do btn[k] = v end
+    styleControl(btn)
+    make("TextLabel", {
+        Size = UDim2.new(1, -62, 1, 0),
+        Position = UDim2.new(0, 9, 0, 0),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = C.text,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, btn)
+    make("TextLabel", {
+        Size = UDim2.new(0, 36, 1, 0),
+        Position = UDim2.new(1, -50, 0, 0),
+        BackgroundTransparency = 1,
+        Text = tostring(count),
+        TextColor3 = C.dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, btn)
+    local chev = createChevron(btn, -9)
+    chev.Rotation = isOpen and 180 or 0
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.hover end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.control end)
+    btn.MouseButton1Click:Connect(function() onToggle(not isOpen) end)
+    return btn
+end
+
 -- Tombol pil persegi (toggle kecil dengan teks)
 local function createPill(par, props, text, initial, onChange)
     local state = initial and true or false
@@ -3762,19 +3802,6 @@ do
         end
     end
 
-    -- Tombol dropdown (judul + jumlah isi + panah). Dipakai UTTM dan Unit Replace.
-    EP.ddHeader = function(par, y, title, count, open, onToggle)
-        local btn = createButton(par, {
-            Size = UDim2.new(1, 0, 0, 28),
-            Position = UDim2.new(0, 0, 0, y),
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, title .. " (" .. count .. ")", function() onToggle(not open) end)
-        make("UIPadding", { PaddingLeft = UDim.new(0, 10) }, btn)
-        local chev = createChevron(btn, -10)
-        chev.Rotation = open and 180 or 0
-        return btn
-    end
-
     -- Baris lokasi: Loc N | Teleport | Select | Delete
     local function addLocRow(rows, list, s, y, onTeleport, onChanged, rebuild)
         make("TextLabel", {
@@ -4060,16 +4087,19 @@ do
     local uttmOpen = false
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
-        -- Dropdown: daftar Loc disembunyikan sampai tombolnya dibuka
-        EP.ddHeader(uttmRows, 0, "Locations", #spots.uttm, uttmOpen, function(v)
+        -- Dropdown: daftar Loc tersembunyi sampai tombolnya dibuka
+        createCollapse(uttmRows, {
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, 0),
+        }, "Locations", #spots.uttm, uttmOpen, function(v)
             uttmOpen = v
             uttmRebuild()
         end)
         local y = 28
         if uttmOpen then
-            y = 32
-            for i, s in ipairs(spots.uttm) do
-                addLocRow(uttmRows, spots.uttm, s, y, uttmTeleport,
+            y = 36
+            for i, sp in ipairs(spots.uttm) do
+                addLocRow(uttmRows, spots.uttm, sp, y, uttmTeleport,
                     function(msg) uttmSay(msg, C.text) end, uttmRebuild)
                 y = y + 32
             end
@@ -4128,7 +4158,7 @@ do
     local pushMacro = EP.pushMacro
 
     -- ---------------- Unit Mower ----------------
-    -- Rekam penempatan sendiri (Record placement), simpan jadi "Place mower N".
+    -- Rekam penempatan sendiri (Record placement), simpan jadi "Replace N".
     -- Klik Place: unit yang sedang terpasang dijual lalu dipasang lagi di posisi
     -- rekaman, semuanya serentak, lalu di-upgrade lagi ke level semula.
     -- Back default: kembalikan semua unit ke posisi saat tombol Save ditekan.
@@ -4455,7 +4485,7 @@ do
         end
 
         local function placeMower(m)
-            execute("Replace " .. m.id, m.units)
+            execute("Mower " .. m.id, m.units)
         end
 
         -- ---------- Rekam penempatan ----------
@@ -4545,7 +4575,6 @@ do
 
         local rebuildMower, refreshMowerFloat
         local replaceOpen = false
-        local shareReplace, importReplace
 
         local function nextMowerId()
             local n = 1
@@ -4557,59 +4586,6 @@ do
                 if not used then return n end
                 n = n + 1
             end
-        end
-
-        -- ---------- Share / Import ----------
-        -- Kode berupa JSON: { v = 1, t = "replace", list = { { units = {...} }, ... } }
-        shareReplace = function(list)
-            if #list == 0 then
-                say("Nothing to share", C.warn)
-                return
-            end
-            if not setclipboard then
-                notify("Unit Replace", "Your executor can't copy to the clipboard.", 4)
-                return
-            end
-            local out = {}
-            for _, m in ipairs(list) do out[#out + 1] = { units = m.units } end
-            local ok = pcall(setclipboard, HttpService:JSONEncode({ v = 1, t = "replace", list = out }))
-            if ok then
-                say("Code copied (" .. #out .. ")", C.text)
-                notify("Unit Replace", "Code copied: " .. #out .. " replace layout(s).", 3)
-            else
-                notify("Unit Replace", "Couldn't copy the code.", 3)
-            end
-        end
-
-        importReplace = function(text)
-            if type(text) ~= "string" or text:match("^%s*$") then
-                notify("Unit Replace", "Paste a replace code first.", 3)
-                return false
-            end
-            local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
-            if not ok or type(data) ~= "table" or data.t ~= "replace" or type(data.list) ~= "table" then
-                notify("Unit Replace", "That isn't a valid replace code.", 4)
-                return false
-            end
-            local added = 0
-            for _, entry in ipairs(data.list) do
-                local units = type(entry) == "table" and EP.readUnits(entry.units) or {}
-                if #units > 0 then
-                    spots.mowers[#spots.mowers + 1] = { id = nextMowerId(), units = units }
-                    added = added + 1
-                end
-            end
-            if added == 0 then
-                notify("Unit Replace", "The code has no valid units.", 4)
-                return false
-            end
-            table.sort(spots.mowers, function(a, b) return a.id < b.id end)
-            saveSpots()
-            rebuildMower()
-            refreshMowerFloat()
-            say("Imported " .. added, C.text)
-            notify("Unit Replace", "Imported " .. added .. " replace layout(s).", 3)
-            return true
         end
 
         local function startRecording()
@@ -4728,13 +4704,17 @@ do
                 }, rows)
             end
 
-            -- Dropdown: daftar Replace N disembunyikan sampai tombolnya dibuka
-            EP.ddHeader(rows, 64, "Replace list", #spots.mowers, replaceOpen, function(v)
+            -- Dropdown: daftar Replace N tersembunyi sampai tombolnya dibuka
+            createCollapse(rows, {
+                Size = UDim2.new(1, 0, 0, 28),
+                Position = UDim2.new(0, 0, 0, 64),
+            }, "Replace list", #spots.mowers, replaceOpen, function(v)
                 replaceOpen = v
                 rebuildMower()
             end)
+            -- Replace N [Place] [Delete]
             for i, m in ipairs(replaceOpen and spots.mowers or {}) do
-                local y = 96 + (i - 1) * 32
+                local y = 100 + (i - 1) * 32
                 rowLabel(y, "Replace " .. m.id)
                 createFxButton(rows, {
                     Size = UDim2.new(0, 60, 0, 28),
@@ -4759,13 +4739,9 @@ do
                     say("Replace " .. m.id .. " deleted", C.muted)
                 end, RED_A, RED_B)
                 confirmDel = armed(del, "Delete")
-                createButton(rows, {
-                    Size = UDim2.new(0, 50, 0, 28),
-                    Position = UDim2.new(0, 242, 0, y),
-                }, "Share", function() shareReplace({ m }) end)
                 make("TextLabel", {
-                    Size = UDim2.new(1, -300, 0, 28),
-                    Position = UDim2.new(0, 296, 0, y),
+                    Size = UDim2.new(1, -250, 0, 28),
+                    Position = UDim2.new(0, 246, 0, y),
                     BackgroundTransparency = 1,
                     Text = #m.units .. " units",
                     TextColor3 = C.dim,
@@ -4775,24 +4751,7 @@ do
                 }, rows)
             end
 
-            if replaceOpen then
-                local y = 96 + #spots.mowers * 32
-                createButton(rows, {
-                    Size = UDim2.new(0, 70, 0, 28),
-                    Position = UDim2.new(0, 0, 0, y),
-                }, "Share all", function() shareReplace(spots.mowers) end)
-                local codeBox = createInput(rows, {
-                    Size = UDim2.new(1, -148, 0, 28),
-                    Position = UDim2.new(0, 74, 0, y),
-                }, "Paste replace code")
-                createButton(rows, {
-                    Size = UDim2.new(0, 70, 0, 28),
-                    Position = UDim2.new(1, -70, 0, y),
-                }, "Import", function()
-                    if importReplace(codeBox.Text) then codeBox.Text = "" end
-                end)
-            end
-            local h = replaceOpen and (96 + #spots.mowers * 32 + 32) or 92
+            local h = replaceOpen and (100 + #spots.mowers * 32) or 92
             rows.Size = UDim2.new(1, -24, 0, h)
             mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
         end
@@ -4809,6 +4768,97 @@ do
 
         rebuildMower()
         refreshMowerFloat()
+
+        -- ---------- Share Replace ----------
+        -- Kode: JSON { v = 1, t = "replace", list = { { units = {...} }, ... } }
+        local function replaceOptions()
+            local t = {}
+            if #spots.mowers > 1 then t[#t + 1] = { label = "All replace", value = "All replace" } end
+            for _, m in ipairs(spots.mowers) do
+                local n = "Replace " .. m.id
+                t[#t + 1] = { label = n, value = n }
+            end
+            return t
+        end
+
+        local share = createFeature(page, "Share Replace", { noToggle = true, bodyHeight = 28 })
+        local shareSel = createSelect(share.body, {
+            Size = UDim2.new(1, -96, 1, 0),
+        }, {
+            placeholder = "Select replace",
+            getOptions = replaceOptions,
+            emptyMsg = "No replace layouts yet. Record one first.",
+        })
+        createButton(share.body, {
+            Size = UDim2.new(0, 90, 1, 0),
+            Position = UDim2.new(1, -90, 0, 0),
+        }, "Copy code", function()
+            local pick = shareSel.get()
+            if not pick or pick == "" then
+                notify("Unit Replace", "Select a replace to share first.", 3)
+                return
+            end
+            local list = {}
+            if pick == "All replace" then
+                for _, m in ipairs(spots.mowers) do list[#list + 1] = { units = m.units } end
+            else
+                local id = tonumber(pick:match("%d+"))
+                for _, m in ipairs(spots.mowers) do
+                    if m.id == id then list[1] = { units = m.units } end
+                end
+            end
+            if #list == 0 then
+                notify("Unit Replace", "That replace no longer exists.", 3)
+                return
+            end
+            if not setclipboard then
+                notify("Unit Replace", "Your executor can't copy to the clipboard.", 4)
+                return
+            end
+            local ok = pcall(setclipboard, HttpService:JSONEncode({ v = 1, t = "replace", list = list }))
+            if ok then
+                notify("Unit Replace", "Code copied (" .. #list .. " layout).", 3)
+            else
+                notify("Unit Replace", "Couldn't copy the code.", 3)
+            end
+        end)
+
+        -- ---------- Import Replace ----------
+        local imp = createFeature(page, "Import Replace", { noToggle = true, bodyHeight = 28 })
+        local codeBox = createInput(imp.body, { Size = UDim2.new(1, -96, 1, 0) }, "Paste replace code")
+        createButton(imp.body, {
+            Size = UDim2.new(0, 90, 1, 0),
+            Position = UDim2.new(1, -90, 0, 0),
+        }, "Import", function()
+            local text = codeBox.Text
+            if text == "" then
+                notify("Unit Replace", "Paste the replace code first.", 3)
+                return
+            end
+            local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
+            if not ok or type(data) ~= "table" or data.t ~= "replace" or type(data.list) ~= "table" then
+                notify("Unit Replace", "That isn't a valid replace code.", 4)
+                return
+            end
+            local added = 0
+            for _, entry in ipairs(data.list) do
+                local units = type(entry) == "table" and EP.readUnits(entry.units) or {}
+                if #units > 0 then
+                    spots.mowers[#spots.mowers + 1] = { id = nextMowerId(), units = units }
+                    added = added + 1
+                end
+            end
+            if added == 0 then
+                notify("Unit Replace", "The code has no valid units.", 4)
+                return
+            end
+            table.sort(spots.mowers, function(a, b) return a.id < b.id end)
+            saveSpots()
+            rebuildMower()
+            refreshMowerFloat()
+            codeBox.Text = ""
+            notify("Unit Replace", "Imported " .. added .. " layout.", 3)
+        end)
     end
 end
 
@@ -5025,45 +5075,68 @@ do
 end
 
 -- =================================================================
--- Endless: Anti Lag (toggle)
--- Hanya mengubah tampilan di sisi client: efek (particle, trail, beam, api,
--- asap) dimatikan, bayangan dimatikan, material dibuat polos, kualitas grafik
--- diturunkan. Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
+-- Endless: Anti Lag (toggle, agresif)
+-- Hanya mengubah tampilan di sisi client. MUSUH TIDAK DISEMBUNYIKAN: bodi,
+-- posisi, dan health bar tetap terlihat supaya bisa dipantau.
+--   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan
+--   - Decal/Texture disembunyikan, material dibuat polos, bayangan dimatikan,
+--     mesh diturunkan ke detail terendah, kualitas grafik diturunkan
+--   - Terrain: dekorasi rumput dan gelombang air dimatikan
+--   - Animasi dan gerakan musuh tidak disentuh sama sekali
+-- Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
 -- Objek baru (musuh yang baru muncul) ikut ditangani lewat DescendantAdded.
 -- =================================================================
 do
     local page = tabs["Endless"].page
     local Lighting = game:GetService("Lighting")
 
-    local EFFECT = {
+    local FX = {
         ParticleEmitter = true, Trail = true, Beam = true, Smoke = true,
         Fire = true, Sparkles = true, PointLight = true, SpotLight = true,
+        SurfaceLight = true, Highlight = true,
     }
     local POST = {
         BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
         ColorCorrectionEffect = true, DepthOfFieldEffect = true, Atmosphere = true,
     }
 
-    local saved = setmetatable({}, { __mode = "k" })   -- instance -> nilai asli
+    local saved = setmetatable({}, { __mode = "k" })     -- instance -> nilai asli
+    local npcs = setmetatable({}, { __mode = "k" })      -- Humanoid musuh -> true
     local postSaved = {}
-    local lightSaved = nil
-    local qualitySaved = nil
+    local envSaved = nil
     local conn = nil
     local active = false
     local token = 0
-    local touched = 0
+    local touched, crowd = 0, 0
     local feat
+
+    local function inMyCharacter(inst)
+        local ch = LocalPlayer.Character
+        return ch ~= nil and inst:IsDescendantOf(ch)
+    end
 
     local function handle(inst)
         if saved[inst] then return end
         local cn = inst.ClassName
-        if EFFECT[cn] then
+        if FX[cn] then
             saved[inst] = { kind = "fx", v = inst.Enabled }
             inst.Enabled = false
             touched = touched + 1
+        elseif cn == "Explosion" then
+            saved[inst] = { kind = "expl", v = inst.Visible }
+            inst.Visible = false
+            touched = touched + 1
+        elseif cn == "Decal" or cn == "Texture" then
+            if inMyCharacter(inst) then return end
+            saved[inst] = { kind = "decal", v = inst.Transparency }
+            inst.Transparency = 1
+            touched = touched + 1
+        elseif cn == "Humanoid" then
+            local tw = workspace:FindFirstChild("Towers")
+            if inMyCharacter(inst) or (tw and inst:IsDescendantOf(tw)) then return end
+            if not Players:GetPlayerFromCharacter(inst.Parent) then npcs[inst] = true end
         elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
-            local ch = LocalPlayer.Character
-            if ch and inst:IsDescendantOf(ch) then return end
+            if inMyCharacter(inst) then return end
             local rec = { kind = "part", m = inst.Material, s = inst.CastShadow, r = inst.Reflectance }
             if inst:IsA("MeshPart") then rec.f = inst.RenderFidelity end
             saved[inst] = rec
@@ -5079,8 +5152,13 @@ do
 
     local function restore(inst, rec)
         if not inst.Parent then return end
-        if rec.kind == "fx" then
+        local k = rec.kind
+        if k == "fx" then
             inst.Enabled = rec.v
+        elseif k == "expl" then
+            inst.Visible = rec.v
+        elseif k == "decal" then
+            inst.Transparency = rec.v
         else
             inst.CastShadow = rec.s
             inst.Reflectance = rec.r
@@ -5089,22 +5167,60 @@ do
         end
     end
 
+    -- Pengaturan render global. `settings` di script ini adalah tabel milik hub,
+    -- jadi yang asli diambil lewat getrenv bila ada.
+    local function renderSettings()
+        local ok, r = pcall(function() return getrenv().settings().Rendering end)
+        if ok then return r end
+        return nil
+    end
+
     local function enable()
         token = token + 1
         local my = token
         active = true
-        touched = 0
+        touched, crowd = 0, 0
 
+        if not envSaved then
+            envSaved = {}
+            pcall(function() envSaved.shadows = Lighting.GlobalShadows end)
+            pcall(function()
+                local ugs = UserSettings():GetService("UserGameSettings")
+                envSaved.quality = ugs.SavedQualityLevel
+            end)
+            local r = renderSettings()
+            if r then
+                pcall(function() envSaved.mesh = r.MeshPartDetailLevel end)
+                pcall(function() envSaved.rq = r.QualityLevel end)
+            end
+            local t = workspace:FindFirstChildOfClass("Terrain")
+            if t then
+                pcall(function()
+                    envSaved.terrain = {
+                        t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance,
+                    }
+                end)
+            end
+        end
+
+        pcall(function() Lighting.GlobalShadows = false end)
         pcall(function()
-            lightSaved = lightSaved or { shadows = Lighting.GlobalShadows }
-            Lighting.GlobalShadows = false
+            UserSettings():GetService("UserGameSettings").SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
         end)
-        pcall(function()
-            -- `settings` di script ini sudah dipakai sebagai tabel, jadi pakai UserGameSettings
-            local ugs = UserSettings():GetService("UserGameSettings")
-            qualitySaved = qualitySaved or ugs.SavedQualityLevel
-            ugs.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        end)
+        local r = renderSettings()
+        if r then
+            pcall(function() r.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04 end)
+            pcall(function() r.QualityLevel = Enum.QualityLevel.Level01 end)
+        end
+        local t = workspace:FindFirstChildOfClass("Terrain")
+        if t then
+            pcall(function()
+                t.Decoration = false
+                t.WaterWaveSize = 0
+                t.WaterWaveSpeed = 0
+                t.WaterReflectance = 0
+            end)
+        end
         for _, e in ipairs(Lighting:GetChildren()) do
             if POST[e.ClassName] and postSaved[e] == nil then
                 pcall(function()
@@ -5125,9 +5241,8 @@ do
             for i, inst in ipairs(list) do
                 if my ~= token or not active then return end
                 pcall(handle, inst)
-                if i % 300 == 0 then task.wait() end
+                if i % 250 == 0 then task.wait() end
             end
-            if feat and active then feat.setNote("Optimized: " .. touched) end
         end)
     end
 
@@ -5135,16 +5250,28 @@ do
         token = token + 1
         active = false
         if conn then conn:Disconnect() conn = nil end
-        pcall(function()
-            if lightSaved then Lighting.GlobalShadows = lightSaved.shadows end
-            lightSaved = nil
-        end)
-        pcall(function()
-            if qualitySaved then
-                UserSettings():GetService("UserGameSettings").SavedQualityLevel = qualitySaved
+        if envSaved then
+            local e = envSaved
+            envSaved = nil
+            pcall(function() if e.shadows ~= nil then Lighting.GlobalShadows = e.shadows end end)
+            pcall(function()
+                if e.quality then
+                    UserSettings():GetService("UserGameSettings").SavedQualityLevel = e.quality
+                end
+            end)
+            local r = renderSettings()
+            if r then
+                pcall(function() if e.mesh then r.MeshPartDetailLevel = e.mesh end end)
+                pcall(function() if e.rq then r.QualityLevel = e.rq end end)
             end
-            qualitySaved = nil
-        end)
+            local t = workspace:FindFirstChildOfClass("Terrain")
+            if t and e.terrain then
+                pcall(function()
+                    t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance =
+                        e.terrain[1], e.terrain[2], e.terrain[3], e.terrain[4]
+                end)
+            end
+        end
         for e, v in pairs(postSaved) do
             pcall(function() if e.Parent then e.Enabled = v end end)
             postSaved[e] = nil
@@ -5157,7 +5284,7 @@ do
                 pcall(restore, inst, rec)
                 saved[inst] = nil
                 n = n + 1
-                if n % 300 == 0 then task.wait() end
+                if n % 250 == 0 then task.wait() end
             end
         end)
         if feat then feat.setNote("") end
@@ -5171,6 +5298,18 @@ do
         end,
     })
     if flags.antiLag then enable() end
+
+    -- Hanya menghitung musuh untuk ditampilkan di catatan card
+    runLoop(function()
+        if not active then return 1 end
+        local n = 0
+        for h in pairs(npcs) do
+            if h.Parent then n = n + 1 else npcs[h] = nil end
+        end
+        crowd = n
+        if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
+        return 1
+    end)
 
     EP.antiLagOff = function()
         if active then pcall(disable) end

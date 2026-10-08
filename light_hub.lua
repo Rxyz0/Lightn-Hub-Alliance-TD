@@ -140,6 +140,7 @@ local FLAG_DEFAULTS = {
     autoCrate = false, crateAmount = 1, crateType = "",
     autoLucky = false, luckyAmount = 1, luckyType = "",
     autoPotion = false, potionType = "",
+    antiLag = false,
 }
 -- Fitur yang menghabiskan koin/item: selalu mati saat script dijalankan
 local SPEND_KEYS = { "autoSummon", "autoSpin", "autoCrate", "autoLucky", "autoPotion" }
@@ -3761,6 +3762,19 @@ do
         end
     end
 
+    -- Tombol dropdown (judul + jumlah isi + panah). Dipakai UTTM dan Unit Replace.
+    EP.ddHeader = function(par, y, title, count, open, onToggle)
+        local btn = createButton(par, {
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, y),
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, title .. " (" .. count .. ")", function() onToggle(not open) end)
+        make("UIPadding", { PaddingLeft = UDim.new(0, 10) }, btn)
+        local chev = createChevron(btn, -10)
+        chev.Rotation = open and 180 or 0
+        return btn
+    end
+
     -- Baris lokasi: Loc N | Teleport | Select | Delete
     local function addLocRow(rows, list, s, y, onTeleport, onChanged, rebuild)
         make("TextLabel", {
@@ -4043,26 +4057,37 @@ do
     end
 
     local uttmRebuild
+    local uttmOpen = false
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
-        for i, s in ipairs(spots.uttm) do
-            addLocRow(uttmRows, spots.uttm, s, (i - 1) * 32, uttmTeleport,
-                function(msg) uttmSay(msg, C.text) end, uttmRebuild)
-        end
-        local y = #spots.uttm * 32
-        createButton(uttmRows, {
-            Size = UDim2.new(1, 0, 0, 28),
-            Position = UDim2.new(0, 0, 0, y),
-        }, "+ Add location", function()
-            startPick(function(pos)
-                table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
-                saveSpots()
-                uttmRebuild()
-                uttmSay("Location added", C.text)
-            end)
+        -- Dropdown: daftar Loc disembunyikan sampai tombolnya dibuka
+        EP.ddHeader(uttmRows, 0, "Locations", #spots.uttm, uttmOpen, function(v)
+            uttmOpen = v
+            uttmRebuild()
         end)
-        uttmRows.Size = UDim2.new(1, -24, 0, y + 28)
-        uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 28 + 10)
+        local y = 28
+        if uttmOpen then
+            y = 32
+            for i, s in ipairs(spots.uttm) do
+                addLocRow(uttmRows, spots.uttm, s, y, uttmTeleport,
+                    function(msg) uttmSay(msg, C.text) end, uttmRebuild)
+                y = y + 32
+            end
+            createButton(uttmRows, {
+                Size = UDim2.new(1, 0, 0, 28),
+                Position = UDim2.new(0, 0, 0, y),
+            }, "+ Add location", function()
+                startPick(function(pos)
+                    table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
+                    saveSpots()
+                    uttmRebuild()
+                    uttmSay("Location added", C.text)
+                end)
+            end)
+            y = y + 28
+        end
+        uttmRows.Size = UDim2.new(1, -24, 0, y)
+        uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 10)
         if refreshUttmFloat then refreshUttmFloat() end
     end
     uttmRebuild()
@@ -4094,7 +4119,7 @@ do
 end
 
 -- =================================================================
--- Endless: Unit Mower
+-- Endless: Unit Replace (dulu Unit Mower)
 -- =================================================================
 do
     local page, spots, saveSpots = EP.page, EP.spots, EP.saveSpots
@@ -4115,7 +4140,7 @@ do
             Size = UDim2.new(0, 120, 0, 34),
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
-            Text = "Unit Mower",
+            Text = "Unit Replace",
             TextColor3 = C.white,
             TextSize = 12,
             Font = Enum.Font.GothamBold,
@@ -4385,7 +4410,7 @@ do
             if #moves == 0 then
                 local msg = (same > 0) and "Already in place" or "No matching units"
                 say(msg, C.muted)
-                notify("Unit Mower", label .. ": " .. msg, 3)
+                notify("Unit Replace", label .. ": " .. msg, 3)
                 return
             end
             say(label .. ": moving " .. #moves, C.muted)
@@ -4404,7 +4429,7 @@ do
             if lost > 0 then msg = msg .. ", " .. lost .. " lost" end
             if missing > 0 then msg = msg .. ", " .. missing .. " missing" end
             say(msg, (moved == #moves) and C.text or C.warn)
-            notify("Unit Mower", msg, 4)
+            notify("Unit Replace", msg, 4)
         end
 
         -- ---------- Default (posisi awal) ----------
@@ -4422,14 +4447,14 @@ do
         local function backHome()
             if #spots.home == 0 then
                 say("No default saved", C.warn)
-                notify("Unit Mower", "Save a default layout first", 3)
+                notify("Unit Replace", "Save a default layout first", 3)
                 return
             end
             execute("Default", spots.home)
         end
 
         local function placeMower(m)
-            execute("Mower " .. m.id, m.units)
+            execute("Replace " .. m.id, m.units)
         end
 
         -- ---------- Rekam penempatan ----------
@@ -4518,6 +4543,7 @@ do
         end)
 
         local rebuildMower, refreshMowerFloat
+        local replaceOpen = false
 
         local function nextMowerId()
             local n = 1
@@ -4533,7 +4559,7 @@ do
 
         local function startRecording()
             if not placeHook.ready then
-                notify("Unit Mower", "Recording isn't supported on this executor", 4)
+                notify("Unit Replace", "Recording isn't supported on this executor", 4)
                 return false
             end
             recBuf = {}
@@ -4555,7 +4581,7 @@ do
             saveSpots()
             rebuildMower()
             refreshMowerFloat()
-            say("Mower " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
+            say("Replace " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
         end
 
         -- ---------- UI ----------
@@ -4629,7 +4655,7 @@ do
                 local msg = n .. " units"
                 if exact < n then msg = msg .. ", " .. (n - exact) .. " estimated" end
                 say("Default saved (" .. msg .. ")", C.text)
-                notify("Unit Mower", "Default saved: " .. msg, 4)
+                notify("Unit Replace", "Default saved: " .. msg, 4)
                 rebuildMower()
                 refreshMowerFloat()
             end, GREEN_A, GREEN_B)
@@ -4647,10 +4673,14 @@ do
                 }, rows)
             end
 
-            -- Place mower N [Place] [Delete]
-            for i, m in ipairs(spots.mowers) do
-                local y = 64 + (i - 1) * 32
-                rowLabel(y, "Place mower " .. m.id)
+            -- Dropdown: daftar Replace N disembunyikan sampai tombolnya dibuka
+            EP.ddHeader(rows, 64, "Replace list", #spots.mowers, replaceOpen, function(v)
+                replaceOpen = v
+                rebuildMower()
+            end)
+            for i, m in ipairs(replaceOpen and spots.mowers or {}) do
+                local y = 96 + (i - 1) * 32
+                rowLabel(y, "Replace " .. m.id)
                 createFxButton(rows, {
                     Size = UDim2.new(0, 60, 0, 28),
                     Position = UDim2.new(0, 110, 0, y),
@@ -4671,7 +4701,7 @@ do
                     saveSpots()
                     rebuildMower()
                     refreshMowerFloat()
-                    say("Mower " .. m.id .. " deleted", C.muted)
+                    say("Replace " .. m.id .. " deleted", C.muted)
                 end, RED_A, RED_B)
                 confirmDel = armed(del, "Delete")
                 make("TextLabel", {
@@ -4686,16 +4716,16 @@ do
                 }, rows)
             end
 
-            local h = 64 + #spots.mowers * 32
+            local h = replaceOpen and (96 + #spots.mowers * 32) or 92
             rows.Size = UDim2.new(1, -24, 0, h)
             mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
         end
 
-        mowerFloat = createFloat("Auto placement", UDim2.new(1, -190, 0, 90))
+        mowerFloat = createFloat("Unit replace", UDim2.new(1, -190, 0, 90))
         refreshMowerFloat = function()
             local items = { { text = "Bth", fn = backHome, c1 = GREEN_A, c2 = GREEN_B } }
             for _, m in ipairs(spots.mowers) do
-                items[#items + 1] = { text = "Pm-" .. m.id, fn = function() placeMower(m) end,
+                items[#items + 1] = { text = "Rp-" .. m.id, fn = function() placeMower(m) end,
                     c1 = UTTM_BLUE, c2 = UTTM_VIOLET }
             end
             mowerFloat.setItems(items)
@@ -4915,6 +4945,159 @@ do
         if autoSpinner then pcall(spwUse) end
         return 1
     end)
+    end
+end
+
+-- =================================================================
+-- Endless: Anti Lag (toggle)
+-- Hanya mengubah tampilan di sisi client: efek (particle, trail, beam, api,
+-- asap) dimatikan, bayangan dimatikan, material dibuat polos, kualitas grafik
+-- diturunkan. Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
+-- Objek baru (musuh yang baru muncul) ikut ditangani lewat DescendantAdded.
+-- =================================================================
+do
+    local page = tabs["Endless"].page
+    local Lighting = game:GetService("Lighting")
+
+    local EFFECT = {
+        ParticleEmitter = true, Trail = true, Beam = true, Smoke = true,
+        Fire = true, Sparkles = true, PointLight = true, SpotLight = true,
+    }
+    local POST = {
+        BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
+        ColorCorrectionEffect = true, DepthOfFieldEffect = true, Atmosphere = true,
+    }
+
+    local saved = setmetatable({}, { __mode = "k" })   -- instance -> nilai asli
+    local postSaved = {}
+    local lightSaved = nil
+    local qualitySaved = nil
+    local conn = nil
+    local active = false
+    local token = 0
+    local touched = 0
+    local feat
+
+    local function handle(inst)
+        if saved[inst] then return end
+        local cn = inst.ClassName
+        if EFFECT[cn] then
+            saved[inst] = { kind = "fx", v = inst.Enabled }
+            inst.Enabled = false
+            touched = touched + 1
+        elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
+            local ch = LocalPlayer.Character
+            if ch and inst:IsDescendantOf(ch) then return end
+            local rec = { kind = "part", m = inst.Material, s = inst.CastShadow, r = inst.Reflectance }
+            if inst:IsA("MeshPart") then rec.f = inst.RenderFidelity end
+            saved[inst] = rec
+            inst.CastShadow = false
+            inst.Reflectance = 0
+            if inst.Material ~= Enum.Material.SmoothPlastic then
+                inst.Material = Enum.Material.SmoothPlastic
+            end
+            if rec.f then inst.RenderFidelity = Enum.RenderFidelity.Performance end
+            touched = touched + 1
+        end
+    end
+
+    local function restore(inst, rec)
+        if not inst.Parent then return end
+        if rec.kind == "fx" then
+            inst.Enabled = rec.v
+        else
+            inst.CastShadow = rec.s
+            inst.Reflectance = rec.r
+            inst.Material = rec.m
+            if rec.f then inst.RenderFidelity = rec.f end
+        end
+    end
+
+    local function enable()
+        token = token + 1
+        local my = token
+        active = true
+        touched = 0
+
+        pcall(function()
+            lightSaved = lightSaved or { shadows = Lighting.GlobalShadows }
+            Lighting.GlobalShadows = false
+        end)
+        pcall(function()
+            -- `settings` di script ini sudah dipakai sebagai tabel, jadi pakai UserGameSettings
+            local ugs = UserSettings():GetService("UserGameSettings")
+            qualitySaved = qualitySaved or ugs.SavedQualityLevel
+            ugs.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+        end)
+        for _, e in ipairs(Lighting:GetChildren()) do
+            if POST[e.ClassName] and postSaved[e] == nil then
+                pcall(function()
+                    postSaved[e] = e.Enabled
+                    e.Enabled = false
+                end)
+            end
+        end
+
+        if conn then conn:Disconnect() end
+        conn = workspace.DescendantAdded:Connect(function(inst)
+            if active then pcall(handle, inst) end
+        end)
+
+        -- Sapuan awal dipecah per potongan supaya game tidak membeku sesaat
+        task.spawn(function()
+            local list = workspace:GetDescendants()
+            for i, inst in ipairs(list) do
+                if my ~= token or not active then return end
+                pcall(handle, inst)
+                if i % 300 == 0 then task.wait() end
+            end
+            if feat and active then feat.setNote("Optimized: " .. touched) end
+        end)
+    end
+
+    local function disable()
+        token = token + 1
+        active = false
+        if conn then conn:Disconnect() conn = nil end
+        pcall(function()
+            if lightSaved then Lighting.GlobalShadows = lightSaved.shadows end
+            lightSaved = nil
+        end)
+        pcall(function()
+            if qualitySaved then
+                UserSettings():GetService("UserGameSettings").SavedQualityLevel = qualitySaved
+            end
+            qualitySaved = nil
+        end)
+        for e, v in pairs(postSaved) do
+            pcall(function() if e.Parent then e.Enabled = v end end)
+            postSaved[e] = nil
+        end
+        local my = token
+        task.spawn(function()
+            local n = 0
+            for inst, rec in pairs(saved) do
+                if my ~= token then return end   -- dinyalakan lagi: hentikan pemulihan
+                pcall(restore, inst, rec)
+                saved[inst] = nil
+                n = n + 1
+                if n % 300 == 0 then task.wait() end
+            end
+        end)
+        if feat then feat.setNote("") end
+    end
+
+    feat = createFeature(page, "Anti Lag", {
+        initial = flags.antiLag,
+        onToggle = function(v)
+            setFlag("antiLag", v)
+            if v then enable() else disable() end
+        end,
+    })
+    if flags.antiLag then enable() end
+
+    EP.antiLagOff = function()
+        if active then pcall(disable) end
     end
 end
 
@@ -6433,6 +6616,7 @@ local function cleanup()
     pcall(function() applySkip("crate", false) end)
     pcall(function() applySkip("summon", false) end)
     pcall(function() applySkip("uttm", false) end)
+    pcall(function() EP.antiLagOff() end)
     if env.LightHubDrone then env.LightHubDrone.active = false end
     pcall(function() idledConn:Disconnect() end)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end

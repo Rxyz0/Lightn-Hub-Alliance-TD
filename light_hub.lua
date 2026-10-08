@@ -362,6 +362,9 @@ end
 
 -- Pelacak penempatan (dipakai Unit Mower): registry mencatat CFrame penempatan asli
 -- tiap unit. Hook-nya dipasang di bagian Macro dan berjalan berdampingan dengan recorder macro.
+-- Penghubung antar blok Endless (lihat bagian akhir blok Endless)
+local EP = {}
+
 local placeHook = { active = false, ready = false, handler = nil, install = nil,
     register = nil, registry = setmetatable({}, { __mode = "k" }) }
 
@@ -4082,6 +4085,22 @@ do
         return 1
     end)
 
+    -- Dibagikan ke blok Unit Mower dan Auto use ability (dipisah supaya jumlah variabel
+    -- lokal per blok tidak melewati batas 200 milik Lua)
+    EP.page, EP.spots, EP.saveSpots = page, spots, saveSpots
+    EP.UTTM_BLUE, EP.UTTM_VIOLET = UTTM_BLUE, UTTM_VIOLET
+    EP.findUttm, EP.pushMacro = findUttm, pushMacro
+    EP.isBusy = function() return uttmBusy end
+end
+
+-- =================================================================
+-- Endless: Unit Mower
+-- =================================================================
+do
+    local page, spots, saveSpots = EP.page, EP.spots, EP.saveSpots
+    local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
+    local pushMacro = EP.pushMacro
+
     -- ---------------- Unit Mower ----------------
     -- Rekam penempatan sendiri (Record placement), simpan jadi "Place mower N".
     -- Klik Place: unit yang sedang terpasang dijual lalu dipasang lagi di posisi
@@ -4685,6 +4704,15 @@ do
         rebuildMower()
         refreshMowerFloat()
     end
+end
+
+-- =================================================================
+-- Endless: Auto use ability
+-- =================================================================
+do
+    local page = EP.page
+    local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
+    local findUttm = EP.findUttm
 
     do
     -- ---------------- Auto Use Ability ----------------
@@ -4883,7 +4911,7 @@ do
     end)
 
     runLoop(function()
-        if autoSword and not uttmBusy and findUttm() then pcall(uttmSpin) end
+        if autoSword and not EP.isBusy() and findUttm() then pcall(uttmSpin) end
         if autoSpinner then pcall(spwUse) end
         return 1
     end)

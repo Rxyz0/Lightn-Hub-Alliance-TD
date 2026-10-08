@@ -1470,7 +1470,7 @@ end
 -- Tombol aksi dengan umpan balik: kilat warna saat ditekan, lalu gradient
 -- bergeser selama aksinya masih berjalan. Aksi dijalankan langsung saat klik
 -- (task.spawn), jadi animasinya tidak pernah menunda aksinya.
-local function createFxButton(par, props, text, onClick, c1, c2)
+local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
     c1 = c1 or Color3.fromRGB(70, 150, 240)
     c2 = c2 or Color3.fromRGB(150, 110, 235)
     local btn = make("TextButton", {
@@ -1503,25 +1503,30 @@ local function createFxButton(par, props, text, onClick, c1, c2)
         { Offset = Vector2.new(0.35, 0) })
 
     local busy = false
+    local active = 0 -- jumlah aksi yang sedang berjalan (untuk tombol reentrant)
     btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.hover end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.control end)
     btn.MouseButton1Down:Connect(function()
         tween(fx, 0.05, { BackgroundTransparency = 0.3 })
     end)
     btn.MouseButton1Click:Connect(function()
-        if busy then return end
+        if busy and not reentrant then return end
         busy = true
+        active = active + 1
         fx.BackgroundTransparency = 0.2
-        slide:Play()
+        if active == 1 then slide:Play() end
         task.spawn(function()
             local ok, err = pcall(onClick or function() end)
             if not ok then warn("[LightHub] " .. tostring(err)) end
-            busy = false
-            slide:Cancel()
-            pcall(function()
-                grad.Offset = Vector2.new(-0.35, 0)
-                tween(fx, 0.45, { BackgroundTransparency = 1 })
-            end)
+            active = active - 1
+            if active <= 0 then
+                active, busy = 0, false
+                slide:Cancel()
+                pcall(function()
+                    grad.Offset = Vector2.new(-0.35, 0)
+                    tween(fx, 0.45, { BackgroundTransparency = 1 })
+                end)
+            end
         end)
     end)
     return btn
@@ -1675,7 +1680,7 @@ local function createFloat(title, startPos)
                 createFxButton(body, {
                     Size = UDim2.new(1, 0, 0, 26),
                     Position = UDim2.new(0, 0, 0, (i - 1) * 30),
-                }, it.text, it.fn, it.c1, it.c2)
+                }, it.text, it.fn, it.c1, it.c2, true)
             end
             h = #items * 30 - 4
         end
@@ -4106,9 +4111,16 @@ do
             while left > 0 and os.clock() - t0 < (timeout or 45) do task.wait(0.1) end
         end
 
+        local inFlight = {} -- unit yang sedang diproses (jangan diambil dua kali)
+        local runId = 0     -- naik tiap tombol mower ditekan; run lama berhenti mencoba tujuan lamanya
+        local pending = 0   -- unit yang sudah dijual tapi belum terpasang lagi
+
         -- Cocokkan unit yang terpasang dengan target (nama sama, paling dekat)
         local function plan(targets)
-            local pool = myTowers()
+            local pool = {}
+            for _, u in ipairs(myTowers()) do
+                if not inFlight[u.tower] then pool[#pool + 1] = u end
+            end
             local remaining, same = {}, 0
             for _, tg in ipairs(targets) do
                 local done = false
@@ -4140,7 +4152,6 @@ do
             return moves, same, missing
         end
 
-        local running = false
         local learnedKind = {} -- nama unit -> jenis tinggi yang diterima server
 
         -- Rekaman: CFrame persis dari game. Default: beberapa kandidat tinggi,
@@ -4166,84 +4177,124 @@ do
             return list
         end
 
-        -- Jual semua -> pasang semua -> upgrade semua, masing-masing serentak
-        local function execute(label, targets)
-            if running then
-                say("Still working", C.warn)
+        -- Lokasi sebuah unit saat ini (dipakai untuk default, dan untuk mengembalikan
+        -- unit ke tempat asalnya kalau tujuannya diblokir)
+        local function locOf(u)
+            if u.exact then
+                return { n = u.name, x = u.exact[1], y = u.exact[2], z = u.exact[3], cf = u.exact }
+            end
+            local ground = groundOf(u.pos)
+            local bottom = u.pos.Y
+            local okb, bcf, bsize = pcall(function() return u.tower:GetBoundingBox() end)
+            if okb and bcf and bsize then bottom = bcf.Position.Y - bsize.Y / 2 end
+            return { n = u.name, x = u.pos.X, y = ground, z = u.pos.Z, ys = { ground, bottom, u.pos.Y } }
+        end
+
+        -- Coba pasang di target; mengembalikan unit baru kalau diterima server
+        local function tryPlace(target, tries, myRun)
+            local cands = candidatesFor(target)
+            for attempt = 1, tries do
+                if myRun and myRun ~= runId then return nil end -- tombol lain ditekan: berhenti
+                local cand = cands[(attempt - 1) % #cands + 1]
+                invoke("PlaceTower", target.n, cand.cf)
+                for _ = 1, 8 do
+                    task.wait(0.1)
+                    local pt = nearestTower(target.n, target.x, target.z, 3)
+                    if pt then
+                        if cand.kind > 0 then learnedKind[target.n] = cand.kind end
+                        pushMacro({ t = "place", n = target.n, cf = { cand.cf:GetComponents() } })
+                        return pt
+                    end
+                end
+                task.wait(0.2)
+            end
+            return nil
+        end
+
+        -- Satu unit: jual -> pasang di tujuan (kalau diblokir, kembali ke tempat asal)
+        -- -> upgrade lagi ke level semula. Semua unit diproses bersamaan.
+        local function processUnit(m)
+            local u, tg = m.unit, m.tg
+            local tw = u.tower
+            if inFlight[tw] then return end
+            inFlight[tw] = true
+            m.level = tw:GetAttribute("Level")
+            m.orig = locOf(u)
+            invoke("SellTower", tw)
+            for _ = 1, 12 do
+                if not tw.Parent then break end
+                task.wait(0.25)
+            end
+            if tw.Parent then
+                inFlight[tw] = nil
+                m.failed = true -- gagal dijual, unit tetap di tempatnya
                 return
             end
+            pushMacro({ t = "sell", n = u.name, p = { u.pos.X, u.pos.Y, u.pos.Z } })
+
+            pending = pending + 1
+            local placed = tryPlace(tg, 8, m.run)
+            if placed then
+                m.atTarget = true
+            else
+                placed = tryPlace(m.orig, 8) -- tujuan diblokir: kembalikan supaya unit tidak hilang
+                m.blocked = true
+            end
+            m.placed = placed
+            pending = pending - 1
+
+            local lvl = m.level
+            if placed and type(lvl) == "number" then
+                local t0 = os.clock()
+                while os.clock() - t0 < 12 do
+                    local cur = placed:GetAttribute("Level")
+                    local price = placed:GetAttribute("UpgradePrice")
+                    if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then
+                        break
+                    end
+                    local ok, res = invoke("UpgradeTower", placed)
+                    if ok and res == true then
+                        pushMacro({ t = "up", n = u.name, p = { tg.x, tg.y, tg.z } })
+                    end
+                    task.wait(0.35)
+                end
+            end
+            inFlight[tw] = nil
+        end
+
+        -- Tidak ada penguncian: tombol bisa ditekan lagi kapan saja walau proses
+        -- sebelumnya belum selesai (unit yang sedang diproses tidak diambil dua kali)
+        local function execute(label, targets)
+            runId = runId + 1
+            local myRun = runId
+            -- Kalau proses sebelumnya masih jalan, unit yang diblokir langsung dikembalikan ke
+            -- tempat asalnya; tunggu sebentar (maksimal 4 detik) supaya unit itu bisa ikut dihitung
+            local t0 = os.clock()
+            while pending > 0 and os.clock() - t0 < 4 do task.wait(0.1) end
             local moves, same, missing = plan(targets)
+            for _, m in ipairs(moves) do m.run = myRun end
             if #moves == 0 then
                 local msg = (same > 0) and "Already in place" or "No matching units"
                 say(msg, C.muted)
                 notify("Unit Mower", label .. ": " .. msg, 3)
                 return
             end
-            running = true
             say(label .. ": moving " .. #moves, C.muted)
+            parallel(moves, processUnit, 60)
 
-            parallel(moves, function(m)
-                local tw = m.unit.tower
-                m.level = tw:GetAttribute("Level")
-                invoke("SellTower", tw)
-                for _ = 1, 12 do
-                    if not tw.Parent then break end
-                    task.wait(0.25)
-                end
-                m.sold = not tw.Parent
-                if m.sold then
-                    local p0 = m.unit.pos
-                    pushMacro({ t = "sell", n = m.unit.name, p = { p0.X, p0.Y, p0.Z } })
-                end
-            end, 15)
-
-            parallel(moves, function(m)
-                if not m.sold then return end
-                local tg = m.tg
-                local cands = candidatesFor(tg)
-                for attempt = 1, 24 do -- juga menunggu cash cukup, maksimal sekitar 30 detik
-                    local cand = cands[(attempt - 1) % #cands + 1]
-                    invoke("PlaceTower", tg.n, cand.cf)
-                    for _ = 1, 8 do
-                        task.wait(0.1)
-                        m.placed = nearestTower(tg.n, tg.x, tg.z, 3)
-                        if m.placed then break end
-                    end
-                    if m.placed then
-                        if cand.kind > 0 then learnedKind[tg.n] = cand.kind end
-                        pushMacro({ t = "place", n = tg.n, cf = { cand.cf:GetComponents() } })
-                        break
-                    end
-                    task.wait(0.3)
-                end
-            end, 40)
-
-            parallel(moves, function(m)
-                local tw, lvl = m.placed, m.level
-                if not tw or type(lvl) ~= "number" then return end
-                local t0 = os.clock()
-                while os.clock() - t0 < 25 do
-                    local cur = tw:GetAttribute("Level")
-                    local price = tw:GetAttribute("UpgradePrice")
-                    if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then
-                        break
-                    end
-                    local ok, res = invoke("UpgradeTower", tw)
-                    if ok and res == true then
-                        pushMacro({ t = "up", n = m.unit.name, p = { m.tg.x, m.tg.y, m.tg.z } })
-                    end
-                    task.wait(0.35)
-                end
-            end, 30)
-
-            local placed = 0
+            local moved, blocked, lost = 0, 0, 0
             for _, m in ipairs(moves) do
-                if m.placed then placed = placed + 1 end
+                if m.atTarget then
+                    moved = moved + 1
+                elseif m.blocked then
+                    if m.placed then blocked = blocked + 1 else lost = lost + 1 end
+                end
             end
-            running = false
-            local msg = label .. ": " .. placed .. "/" .. #moves .. " moved"
+            local msg = label .. ": " .. moved .. "/" .. #moves .. " moved"
+            if blocked > 0 then msg = msg .. ", " .. blocked .. " blocked" end
+            if lost > 0 then msg = msg .. ", " .. lost .. " lost" end
             if missing > 0 then msg = msg .. ", " .. missing .. " missing" end
-            say(msg, placed == #moves and C.text or C.warn)
+            say(msg, (moved == #moves) and C.text or C.warn)
             notify("Unit Mower", msg, 4)
         end
 
@@ -4252,24 +4303,8 @@ do
             spots.home = {}
             local exact = 0
             for _, u in ipairs(myTowers()) do
-                if u.exact then
-                    -- posisi persis dari saat unit ditempatkan (tercatat di belakang layar)
-                    exact = exact + 1
-                    spots.home[#spots.home + 1] = {
-                        n = u.name, x = u.exact[1], y = u.exact[2], z = u.exact[3],
-                        cf = u.exact,
-                    }
-                else
-                    -- ditempatkan sebelum script jalan: perkiraan dari kandidat tinggi
-                    local ground = groundOf(u.pos)
-                    local bottom = u.pos.Y
-                    local okb, bcf, bsize = pcall(function() return u.tower:GetBoundingBox() end)
-                    if okb and bcf and bsize then bottom = bcf.Position.Y - bsize.Y / 2 end
-                    spots.home[#spots.home + 1] = {
-                        n = u.name, x = u.pos.X, y = ground, z = u.pos.Z,
-                        ys = { ground, bottom, u.pos.Y },
-                    }
-                end
+                if u.exact then exact = exact + 1 end
+                spots.home[#spots.home + 1] = locOf(u)
             end
             saveSpots()
             return #spots.home, exact
@@ -4472,7 +4507,7 @@ do
             createFxButton(rows, {
                 Size = UDim2.new(0, 60, 0, 28),
                 Position = UDim2.new(0, 110, 0, 32),
-            }, "Back", backHome, GREEN_A, GREEN_B)
+            }, "Back", backHome, GREEN_A, GREEN_B, true)
             local hasHome = #spots.home > 0
             local homeBtn
             local confirmEdit
@@ -4510,7 +4545,7 @@ do
                 createFxButton(rows, {
                     Size = UDim2.new(0, 60, 0, 28),
                     Position = UDim2.new(0, 110, 0, y),
-                }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET)
+                }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET, true)
                 local del
                 local confirmDel
                 del = createFxButton(rows, {

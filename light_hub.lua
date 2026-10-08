@@ -4116,6 +4116,7 @@ do
     EP.UTTM_BLUE, EP.UTTM_VIOLET = UTTM_BLUE, UTTM_VIOLET
     EP.findUttm, EP.pushMacro = findUttm, pushMacro
     EP.isBusy = function() return uttmBusy end
+    EP.readUnits = readUnits
 end
 
 -- =================================================================
@@ -4544,6 +4545,7 @@ do
 
         local rebuildMower, refreshMowerFloat
         local replaceOpen = false
+        local shareReplace, importReplace
 
         local function nextMowerId()
             local n = 1
@@ -4555,6 +4557,59 @@ do
                 if not used then return n end
                 n = n + 1
             end
+        end
+
+        -- ---------- Share / Import ----------
+        -- Kode berupa JSON: { v = 1, t = "replace", list = { { units = {...} }, ... } }
+        shareReplace = function(list)
+            if #list == 0 then
+                say("Nothing to share", C.warn)
+                return
+            end
+            if not setclipboard then
+                notify("Unit Replace", "Your executor can't copy to the clipboard.", 4)
+                return
+            end
+            local out = {}
+            for _, m in ipairs(list) do out[#out + 1] = { units = m.units } end
+            local ok = pcall(setclipboard, HttpService:JSONEncode({ v = 1, t = "replace", list = out }))
+            if ok then
+                say("Code copied (" .. #out .. ")", C.text)
+                notify("Unit Replace", "Code copied: " .. #out .. " replace layout(s).", 3)
+            else
+                notify("Unit Replace", "Couldn't copy the code.", 3)
+            end
+        end
+
+        importReplace = function(text)
+            if type(text) ~= "string" or text:match("^%s*$") then
+                notify("Unit Replace", "Paste a replace code first.", 3)
+                return false
+            end
+            local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
+            if not ok or type(data) ~= "table" or data.t ~= "replace" or type(data.list) ~= "table" then
+                notify("Unit Replace", "That isn't a valid replace code.", 4)
+                return false
+            end
+            local added = 0
+            for _, entry in ipairs(data.list) do
+                local units = type(entry) == "table" and EP.readUnits(entry.units) or {}
+                if #units > 0 then
+                    spots.mowers[#spots.mowers + 1] = { id = nextMowerId(), units = units }
+                    added = added + 1
+                end
+            end
+            if added == 0 then
+                notify("Unit Replace", "The code has no valid units.", 4)
+                return false
+            end
+            table.sort(spots.mowers, function(a, b) return a.id < b.id end)
+            saveSpots()
+            rebuildMower()
+            refreshMowerFloat()
+            say("Imported " .. added, C.text)
+            notify("Unit Replace", "Imported " .. added .. " replace layout(s).", 3)
+            return true
         end
 
         local function startRecording()
@@ -4704,9 +4759,13 @@ do
                     say("Replace " .. m.id .. " deleted", C.muted)
                 end, RED_A, RED_B)
                 confirmDel = armed(del, "Delete")
+                createButton(rows, {
+                    Size = UDim2.new(0, 50, 0, 28),
+                    Position = UDim2.new(0, 242, 0, y),
+                }, "Share", function() shareReplace({ m }) end)
                 make("TextLabel", {
-                    Size = UDim2.new(1, -250, 0, 28),
-                    Position = UDim2.new(0, 246, 0, y),
+                    Size = UDim2.new(1, -300, 0, 28),
+                    Position = UDim2.new(0, 296, 0, y),
                     BackgroundTransparency = 1,
                     Text = #m.units .. " units",
                     TextColor3 = C.dim,
@@ -4716,7 +4775,24 @@ do
                 }, rows)
             end
 
-            local h = replaceOpen and (96 + #spots.mowers * 32) or 92
+            if replaceOpen then
+                local y = 96 + #spots.mowers * 32
+                createButton(rows, {
+                    Size = UDim2.new(0, 70, 0, 28),
+                    Position = UDim2.new(0, 0, 0, y),
+                }, "Share all", function() shareReplace(spots.mowers) end)
+                local codeBox = createInput(rows, {
+                    Size = UDim2.new(1, -148, 0, 28),
+                    Position = UDim2.new(0, 74, 0, y),
+                }, "Paste replace code")
+                createButton(rows, {
+                    Size = UDim2.new(0, 70, 0, 28),
+                    Position = UDim2.new(1, -70, 0, y),
+                }, "Import", function()
+                    if importReplace(codeBox.Text) then codeBox.Text = "" end
+                end)
+            end
+            local h = replaceOpen and (96 + #spots.mowers * 32 + 32) or 92
             rows.Size = UDim2.new(1, -24, 0, h)
             mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
         end

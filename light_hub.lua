@@ -199,6 +199,14 @@ local function getStat(name)
     return v and v.Value or 0
 end
 
+-- Sama seperti getStat, tapi nil kalau datanya belum ada (bukan 0)
+local function getStatN(name)
+    local ls = LocalPlayer:FindFirstChild("leaderstats")
+    local v = ls and ls:FindFirstChild(name)
+    if v and type(v.Value) == "number" then return v.Value end
+    return nil
+end
+
 -- =================================================================
 -- Auto save
 -- =================================================================
@@ -1399,7 +1407,7 @@ local function createPill(par, props, text, initial, onChange)
 
     -- Saat aktif: gradient biru-es ke lavender yang bergeser pelan
     local grad = make("UIGradient", {
-        Color = ColorSequence.new(Color3.fromRGB(238, 242, 252), Color3.fromRGB(166, 184, 232)),
+        Color = ColorSequence.new(Color3.fromRGB(240, 240, 242), Color3.fromRGB(160, 160, 166)),
         Rotation = 0,
         Offset = Vector2.new(-0.25, 0),
         Enabled = false,
@@ -2519,16 +2527,51 @@ end
 
 local function onBoost(t)
     if type(t) ~= "table" then return end
-    if type(t.Inventory) == "table" then boost.inv = t.Inventory end
+    if type(t.Inventory) == "table" then
+        for k, v in pairs(t.Inventory) do boost.inv[k] = v end
+    end
     for k, field in pairs(BOOST_FIELD) do
         if type(t[field]) == "number" then boost.rem[k] = t[field] end
     end
     boost.at = os.clock()
 end
 
-bindEvent("CratesUpdated", function(t)
-    if type(t) == "table" then counts = t end
-end)
+-- Data crate: event bisa berisi sebagian item saja, jadi digabung ke data yang sudah ada
+local function mergeCounts(t)
+    if type(t) ~= "table" then return end
+    if type(t.Crates) == "table" then t = t.Crates end
+    counts = counts or {}
+    for k, v in pairs(t) do counts[k] = v end
+end
+
+-- Cari jumlah item di data (kunci bisa string/angka, atau bersarang dalam tabel lain)
+local function findCount(t, id, depth)
+    if type(t) ~= "table" or depth > 3 then return nil end
+    local v = t[id]
+    if v == nil then v = t[tostring(id)] end
+    if v == nil and tonumber(id) then v = t[tonumber(id)] end
+    if type(v) == "table" then
+        v = v.Amount or v.Count or v.Quantity or v.amount or v.count
+    end
+    if type(v) == "number" then return v end
+    for _, sub in pairs(t) do
+        if type(sub) == "table" then
+            local r = findCount(sub, id, depth + 1)
+            if r ~= nil then return r end
+        end
+    end
+    return nil
+end
+
+local countsAt = 0
+local function refreshCounts()
+    if os.clock() - countsAt < 8 then return end
+    countsAt = os.clock()
+    local ok, res = invoke("GetCrateState")
+    if ok and type(res) == "table" then mergeCounts(res) end
+end
+
+bindEvent("CratesUpdated", mergeCounts)
 bindEvent("SummonStateUpdated", function(t)
     if type(t) == "table" and type(t.Prices) == "table" then summonPrices = t.Prices end
 end)
@@ -2540,13 +2583,23 @@ end)
 
 -- State awal (kalau game menyediakan)
 task.spawn(function()
+    boostAt = os.clock()
     local ok, res = invoke("GetBoostState")
     if ok then onBoost(res) end
+    local okS, resS = invoke("GetSummonState")
+    if okS and type(resS) == "table" and type(resS.Prices) == "table" then summonPrices = resS.Prices end
+    countsAt = os.clock()
     local ok2, res2 = invoke("GetCrateState")
-    if ok2 and type(res2) == "table" and not counts then
-        counts = type(res2.Crates) == "table" and res2.Crates or res2
-    end
+    if ok2 and type(res2) == "table" then mergeCounts(res2) end
 end)
+
+local boostAt = 0
+local function refreshBoost()
+    if os.clock() - boostAt < 8 then return end
+    boostAt = os.clock()
+    local ok, res = invoke("GetBoostState")
+    if ok then onBoost(res) end
+end
 
 local function fmtTime(s)
     s = math.max(0, math.floor(s))
@@ -2578,7 +2631,8 @@ do
         end
         local amount = flags.summonAmount
         local price = summonPrices and (summonPrices[amount] or summonPrices[tostring(amount)])
-        if type(price) == "number" and getStat("Coins") < price then
+        local coins = getStatN("Coins")
+        if type(price) == "number" and coins and coins < price then
             fSummon.setNote("Not enough coins", C.warn)
             return 1.5
         end
@@ -2606,38 +2660,39 @@ do
             return 0.4
         end
         -- Dari log: 1 spin memakai 1 Ticket dan animasinya sekitar 7 detik
-        if tickets and tickets <= 0 then
-            fSpin.setNote("Not enough tickets", C.warn)
-            return 3
-        end
+        -- Data tiket bisa tertinggal; tetap dicoba, biar server yang menjawab
+        local noTickets = tickets ~= nil and tickets <= 0
         local ok, res = invoke("SpinWheel")
         if accepted(ok, res) then
+            tickets = nil
             fSpin.setNote("Spinning...", C.text)
             return settings.skipAnim and 1.5 or 7
         end
-        fSpin.setNote("Wheel not ready", C.warn)
-        return 6
+        fSpin.setNote(noTickets and "Not enough tickets" or "Wheel not ready", C.warn)
+        return noTickets and 4 or 6
     end)
 end
 
 do
     local page = tabs["Gacha"].page
 
-    -- Cek stok crate / lucky block dari CratesUpdated.
-    -- Mengembalikan jumlah yang boleh dibuka, atau nil + pesan.
-    -- Item yang tidak ada di daftar stok dianggap kosong.
+    -- Cek stok crate / lucky block. Hanya dianggap kosong kalau datanya jelas menyebut
+    -- jumlah 0. Kalau item tidak ditemukan di data (data gagal dimuat / formatnya beda),
+    -- jangan dianggap kosong: ambil ulang datanya lalu coba buka saja dan biarkan server
+    -- yang menjawab (blind = true).
     local noDataSince = nil
     local function stockCheck(id, want, noun)
-        if not counts then
-            noDataSince = noDataSince or os.clock()
-            if os.clock() - noDataSince < 6 then
-                return nil, ""
+        local have = findCount(counts, id, 0)
+        if have == nil then
+            task.spawn(refreshCounts)
+            if counts == nil then
+                noDataSince = noDataSince or os.clock()
+                if os.clock() - noDataSince < 4 then return nil, "" end
             end
-            return want, nil, true -- data tidak pernah datang: coba saja
+            return want, nil, true
         end
         noDataSince = nil
-        local have = counts[id]
-        if type(have) ~= "number" or have <= 0 then
+        if have <= 0 then
             return nil, "Out of stock"
         end
         if have < want then
@@ -2785,27 +2840,32 @@ do
             fPotion.setNote("Select a potion", C.warn)
             return 1
         end
-        if not boost.at then
-            fPotion.setNote("", C.muted)
-            return 1
-        end
-        local have = boost.inv[key] or 0
-        if have <= 0 then
+        local have = boost.inv[key]
+        local blind = (have == nil)
+        if blind then
+            task.spawn(refreshBoost) -- stok belum diketahui: ambil ulang, lalu coba saja
+        elseif have <= 0 then
             fPotion.setNote("Out of stock", C.muted)
             return 2
         end
         local ok, res = invoke("UseBoost", key)
         if accepted(ok, res) then
             potionFails = 0
-            local left = (boost.rem[key] or 0) - (os.clock() - boost.at)
-            fPotion.setNote("Active " .. fmtTime(left) .. " · " .. math.max(0, have - 1) .. " left", C.text)
+            if boost.at and boost.rem[key] and have then
+                local left = boost.rem[key] - (os.clock() - boost.at)
+                fPotion.setNote("Active " .. fmtTime(left) .. " · " .. math.max(0, have - 1) .. " left", C.text)
+            else
+                fPotion.setNote("Active", C.text)
+            end
             return POTION_INTERVAL
         end
         potionFails = potionFails + 1
         fPotion.setNote("Retrying", C.warn)
-        if potionFails >= 8 then
+        if potionFails >= (blind and 3 or 8) then
             potionFails = 0
-            stopFeature(fPotion, "autoPotion", "Auto Use Potion stopped. This potion can't stack further.")
+            stopFeature(fPotion, "autoPotion", blind
+                and "Auto Use Potion stopped. Out of potions?"
+                or "Auto Use Potion stopped. This potion can't stack further.")
         end
         return 1
     end)
@@ -2846,7 +2906,7 @@ do
     end
 
     local function refreshData()
-        if dataBusy or os.clock() - dataAt < 30 then return end
+        if dataBusy or os.clock() - dataAt < 10 then return end
         dataBusy = true
         dataAt = os.clock()
         task.spawn(function()
@@ -2869,9 +2929,26 @@ do
                     return a.n < b.n
                 end)
                 dataCache = { list = list, total = total }
+            else
+                dataAt = os.clock() - 7 -- gagal baca: coba lagi sekitar 3 detik lagi
             end
             dataBusy = false
         end)
+    end
+
+    -- Hitung jumlah ikan dari satu entri: angka, daftar bobot "[0.82,0.75]", atau folder isi
+    local function countOf(inst)
+        if inst:IsA("IntValue") or inst:IsA("NumberValue") then
+            return math.floor(inst.Value)
+        elseif inst:IsA("StringValue") then
+            local c = 0
+            for _ in string.gmatch(inst.Value, "[%d%.]+") do c = c + 1 end
+            return c
+        elseif inst:IsA("Folder") or inst:IsA("Configuration") then
+            return #inst:GetChildren()
+        end
+        local a = inst:GetAttribute("Amount") or inst:GetAttribute("Count")
+        return type(a) == "number" and math.floor(a) or 0
     end
 
     local function fishList()
@@ -2880,21 +2957,34 @@ do
         if folder then
             local list, total = {}, 0
             for _, v in ipairs(folder:GetChildren()) do
-                if (v:IsA("IntValue") or v:IsA("NumberValue")) and v.Value > 0 then
-                    list[#list + 1] = { n = v.Name, c = math.floor(v.Value) }
-                    total = total + math.floor(v.Value)
+                local c = countOf(v)
+                if c > 0 then
+                    list[#list + 1] = { n = v.Name, c = c }
+                    total = total + c
                 end
             end
-            table.sort(list, function(a, b)
-                if a.c ~= b.c then return a.c > b.c end
-                return a.n < b.n
-            end)
-            return list, total, true
+            if #list > 0 then
+                table.sort(list, function(a, b)
+                    if a.c ~= b.c then return a.c > b.c end
+                    return a.n < b.n
+                end)
+                return list, total, true
+            end
+            -- folder ada tapi kosong / formatnya tidak terbaca: pakai GetData
         end
         refreshData()
         if dataCache then return dataCache.list, dataCache.total, true end
         return {}, 0, false
     end
+
+    -- Siapkan data lebih awal supaya dropdown tidak kosong saat pertama dibuka
+    task.spawn(function()
+        task.wait(3)
+        while true do
+            pcall(refreshData)
+            task.wait(12)
+        end
+    end)
 
     local function fishInvoke(action, args)
         local fn = fishRemote("FishingFunction")
@@ -6021,8 +6111,8 @@ do
     local function attr(k) return LocalPlayer:GetAttribute(k) end
 
     runLoop(function()
-        r2[1].value.Text = compact(getStat("Coins"))
-        r2[2].value.Text = compact(getStat("Wins"))
+        r2[1].value.Text = compact(getStatN("Coins"))
+        r2[2].value.Text = compact(getStatN("Wins"))
         r2[3].value.Text = tostring(attr("WinStreak") or "-")
         local uc, ul = attr("UnitCount"), attr("UnitLimit")
         r3[1].value.Text = uc and (uc .. "/" .. tostring(ul or "?")) or "-"

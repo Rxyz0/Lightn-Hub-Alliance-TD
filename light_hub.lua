@@ -352,10 +352,19 @@ local function RE(name)
     return folder and folder:FindFirstChild(name)
 end
 
+-- Pelacak penempatan (dipakai Unit Mower): registry mencatat CFrame penempatan asli
+-- tiap unit. Hook-nya dipasang di bagian Macro dan berjalan berdampingan dengan recorder macro.
+local placeHook = { active = false, ready = false, handler = nil, install = nil,
+    register = nil, registry = setmetatable({}, { __mode = "k" }) }
+
 local function invoke(name, ...)
     local remote = RF(name)
     if not remote then return false, "remote tidak ada: " .. name end
     local args = table.pack(...)
+    -- Penempatan dari script sendiri (macro play, Unit Mower) ikut dicatat
+    if name == "PlaceTower" and placeHook.register and typeof(args[2]) == "CFrame" then
+        task.spawn(placeHook.register, args[1], args[2])
+    end
     return pcall(function()
         return remote:InvokeServer(table.unpack(args, 1, args.n))
     end)
@@ -3517,8 +3526,6 @@ end
 --   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
 --   Unit Mower: rekam penempatan, lalu jual + pasang ulang serentak di posisi rekaman
 -- =================================================================
--- Dipakai Unit Mower untuk merekam PlaceTower manual; hook-nya dipasang di bagian Macro
-local placeHook = { active = false, handler = nil, install = nil }
 local SPOTS_FILE = "LightHub_Spots.json"
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
@@ -3549,7 +3556,15 @@ do
                 and type(u.y) == "number" and type(u.z) == "number" then
                 local cf = nil
                 if type(u.cf) == "table" and #u.cf == 12 then cf = u.cf end
-                out[#out + 1] = { n = u.n, x = u.x, y = u.y, z = u.z, cf = cf }
+                local ys = nil
+                if type(u.ys) == "table" then
+                    ys = {}
+                    for _, v in ipairs(u.ys) do
+                        if type(v) == "number" then ys[#ys + 1] = v end
+                    end
+                    if #ys == 0 then ys = nil end
+                end
+                out[#out + 1] = { n = u.n, x = u.x, y = u.y, z = u.z, cf = cf, ys = ys }
             end
         end
         return out
@@ -4022,9 +4037,16 @@ do
             local folder = workspace:FindFirstChild("Towers")
             if folder then
                 for _, t in ipairs(folder:GetChildren()) do
-                    if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                    if t.Name ~= UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
                         local ok, p = pcall(function() return t:GetPivot().Position end)
-                        if ok then out[#out + 1] = { tower = t, name = t.Name, pos = p } end
+                        if ok then
+                            local rec = placeHook.registry[t]
+                            out[#out + 1] = {
+                                tower = t, name = t.Name, pos = p,
+                                rx = rec and rec[1] or p.X, rz = rec and rec[3] or p.Z,
+                                exact = rec,
+                            }
+                        end
                     end
                 end
             end
@@ -4091,7 +4113,7 @@ do
             for _, tg in ipairs(targets) do
                 local done = false
                 for i, u in ipairs(pool) do
-                    if u.name == tg.n and flat(u.pos, tg.x, tg.z) < 1.5 then
+                    if u.name == tg.n and flat({ X = u.rx, Z = u.rz }, tg.x, tg.z) < 1.5 then
                         table.remove(pool, i)
                         done = true
                         break
@@ -4104,7 +4126,7 @@ do
                 local bi, bd
                 for i, u in ipairs(pool) do
                     if u.name == tg.n then
-                        local d = flat(u.pos, tg.x, tg.z)
+                        local d = flat({ X = u.rx, Z = u.rz }, tg.x, tg.z)
                         if not bd or d < bd then bi, bd = i, d end
                     end
                 end
@@ -4119,6 +4141,30 @@ do
         end
 
         local running = false
+        local learnedKind = {} -- nama unit -> jenis tinggi yang diterima server
+
+        -- Rekaman: CFrame persis dari game. Default: beberapa kandidat tinggi,
+        -- dicoba bergantian sampai server menerima ("Not allowed this area" -> coba berikutnya)
+        local function candidatesFor(tg)
+            if type(tg.cf) == "table" and #tg.cf == 12 then
+                return { { cf = targetCF(tg), kind = 0 } }
+            end
+            local list, seen = {}, {}
+            local function add(kind, y)
+                if type(y) ~= "number" then return end
+                local key = math.floor(y * 10 + 0.5)
+                if seen[key] then return end
+                seen[key] = true
+                list[#list + 1] = { cf = CFrame.new(tg.x, y, tg.z), kind = kind }
+            end
+            local order = { 1, 2, 3 }
+            local lk = learnedKind[tg.n]
+            if lk then order = { lk, lk % 3 + 1, (lk + 1) % 3 + 1 } end
+            local ys = type(tg.ys) == "table" and tg.ys or { tg.y }
+            for _, k in ipairs(order) do add(k, ys[k]) end
+            if #list == 0 then add(1, tg.y) end
+            return list
+        end
 
         -- Jual semua -> pasang semua -> upgrade semua, masing-masing serentak
         local function execute(label, targets)
@@ -4154,19 +4200,21 @@ do
             parallel(moves, function(m)
                 if not m.sold then return end
                 local tg = m.tg
-                local cf = targetCF(tg)
-                for _ = 1, 20 do -- menunggu cash cukup, maksimal sekitar 25 detik
-                    invoke("PlaceTower", tg.n, cf)
+                local cands = candidatesFor(tg)
+                for attempt = 1, 24 do -- juga menunggu cash cukup, maksimal sekitar 30 detik
+                    local cand = cands[(attempt - 1) % #cands + 1]
+                    invoke("PlaceTower", tg.n, cand.cf)
                     for _ = 1, 8 do
                         task.wait(0.1)
                         m.placed = nearestTower(tg.n, tg.x, tg.z, 3)
                         if m.placed then break end
                     end
-                    if m.placed then break end
-                    task.wait(0.4)
-                end
-                if m.placed then
-                    pushMacro({ t = "place", n = tg.n, cf = { cf:GetComponents() } })
+                    if m.placed then
+                        if cand.kind > 0 then learnedKind[tg.n] = cand.kind end
+                        pushMacro({ t = "place", n = tg.n, cf = { cand.cf:GetComponents() } })
+                        break
+                    end
+                    task.wait(0.3)
                 end
             end, 40)
 
@@ -4202,13 +4250,29 @@ do
         -- ---------- Default (posisi awal) ----------
         local function snapshotHome()
             spots.home = {}
+            local exact = 0
             for _, u in ipairs(myTowers()) do
-                spots.home[#spots.home + 1] = {
-                    n = u.name, x = u.pos.X, y = groundOf(u.pos), z = u.pos.Z,
-                }
+                if u.exact then
+                    -- posisi persis dari saat unit ditempatkan (tercatat di belakang layar)
+                    exact = exact + 1
+                    spots.home[#spots.home + 1] = {
+                        n = u.name, x = u.exact[1], y = u.exact[2], z = u.exact[3],
+                        cf = u.exact,
+                    }
+                else
+                    -- ditempatkan sebelum script jalan: perkiraan dari kandidat tinggi
+                    local ground = groundOf(u.pos)
+                    local bottom = u.pos.Y
+                    local okb, bcf, bsize = pcall(function() return u.tower:GetBoundingBox() end)
+                    if okb and bcf and bsize then bottom = bcf.Position.Y - bsize.Y / 2 end
+                    spots.home[#spots.home + 1] = {
+                        n = u.name, x = u.pos.X, y = ground, z = u.pos.Z,
+                        ys = { ground, bottom, u.pos.Y },
+                    }
+                end
             end
             saveSpots()
-            return #spots.home
+            return #spots.home, exact
         end
 
         local function backHome()
@@ -4228,31 +4292,86 @@ do
         local recBuf, recOn = {}, false
         local recSwitch
 
+        local function towerSet()
+            local set = {}
+            for _, u in ipairs(myTowers()) do set[u.tower] = true end
+            return set
+        end
+
+        -- Cari unit baru hasil penempatan. before = daftar unit sebelum penempatan (kalau ada),
+        -- kalau tidak, ambil unit terdekat yang belum tercatat.
+        local function findPlaced(n, x, z, before)
+            local best, bd
+            for _, u in ipairs(myTowers()) do
+                if u.name == n and not placeHook.registry[u.tower]
+                    and not (before and before[u.tower]) then
+                    local d = flat(u.pos, x, z)
+                    if d <= 3 and (not bd or d < bd) then best, bd = u.tower, d end
+                end
+            end
+            return best
+        end
+
+        -- Dipanggil dari invoke() untuk penempatan oleh script sendiri
+        placeHook.register = function(n, cf)
+            if type(n) ~= "string" or typeof(cf) ~= "CFrame" then return end
+            local before = towerSet()
+            local comps = { cf:GetComponents() }
+            for _ = 1, 10 do
+                task.wait(0.25)
+                local tw = findPlaced(n, comps[1], comps[3], before)
+                if tw then
+                    placeHook.registry[tw] = comps
+                    return
+                end
+            end
+        end
+
+        -- Dipanggil dari hook untuk penempatan manual pemain (selalu aktif di belakang layar)
         placeHook.handler = function(nm, a1, a2)
-            if not recOn then return end
             if nm == "PlaceTower" then
-                if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
+                if type(a1) ~= "string" or typeof(a2) ~= "CFrame" or a1 == UTTM_NAME then return end
                 local comps = { a2:GetComponents() }
                 for _ = 1, 8 do
                     task.wait(0.25)
-                    if nearestTower(a1, comps[1], comps[3], 3) then
-                        recBuf[#recBuf + 1] = { n = a1, x = comps[1], y = comps[2], z = comps[3], cf = comps }
-                        say("Recording: " .. #recBuf .. " units", C.text)
+                    local tw = findPlaced(a1, comps[1], comps[3], nil)
+                    if tw then
+                        placeHook.registry[tw] = comps
+                        if recOn then
+                            recBuf[#recBuf + 1] = { n = a1, x = comps[1], y = comps[2], z = comps[3], cf = comps }
+                            say("Recording: " .. #recBuf .. " units", C.text)
+                        end
                         return
                     end
                 end
             elseif nm == "SellTower" then
                 if typeof(a1) ~= "Instance" then return end
-                local ok, p = pcall(function() return a1:GetPivot().Position end)
-                if not ok then return end
-                for i = #recBuf, 1, -1 do
-                    if recBuf[i].n == a1.Name and flat(p, recBuf[i].x, recBuf[i].z) <= 3 then
-                        table.remove(recBuf, i)
+                placeHook.registry[a1] = nil
+                if recOn then
+                    local ok, p = pcall(function() return a1:GetPivot().Position end)
+                    if not ok then return end
+                    for i = #recBuf, 1, -1 do
+                        if recBuf[i].n == a1.Name and flat(p, recBuf[i].x, recBuf[i].z) <= 3 then
+                            table.remove(recBuf, i)
+                        end
                     end
+                    say("Recording: " .. #recBuf .. " units", C.text)
                 end
-                say("Recording: " .. #recBuf .. " units", C.text)
             end
         end
+
+        -- Pasang hook begitu bagian Macro siap; setelah itu terus mencatat di belakang layar
+        task.spawn(function()
+            for _ = 1, 60 do
+                if placeHook.install then
+                    local ok, res = pcall(placeHook.install)
+                    placeHook.ready = ok and res == true
+                    placeHook.active = placeHook.ready
+                    return
+                end
+                task.wait(0.5)
+            end
+        end)
 
         local rebuildMower, refreshMowerFloat
 
@@ -4269,20 +4388,18 @@ do
         end
 
         local function startRecording()
-            if not (placeHook.install and placeHook.install()) then
+            if not placeHook.ready then
                 notify("Unit Mower", "Recording isn't supported on this executor", 4)
                 return false
             end
             recBuf = {}
             recOn = true
-            placeHook.active = true
             say("Recording: place your units", C.text)
             return true
         end
 
         local function stopRecording()
             recOn = false
-            placeHook.active = false
             if #recBuf == 0 then
                 say("Nothing recorded", C.muted)
                 return
@@ -4364,9 +4481,11 @@ do
                 Position = UDim2.new(0, 176, 0, 32),
             }, hasHome and "Edit" or "Save", function()
                 if hasHome and not confirmEdit() then return end
-                local n = snapshotHome()
-                say("Default saved (" .. n .. " units)", C.text)
-                notify("Unit Mower", "Default saved: " .. n .. " units", 3)
+                local n, exact = snapshotHome()
+                local msg = n .. " units"
+                if exact < n then msg = msg .. ", " .. (n - exact) .. " estimated" end
+                say("Default saved (" .. msg .. ")", C.text)
+                notify("Unit Mower", "Default saved: " .. msg, 4)
                 rebuildMower()
                 refreshMowerFloat()
             end, GREEN_A, GREEN_B)
@@ -4797,10 +4916,27 @@ do
         return true
     end
 
+    -- Aksi UTTM dibuang dari macro (UTTM tidak bisa dijual dan memakai sistem sendiri)
+    local function stripUttm(m)
+        local keep, removed = {}, 0
+        for _, a in ipairs(m.actions) do
+            if a.t ~= "wait" and a.n == UTTM_NAME then
+                removed = removed + 1
+            else
+                keep[#keep + 1] = a
+            end
+        end
+        m.actions = keep
+        return removed
+    end
+
     local function loadMacro(name)
         if not (canFile and name ~= "" and isfile(macroFile(name))) then return nil end
         local ok, data = pcall(function() return HttpService:JSONDecode(readfile(macroFile(name))) end)
-        if ok and validMacro(data) then return data end
+        if ok and validMacro(data) then
+            stripUttm(data)
+            return data
+        end
         return nil
     end
 
@@ -4862,6 +4998,7 @@ do
 
         if nm == "PlaceTower" then
             if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
+            if a1 == UTTM_NAME then return end -- UTTM tidak direkam
             local comps = { a2:GetComponents() }
             act = { t = "place", n = a1, cf = comps, w = w }
             local ok = false
@@ -4875,6 +5012,7 @@ do
             if not ok then return end
         else
             if typeof(a1) ~= "Instance" then return end
+            if a1.Name == UTTM_NAME then return end -- UTTM tidak direkam
             local okp, pos = pcall(function() return a1:GetPivot().Position end)
             if not okp then return end
             local lvl = a1:GetAttribute("Level")
@@ -4906,7 +5044,7 @@ do
     -- Aksi dari Unit Mover (sell + place + upgrade) ikut direkam saat Record aktif
     mstate.push = function(act)
         local rec = mstate.rec
-        if not rec then return end
+        if not rec or act.n == UTTM_NAME then return end
         act.ts = os.clock()
         table.insert(rec.actions, act)
         table.sort(rec.actions, function(x, y) return x.ts < y.ts end)
@@ -5150,11 +5288,13 @@ do
             notify("Macro", "That isn't a valid macro JSON.", 4)
             return
         end
+        local removed = stripUttm(data)
         staged = data
         if nameBox.Text == "" and type(data.name) == "string" then
             nameBox.Text = cleanName(data.name)
         end
-        notify("Macro", "Imported " .. #data.actions .. " actions. Enter a name and press Save.", 4)
+        local extra = removed > 0 and (" (" .. removed .. " UTTM actions skipped)") or ""
+        notify("Macro", "Imported " .. #data.actions .. " actions" .. extra .. ". Enter a name and press Save.", 4)
     end)
 
     createButton(imp.body, {
@@ -5263,8 +5403,8 @@ do
         end
 
         local done = false
-        if a.t == "wait" then
-            done = true
+        if a.t == "wait" or a.n == UTTM_NAME then
+            done = true -- jeda, atau aksi UTTM yang dilewati
         elseif a.t == "place" then
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true

@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v4.1
+-- LIGHTN HUB v4.2
 -- Tab: Main | Gacha | Endless | AFK | Settings
 -- =================================================================
 
@@ -14,7 +14,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.1"
+local VERSION = "4.2"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -365,6 +365,39 @@ end
 -- tiap unit. Hook-nya dipasang di bagian Macro dan berjalan berdampingan dengan recorder macro.
 -- Penghubung antar blok Endless (lihat bagian akhir blok Endless)
 local EP = {}
+
+-- Apakah animasi buka crate / lucky block / summon masih berjalan?
+-- Game memasang penanda _ExclusiveCrateOpening di player selama animasi, dan
+-- handler animasi bawaan-lah yang menghapusnya di akhir. Saat Skip Animation aktif
+-- handler itu dimatikan, jadi penandanya tidak pernah terhapus dan auto-open
+-- macet di "Animation playing". Solusinya:
+--   - Skip Animation aktif: tidak ada animasi yang perlu ditunggu, penanda dibersihkan.
+--   - Skip mati: tunggu normal, tapi kalau penanda menempel > 12 detik anggap macet
+--     dan bersihkan juga.
+do
+    local since = nil
+    local function clearFlag()
+        pcall(function() LocalPlayer:SetAttribute("_ExclusiveCrateOpening", nil) end)
+    end
+    EP.animBusy = function()
+        if not LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
+            since = nil
+            return false
+        end
+        if settings.skipAnim and getconnections then
+            clearFlag()
+            since = nil
+            return false
+        end
+        since = since or os.clock()
+        if os.clock() - since > 12 then
+            clearFlag()
+            since = nil
+            return false
+        end
+        return true
+    end
+end
 
 local placeHook = { active = false, ready = false, handler = nil, install = nil,
     register = nil, registry = setmetatable({}, { __mode = "k" }) }
@@ -2669,7 +2702,7 @@ do
             summonFails = 0
             return 0.4
         end
-        if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
+        if EP.animBusy() then
             fSummon.setNote("Animation playing", C.warn)
             return 1
         end
@@ -2775,7 +2808,7 @@ do
             fCrate.setNote("Select a crate", C.warn)
             return 1
         end
-        if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
+        if EP.animBusy() then
             fCrate.setNote("Animation playing", C.warn)
             return 1
         end
@@ -2832,7 +2865,7 @@ do
             fLucky.setNote("Select a block", C.warn)
             return 1
         end
-        if LocalPlayer:GetAttribute("_ExclusiveCrateOpening") then
+        if EP.animBusy() then
             fLucky.setNote("Animation playing", C.warn)
             return 1
         end
@@ -3816,13 +3849,13 @@ do
         }, rows)
 
         createButton(rows, {
-            Size = UDim2.new(0, 92, 0, 28),
-            Position = UDim2.new(0, 70, 0, y),
+            Size = UDim2.new(1, -226, 0, 28),
+            Position = UDim2.new(0, 66, 0, y),
         }, "Teleport", function() onTeleport(s) end)
 
         createButton(rows, {
-            Size = UDim2.new(0, 92, 0, 28),
-            Position = UDim2.new(0, 166, 0, y),
+            Size = UDim2.new(0, 88, 0, 28),
+            Position = UDim2.new(1, -156, 0, y),
         }, "Select", function()
             startPick(function(pos)
                 s.x, s.y, s.z = pos.X, pos.Y, pos.Z
@@ -3834,8 +3867,8 @@ do
         local armed = false
         local del
         del = createButton(rows, {
-            Size = UDim2.new(0, 56, 0, 28),
-            Position = UDim2.new(0, 262, 0, y),
+            Size = UDim2.new(0, 60, 0, 28),
+            Position = UDim2.new(1, -60, 0, y),
         }, "Delete", function()
             if not armed then
                 armed = true
@@ -5075,248 +5108,6 @@ do
 end
 
 -- =================================================================
--- Endless: Anti Lag (toggle, agresif)
--- Hanya mengubah tampilan di sisi client. MUSUH TIDAK DISEMBUNYIKAN: bodi,
--- posisi, dan health bar tetap terlihat supaya bisa dipantau.
---   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan
---   - Decal/Texture disembunyikan, material dibuat polos, bayangan dimatikan,
---     mesh diturunkan ke detail terendah, kualitas grafik diturunkan
---   - Terrain: dekorasi rumput dan gelombang air dimatikan
---   - Animasi dan gerakan musuh tidak disentuh sama sekali
--- Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
--- Objek baru (musuh yang baru muncul) ikut ditangani lewat DescendantAdded.
--- =================================================================
-do
-    local page = tabs["Endless"].page
-    local Lighting = game:GetService("Lighting")
-
-    local FX = {
-        ParticleEmitter = true, Trail = true, Beam = true, Smoke = true,
-        Fire = true, Sparkles = true, PointLight = true, SpotLight = true,
-        SurfaceLight = true, Highlight = true,
-    }
-    local POST = {
-        BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
-        ColorCorrectionEffect = true, DepthOfFieldEffect = true, Atmosphere = true,
-    }
-
-    local saved = setmetatable({}, { __mode = "k" })     -- instance -> nilai asli
-    local npcs = setmetatable({}, { __mode = "k" })      -- Humanoid musuh -> true
-    local postSaved = {}
-    local envSaved = nil
-    local conn = nil
-    local active = false
-    local token = 0
-    local touched, crowd = 0, 0
-    local feat
-
-    local function inMyCharacter(inst)
-        local ch = LocalPlayer.Character
-        return ch ~= nil and inst:IsDescendantOf(ch)
-    end
-
-    local function handle(inst)
-        if saved[inst] then return end
-        local cn = inst.ClassName
-        if FX[cn] then
-            saved[inst] = { kind = "fx", v = inst.Enabled }
-            inst.Enabled = false
-            touched = touched + 1
-        elseif cn == "Explosion" then
-            saved[inst] = { kind = "expl", v = inst.Visible }
-            inst.Visible = false
-            touched = touched + 1
-        elseif cn == "Decal" or cn == "Texture" then
-            if inMyCharacter(inst) then return end
-            saved[inst] = { kind = "decal", v = inst.Transparency }
-            inst.Transparency = 1
-            touched = touched + 1
-        elseif cn == "Humanoid" then
-            local tw = workspace:FindFirstChild("Towers")
-            if inMyCharacter(inst) or (tw and inst:IsDescendantOf(tw)) then return end
-            if not Players:GetPlayerFromCharacter(inst.Parent) then npcs[inst] = true end
-        elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
-            if inMyCharacter(inst) then return end
-            local rec = { kind = "part", m = inst.Material, s = inst.CastShadow, r = inst.Reflectance }
-            if inst:IsA("MeshPart") then rec.f = inst.RenderFidelity end
-            saved[inst] = rec
-            inst.CastShadow = false
-            inst.Reflectance = 0
-            if inst.Material ~= Enum.Material.SmoothPlastic then
-                inst.Material = Enum.Material.SmoothPlastic
-            end
-            if rec.f then inst.RenderFidelity = Enum.RenderFidelity.Performance end
-            touched = touched + 1
-        end
-    end
-
-    local function restore(inst, rec)
-        if not inst.Parent then return end
-        local k = rec.kind
-        if k == "fx" then
-            inst.Enabled = rec.v
-        elseif k == "expl" then
-            inst.Visible = rec.v
-        elseif k == "decal" then
-            inst.Transparency = rec.v
-        else
-            inst.CastShadow = rec.s
-            inst.Reflectance = rec.r
-            inst.Material = rec.m
-            if rec.f then inst.RenderFidelity = rec.f end
-        end
-    end
-
-    -- Pengaturan render global. `settings` di script ini adalah tabel milik hub,
-    -- jadi yang asli diambil lewat getrenv bila ada.
-    local function renderSettings()
-        local ok, r = pcall(function() return getrenv().settings().Rendering end)
-        if ok then return r end
-        return nil
-    end
-
-    local function enable()
-        token = token + 1
-        local my = token
-        active = true
-        touched, crowd = 0, 0
-
-        if not envSaved then
-            envSaved = {}
-            pcall(function() envSaved.shadows = Lighting.GlobalShadows end)
-            pcall(function()
-                local ugs = UserSettings():GetService("UserGameSettings")
-                envSaved.quality = ugs.SavedQualityLevel
-            end)
-            local r = renderSettings()
-            if r then
-                pcall(function() envSaved.mesh = r.MeshPartDetailLevel end)
-                pcall(function() envSaved.rq = r.QualityLevel end)
-            end
-            local t = workspace:FindFirstChildOfClass("Terrain")
-            if t then
-                pcall(function()
-                    envSaved.terrain = {
-                        t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance,
-                    }
-                end)
-            end
-        end
-
-        pcall(function() Lighting.GlobalShadows = false end)
-        pcall(function()
-            UserSettings():GetService("UserGameSettings").SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-        end)
-        local r = renderSettings()
-        if r then
-            pcall(function() r.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04 end)
-            pcall(function() r.QualityLevel = Enum.QualityLevel.Level01 end)
-        end
-        local t = workspace:FindFirstChildOfClass("Terrain")
-        if t then
-            pcall(function()
-                t.Decoration = false
-                t.WaterWaveSize = 0
-                t.WaterWaveSpeed = 0
-                t.WaterReflectance = 0
-            end)
-        end
-        for _, e in ipairs(Lighting:GetChildren()) do
-            if POST[e.ClassName] and postSaved[e] == nil then
-                pcall(function()
-                    postSaved[e] = e.Enabled
-                    e.Enabled = false
-                end)
-            end
-        end
-
-        if conn then conn:Disconnect() end
-        conn = workspace.DescendantAdded:Connect(function(inst)
-            if active then pcall(handle, inst) end
-        end)
-
-        -- Sapuan awal dipecah per potongan supaya game tidak membeku sesaat
-        task.spawn(function()
-            local list = workspace:GetDescendants()
-            for i, inst in ipairs(list) do
-                if my ~= token or not active then return end
-                pcall(handle, inst)
-                if i % 250 == 0 then task.wait() end
-            end
-        end)
-    end
-
-    local function disable()
-        token = token + 1
-        active = false
-        if conn then conn:Disconnect() conn = nil end
-        if envSaved then
-            local e = envSaved
-            envSaved = nil
-            pcall(function() if e.shadows ~= nil then Lighting.GlobalShadows = e.shadows end end)
-            pcall(function()
-                if e.quality then
-                    UserSettings():GetService("UserGameSettings").SavedQualityLevel = e.quality
-                end
-            end)
-            local r = renderSettings()
-            if r then
-                pcall(function() if e.mesh then r.MeshPartDetailLevel = e.mesh end end)
-                pcall(function() if e.rq then r.QualityLevel = e.rq end end)
-            end
-            local t = workspace:FindFirstChildOfClass("Terrain")
-            if t and e.terrain then
-                pcall(function()
-                    t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance =
-                        e.terrain[1], e.terrain[2], e.terrain[3], e.terrain[4]
-                end)
-            end
-        end
-        for e, v in pairs(postSaved) do
-            pcall(function() if e.Parent then e.Enabled = v end end)
-            postSaved[e] = nil
-        end
-        local my = token
-        task.spawn(function()
-            local n = 0
-            for inst, rec in pairs(saved) do
-                if my ~= token then return end   -- dinyalakan lagi: hentikan pemulihan
-                pcall(restore, inst, rec)
-                saved[inst] = nil
-                n = n + 1
-                if n % 250 == 0 then task.wait() end
-            end
-        end)
-        if feat then feat.setNote("") end
-    end
-
-    feat = createFeature(page, "Anti Lag", {
-        initial = flags.antiLag,
-        onToggle = function(v)
-            setFlag("antiLag", v)
-            if v then enable() else disable() end
-        end,
-    })
-    if flags.antiLag then enable() end
-
-    -- Hanya menghitung musuh untuk ditampilkan di catatan card
-    runLoop(function()
-        if not active then return 1 end
-        local n = 0
-        for h in pairs(npcs) do
-            if h.Parent then n = n + 1 else npcs[h] = nil end
-        end
-        crowd = n
-        if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
-        return 1
-    end)
-
-    EP.antiLagOff = function()
-        if active then pcall(disable) end
-    end
-end
-
--- =================================================================
 -- Macro: rekam dan putar ulang strategi
 --   PlaceTower(nama, CFrame)   UpgradeTower(tower)   SellTower(tower)
 -- Rekaman ditulis ke file LightHub_Macro_<nama>.json (daftar nama di
@@ -5467,11 +5258,12 @@ do
         return true
     end
 
-    -- Aksi UTTM dibuang dari macro (UTTM tidak bisa dijual dan memakai sistem sendiri)
+    -- Place dan upgrade UTTM ikut direkam. Hanya jual UTTM yang dibuang (UTTM tidak
+    -- bisa dijual). Ability dan teleport UTTM tidak lewat remote yang direkam.
     local function stripUttm(m)
         local keep, removed = {}, 0
         for _, a in ipairs(m.actions) do
-            if a.t ~= "wait" and a.n == UTTM_NAME then
+            if a.t == "sell" and a.n == UTTM_NAME then
                 removed = removed + 1
             else
                 keep[#keep + 1] = a
@@ -5502,6 +5294,8 @@ do
 
     -- ---------------- Tower ----------------
     local function findTower(name, x, z, r)
+        -- UTTM hanya satu dan bisa berpindah lewat Teleport, jadi dicari lewat nama saja
+        if name == UTTM_NAME and EP.findUttm then return EP.findUttm() end
         local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
         local best, bestD
@@ -5549,7 +5343,6 @@ do
 
         if nm == "PlaceTower" then
             if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
-            if a1 == UTTM_NAME then return end -- UTTM tidak direkam
             local comps = { a2:GetComponents() }
             act = { t = "place", n = a1, cf = comps, w = w }
             local ok = false
@@ -5563,7 +5356,7 @@ do
             if not ok then return end
         else
             if typeof(a1) ~= "Instance" then return end
-            if a1.Name == UTTM_NAME then return end -- UTTM tidak direkam
+            if a1.Name == UTTM_NAME and nm == "SellTower" then return end -- UTTM tidak bisa dijual
             local okp, pos = pcall(function() return a1:GetPivot().Position end)
             if not okp then return end
             local lvl = a1:GetAttribute("Level")
@@ -5592,7 +5385,8 @@ do
     end
     mstate.handler = onCall
 
-    -- Aksi dari Unit Mover (sell + place + upgrade) ikut direkam saat Record aktif
+    -- Aksi dari Unit Replace (sell + place + upgrade) ikut direkam saat Record aktif.
+    -- UTTM sengaja tidak ikut direkam dari sini.
     mstate.push = function(act)
         local rec = mstate.rec
         if not rec or act.n == UTTM_NAME then return end
@@ -5844,7 +5638,7 @@ do
         if nameBox.Text == "" and type(data.name) == "string" then
             nameBox.Text = cleanName(data.name)
         end
-        local extra = removed > 0 and (" (" .. removed .. " UTTM actions skipped)") or ""
+        local extra = removed > 0 and (" (" .. removed .. " UTTM sell actions skipped)") or ""
         notify("Macro", "Imported " .. #data.actions .. " actions" .. extra .. ". Enter a name and press Save.", 4)
     end)
 
@@ -5954,8 +5748,8 @@ do
         end
 
         local done = false
-        if a.t == "wait" or a.n == UTTM_NAME then
-            done = true -- jeda, atau aksi UTTM yang dilewati
+        if a.t == "wait" or (a.n == UTTM_NAME and a.t == "sell") then
+            done = true -- jeda, atau jual UTTM yang dilewati
         elseif a.t == "place" then
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true
@@ -6427,6 +6221,248 @@ do
         end,
     })
     if not getconnections then fSkipAnim.setNote("Spin only", C.muted) end
+
+    -- =================================================================
+    -- Settings: Anti Lag (toggle, agresif)
+    -- Hanya mengubah tampilan di sisi client. MUSUH TIDAK DISEMBUNYIKAN: bodi,
+    -- posisi, dan health bar tetap terlihat supaya bisa dipantau.
+    --   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan
+    --   - Decal/Texture disembunyikan, material dibuat polos, bayangan dimatikan,
+    --     mesh diturunkan ke detail terendah, kualitas grafik diturunkan
+    --   - Terrain: dekorasi rumput dan gelombang air dimatikan
+    --   - Animasi dan gerakan musuh tidak disentuh sama sekali
+    -- Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
+    -- Objek baru (musuh yang baru muncul) ikut ditangani lewat DescendantAdded.
+    -- =================================================================
+    do
+        local page = tabs["Settings"].page
+        local Lighting = game:GetService("Lighting")
+
+        local FX = {
+            ParticleEmitter = true, Trail = true, Beam = true, Smoke = true,
+            Fire = true, Sparkles = true, PointLight = true, SpotLight = true,
+            SurfaceLight = true, Highlight = true,
+        }
+        local POST = {
+            BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
+            ColorCorrectionEffect = true, DepthOfFieldEffect = true, Atmosphere = true,
+        }
+
+        local saved = setmetatable({}, { __mode = "k" })     -- instance -> nilai asli
+        local npcs = setmetatable({}, { __mode = "k" })      -- Humanoid musuh -> true
+        local postSaved = {}
+        local envSaved = nil
+        local conn = nil
+        local active = false
+        local token = 0
+        local touched, crowd = 0, 0
+        local feat
+
+        local function inMyCharacter(inst)
+            local ch = LocalPlayer.Character
+            return ch ~= nil and inst:IsDescendantOf(ch)
+        end
+
+        local function handle(inst)
+            if saved[inst] then return end
+            local cn = inst.ClassName
+            if FX[cn] then
+                saved[inst] = { kind = "fx", v = inst.Enabled }
+                inst.Enabled = false
+                touched = touched + 1
+            elseif cn == "Explosion" then
+                saved[inst] = { kind = "expl", v = inst.Visible }
+                inst.Visible = false
+                touched = touched + 1
+            elseif cn == "Decal" or cn == "Texture" then
+                if inMyCharacter(inst) then return end
+                saved[inst] = { kind = "decal", v = inst.Transparency }
+                inst.Transparency = 1
+                touched = touched + 1
+            elseif cn == "Humanoid" then
+                local tw = workspace:FindFirstChild("Towers")
+                if inMyCharacter(inst) or (tw and inst:IsDescendantOf(tw)) then return end
+                if not Players:GetPlayerFromCharacter(inst.Parent) then npcs[inst] = true end
+            elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
+                if inMyCharacter(inst) then return end
+                local rec = { kind = "part", m = inst.Material, s = inst.CastShadow, r = inst.Reflectance }
+                if inst:IsA("MeshPart") then rec.f = inst.RenderFidelity end
+                saved[inst] = rec
+                inst.CastShadow = false
+                inst.Reflectance = 0
+                if inst.Material ~= Enum.Material.SmoothPlastic then
+                    inst.Material = Enum.Material.SmoothPlastic
+                end
+                if rec.f then inst.RenderFidelity = Enum.RenderFidelity.Performance end
+                touched = touched + 1
+            end
+        end
+
+        local function restore(inst, rec)
+            if not inst.Parent then return end
+            local k = rec.kind
+            if k == "fx" then
+                inst.Enabled = rec.v
+            elseif k == "expl" then
+                inst.Visible = rec.v
+            elseif k == "decal" then
+                inst.Transparency = rec.v
+            else
+                inst.CastShadow = rec.s
+                inst.Reflectance = rec.r
+                inst.Material = rec.m
+                if rec.f then inst.RenderFidelity = rec.f end
+            end
+        end
+
+        -- Pengaturan render global. `settings` di script ini adalah tabel milik hub,
+        -- jadi yang asli diambil lewat getrenv bila ada.
+        local function renderSettings()
+            local ok, r = pcall(function() return getrenv().settings().Rendering end)
+            if ok then return r end
+            return nil
+        end
+
+        local function enable()
+            token = token + 1
+            local my = token
+            active = true
+            touched, crowd = 0, 0
+
+            if not envSaved then
+                envSaved = {}
+                pcall(function() envSaved.shadows = Lighting.GlobalShadows end)
+                pcall(function()
+                    local ugs = UserSettings():GetService("UserGameSettings")
+                    envSaved.quality = ugs.SavedQualityLevel
+                end)
+                local r = renderSettings()
+                if r then
+                    pcall(function() envSaved.mesh = r.MeshPartDetailLevel end)
+                    pcall(function() envSaved.rq = r.QualityLevel end)
+                end
+                local t = workspace:FindFirstChildOfClass("Terrain")
+                if t then
+                    pcall(function()
+                        envSaved.terrain = {
+                            t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance,
+                        }
+                    end)
+                end
+            end
+
+            pcall(function() Lighting.GlobalShadows = false end)
+            pcall(function()
+                UserSettings():GetService("UserGameSettings").SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+            end)
+            local r = renderSettings()
+            if r then
+                pcall(function() r.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level04 end)
+                pcall(function() r.QualityLevel = Enum.QualityLevel.Level01 end)
+            end
+            local t = workspace:FindFirstChildOfClass("Terrain")
+            if t then
+                pcall(function()
+                    t.Decoration = false
+                    t.WaterWaveSize = 0
+                    t.WaterWaveSpeed = 0
+                    t.WaterReflectance = 0
+                end)
+            end
+            for _, e in ipairs(Lighting:GetChildren()) do
+                if POST[e.ClassName] and postSaved[e] == nil then
+                    pcall(function()
+                        postSaved[e] = e.Enabled
+                        e.Enabled = false
+                    end)
+                end
+            end
+
+            if conn then conn:Disconnect() end
+            conn = workspace.DescendantAdded:Connect(function(inst)
+                if active then pcall(handle, inst) end
+            end)
+
+            -- Sapuan awal dipecah per potongan supaya game tidak membeku sesaat
+            task.spawn(function()
+                local list = workspace:GetDescendants()
+                for i, inst in ipairs(list) do
+                    if my ~= token or not active then return end
+                    pcall(handle, inst)
+                    if i % 250 == 0 then task.wait() end
+                end
+            end)
+        end
+
+        local function disable()
+            token = token + 1
+            active = false
+            if conn then conn:Disconnect() conn = nil end
+            if envSaved then
+                local e = envSaved
+                envSaved = nil
+                pcall(function() if e.shadows ~= nil then Lighting.GlobalShadows = e.shadows end end)
+                pcall(function()
+                    if e.quality then
+                        UserSettings():GetService("UserGameSettings").SavedQualityLevel = e.quality
+                    end
+                end)
+                local r = renderSettings()
+                if r then
+                    pcall(function() if e.mesh then r.MeshPartDetailLevel = e.mesh end end)
+                    pcall(function() if e.rq then r.QualityLevel = e.rq end end)
+                end
+                local t = workspace:FindFirstChildOfClass("Terrain")
+                if t and e.terrain then
+                    pcall(function()
+                        t.Decoration, t.WaterWaveSize, t.WaterWaveSpeed, t.WaterReflectance =
+                            e.terrain[1], e.terrain[2], e.terrain[3], e.terrain[4]
+                    end)
+                end
+            end
+            for e, v in pairs(postSaved) do
+                pcall(function() if e.Parent then e.Enabled = v end end)
+                postSaved[e] = nil
+            end
+            local my = token
+            task.spawn(function()
+                local n = 0
+                for inst, rec in pairs(saved) do
+                    if my ~= token then return end   -- dinyalakan lagi: hentikan pemulihan
+                    pcall(restore, inst, rec)
+                    saved[inst] = nil
+                    n = n + 1
+                    if n % 250 == 0 then task.wait() end
+                end
+            end)
+            if feat then feat.setNote("") end
+        end
+
+        feat = createFeature(page, "Anti Lag", {
+            initial = flags.antiLag,
+            onToggle = function(v)
+                setFlag("antiLag", v)
+                if v then enable() else disable() end
+            end,
+        })
+        if flags.antiLag then enable() end
+
+        -- Hanya menghitung musuh untuk ditampilkan di catatan card
+        runLoop(function()
+            if not active then return 1 end
+            local n = 0
+            for h in pairs(npcs) do
+                if h.Parent then n = n + 1 else npcs[h] = nil end
+            end
+            crowd = n
+            if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
+            return 1
+        end)
+
+        EP.antiLagOff = function()
+            if active then pcall(disable) end
+        end
+    end
 
     local fRerun
     fRerun = createFeature(page, "Re-run after teleport", {

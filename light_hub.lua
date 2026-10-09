@@ -1,6 +1,7 @@
 -- =================================================================
--- LIGHTN HUB v4.2
--- Tab: Main | Gacha | Endless | AFK | Settings
+-- LIGHTN HUB v4.3
+-- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | AFK
+-- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
 
 local Players = game:GetService("Players")
@@ -14,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.2"
+local VERSION = "4.3"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -124,7 +125,7 @@ local settings = {
     claimEnabled = false,
     skipAnim = false,
     fluidBg = true,
-    rerun = false,
+    autoMinimize = false,
 }
 
 local FLAG_DEFAULTS = {
@@ -163,7 +164,7 @@ local conns = {}
 local function notify(sub, txt, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = "Lightn Hub • " .. sub,
+            Title = "Lightn Hub | " .. sub,
             Text = txt,
             Duration = dur or 3,
         })
@@ -222,7 +223,7 @@ local function saveSettings()
         upgradeDelay = settings.upgradeDelay,
         claimEnabled = settings.claimEnabled,
         skipAnim = settings.skipAnim,
-        rerun = settings.rerun,
+        autoMinimize = settings.autoMinimize,
         flags = flags,
     }
     pcall(function()
@@ -268,7 +269,7 @@ local function loadSettings()
     if data.skipCrateAnim == true or data.skipSummonAnim == true or data.skipSpinAnim == true then
         settings.skipAnim = true
     end
-    if type(data.rerun) == "boolean" then settings.rerun = data.rerun end
+    if type(data.autoMinimize) == "boolean" then settings.autoMinimize = data.autoMinimize end
     if type(data.upgradeDelay) == "number" then
         for _, opt in ipairs(DELAY_OPTIONS) do
             if math.abs(opt.value - data.upgradeDelay) < 0.0001 then
@@ -591,7 +592,7 @@ make("Frame", {
 
 local TitleRow = make("Frame", {
     Size = UDim2.new(0, 220, 1, 0),
-    Position = UDim2.new(0, 14, 0, 0),
+    Position = UDim2.new(0, 38, 0, 0),
     BackgroundTransparency = 1,
 }, Header)
 make("UIListLayout", {
@@ -633,7 +634,55 @@ local TimerLabel = make("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Right,
 }, Header)
 
-local ui = { minimized = false }
+local ui = { minimized = false, lastTouch = os.clock() }
+
+-- Deteksi sentuhan ke GUI (klik, sentuh, geser, gulir) untuk Auto minimize.
+-- Dipasang ke semua elemen di window utama dan jendela melayang.
+function ui.poke() ui.lastTouch = os.clock() end
+function ui.watch(o)
+    if o:IsA("GuiObject") then
+        o.InputBegan:Connect(ui.poke)
+        o.InputChanged:Connect(ui.poke)
+    end
+end
+ui.watch(MainFrame)
+for _, d in ipairs(MainFrame:GetDescendants()) do ui.watch(d) end
+table.insert(conns, MainFrame.DescendantAdded:Connect(ui.watch))
+
+-- Ikon gear (putih) di kiri atas: membuka Settings. Digambar dari batang dan lingkaran,
+-- sama seperti ikon lain di hub ini. Berputar 45 derajat saat Settings terbuka.
+do
+    local btn = make("TextButton", {
+        Size = UDim2.new(0, 26, 0, 26),
+        Position = UDim2.new(0, 8, 0.5, -13),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+        BorderSizePixel = 0,
+    }, Header)
+    local icon = make("Frame", {
+        Size = UDim2.new(0, 18, 0, 18),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        BackgroundTransparency = 1,
+    }, btn)
+    local function part(w, h, rot, color, round)
+        local f = make("Frame", {
+            Size = UDim2.new(0, w, 0, h),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            Rotation = rot,
+            BackgroundColor3 = color,
+            BorderSizePixel = 0,
+        }, icon)
+        if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
+        return f
+    end
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do part(18, 4, rot, C.white) end -- 8 gigi
+    part(12, 12, 0, C.white, true)                                           -- badan
+    part(5, 5, 0, Color3.fromRGB(14, 14, 16), true)                           -- lubang tengah
+    ui.gearBtn, ui.gear = btn, icon
+end
 
 local function applyTimerVisibility()
     -- Saat diperkecil, timer selalu tampil
@@ -770,6 +819,7 @@ do
             for _, f in ipairs(innerPx) do f.BackgroundColor3 = tier.inner end
         end
     end
+    ui.streakBox, ui.sepTimer = box, sepTimer
     function ui.showMini(mini)
         box.Visible = mini
         sepTimer.Visible = mini
@@ -1746,6 +1796,10 @@ local function createFloat(title, startPos)
         end
     end))
 
+    ui.watch(f)
+    f.DescendantAdded:Connect(ui.watch)
+    for _, d in ipairs(f:GetDescendants()) do ui.watch(d) end
+
     local api = { frame = f }
     function api.setItems(items)
         for _, c in ipairs(body:GetChildren()) do c:Destroy() end
@@ -1818,50 +1872,80 @@ end
 
 -- =================================================================
 -- Halaman + sidebar
+-- Tiap halaman adalah satu ScrollingFrame. Sidebar menampilkan grup; grup yang
+-- berisi lebih dari satu halaman mendapat topbar kecil di atas halaman.
+-- Settings tidak ada di sidebar: dibuka lewat ikon gear di header.
 -- =================================================================
 local tabs = {}
-local TAB_ORDER = { "Main", "Gacha", "Inventory", "Fishing", "Endless", "Macro", "AFK", "Settings" }
+local TOPBAR_H = 30
+local nav = {
+    groups = {
+        { name = "Main", pages = { { "Main", "Main" } } },
+        { name = "Items", pages = { { "Gacha", "Gacha" }, { "Inventory", "Inventory" } } },
+        { name = "Fishing", pages = { { "Fishing", "Fishing" } } },
+        { name = "Macro", pages = { { "Macro", "Macro" }, { "Share", "Sharing" } } },
+        { name = "Endless", pages = { { "Endless", "Endless" } } },
+        { name = "AFK", pages = { { "AFK", "AFK" } } },
+    },
+    settings = { name = "Settings", pages = { { "Settings", "Settings" }, { "Profile", "Profile" } } },
+    byPage = {}, top = {}, cur = nil, lastMain = "Main", lastSettings = "Settings",
+}
+
+nav.bar = make("Frame", {
+    Size = UDim2.new(1, 0, 0, TOPBAR_H),
+    BackgroundTransparency = 1,
+    Visible = false,
+}, PageHolder)
+make("Frame", {
+    Size = UDim2.new(1, -16, 0, 1),
+    Position = UDim2.new(0, 8, 1, -1),
+    BackgroundColor3 = C.line,
+    BorderSizePixel = 0,
+}, nav.bar)
 
 local function selectTab(name)
     closeOverlay()
-    for n, t in pairs(tabs) do
-        local on = (n == name)
-        t.page.Visible = on
-        t.label.TextColor3 = on and C.white or C.muted
-        t.item.BackgroundTransparency = on and 0 or 1
-        t.bar.Visible = on
+    local g = nav.byPage[name]
+    if not g then return end
+    nav.cur = name
+    g.last = name
+    local isSettings = (g == nav.settings)
+    if isSettings then nav.lastSettings = name else nav.lastMain = name end
+
+    for _, grp in ipairs(nav.groups) do
+        local on = (grp == g)
+        grp.label.TextColor3 = on and C.white or C.muted
+        grp.item.BackgroundTransparency = on and 0 or 1
+        grp.bar.Visible = on
     end
+
+    local multi = #g.pages > 1
+    for n, t in pairs(tabs) do
+        t.page.Visible = (n == name)
+        t.page.Position = UDim2.new(0, 0, 0, multi and TOPBAR_H or 0)
+        t.page.Size = UDim2.new(1, 0, 1, multi and -TOPBAR_H or 0)
+    end
+
+    nav.bar.Visible = multi
+    for _, tb in pairs(nav.top) do tb.btn.Visible = false end
+    if multi then
+        local count = #g.pages
+        for i, pg in ipairs(g.pages) do
+            local tb = nav.top[pg[1]]
+            local on = (pg[1] == name)
+            tb.btn.Visible = true
+            tb.btn.Size = UDim2.new(1 / count, 0, 1, 0)
+            tb.btn.Position = UDim2.new((i - 1) / count, 0, 0, 0)
+            tb.label.TextColor3 = on and C.white or C.muted
+            tb.line.Visible = on
+        end
+    end
+
+    if ui.gear then tween(ui.gear, 0.2, { Rotation = isSettings and 45 or 0 }) end
 end
 
-for i, name in ipairs(TAB_ORDER) do
-    local item = make("TextButton", {
-        Size = UDim2.new(1, -1, 0, 30),
-        Position = UDim2.new(0, 0, 0, 8 + (i - 1) * 32),
-        BackgroundColor3 = C.white,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        Text = "",
-        AutoButtonColor = false,
-    }, Sidebar)
-    swing(item, Color3.fromRGB(32, 32, 36), Color3.fromRGB(62, 62, 67), 0, 30, 0.22, i * 1.3)
-
-    local bar = make("Frame", {
-        Size = UDim2.new(0, 2, 1, 0),
-        BackgroundColor3 = C.white,
-        BorderSizePixel = 0,
-        Visible = false,
-    }, item)
-    local label = make("TextLabel", {
-        Size = UDim2.new(1, -16, 1, 0),
-        Position = UDim2.new(0, 16, 0, 0),
-        BackgroundTransparency = 1,
-        Text = name,
-        TextColor3 = C.muted,
-        TextSize = 12,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, item)
-
+local function addPage(name, grp)
+    nav.byPage[name] = grp
     local page = make("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
@@ -1883,9 +1967,76 @@ for i, name in ipairs(TAB_ORDER) do
         PaddingTop = UDim.new(0, 8),
         PaddingBottom = UDim.new(0, 8),
     }, page)
+    tabs[name] = { page = page }
+end
 
-    tabs[name] = { item = item, bar = bar, label = label, page = page }
-    item.MouseButton1Click:Connect(function() selectTab(name) end)
+local function addTopButton(pg)
+    local btn = make("TextButton", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Visible = false,
+    }, nav.bar)
+    local label = make("TextLabel", {
+        Size = UDim2.new(1, 0, 1, -1),
+        BackgroundTransparency = 1,
+        Text = pg[2],
+        TextColor3 = C.muted,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+    }, btn)
+    local line = make("Frame", {
+        Size = UDim2.new(0.5, 0, 0, 2),
+        AnchorPoint = Vector2.new(0.5, 1),
+        Position = UDim2.new(0.5, 0, 1, 0),
+        BackgroundColor3 = C.white,
+        BorderSizePixel = 0,
+        Visible = false,
+    }, btn)
+    nav.top[pg[1]] = { btn = btn, label = label, line = line }
+    btn.MouseButton1Click:Connect(function() selectTab(pg[1]) end)
+end
+
+for _, grp in ipairs(nav.groups) do
+    for _, pg in ipairs(grp.pages) do addPage(pg[1], grp) end
+end
+for _, pg in ipairs(nav.settings.pages) do addPage(pg[1], nav.settings) end
+for _, grp in ipairs({ nav.groups[2], nav.groups[4], nav.settings }) do
+    for _, pg in ipairs(grp.pages) do addTopButton(pg) end
+end
+
+for i, grp in ipairs(nav.groups) do
+    local item = make("TextButton", {
+        Size = UDim2.new(1, -1, 0, 30),
+        Position = UDim2.new(0, 0, 0, 8 + (i - 1) * 32),
+        BackgroundColor3 = C.white,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+    }, Sidebar)
+    swing(item, Color3.fromRGB(32, 32, 36), Color3.fromRGB(62, 62, 67), 0, 30, 0.22, i * 1.3)
+
+    grp.bar = make("Frame", {
+        Size = UDim2.new(0, 2, 1, 0),
+        BackgroundColor3 = C.white,
+        BorderSizePixel = 0,
+        Visible = false,
+    }, item)
+    grp.label = make("TextLabel", {
+        Size = UDim2.new(1, -16, 1, 0),
+        Position = UDim2.new(0, 16, 0, 0),
+        BackgroundTransparency = 1,
+        Text = grp.name,
+        TextColor3 = C.muted,
+        TextSize = 12,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, item)
+    grp.item = item
+    -- Buka halaman terakhir yang dipakai di grup ini
+    item.MouseButton1Click:Connect(function() selectTab(grp.last or grp.pages[1][1]) end)
 end
 
 -- =================================================================
@@ -4814,7 +4965,8 @@ do
             return t
         end
 
-        local share = createFeature(page, "Share Replace", { noToggle = true, bodyHeight = 28 })
+        local share = createFeature(tabs["Share"].page, "Share Replace", { noToggle = true, bodyHeight = 28 })
+        share.card.LayoutOrder = 101  -- di bawah kartu macro
         local shareSel = createSelect(share.body, {
             Size = UDim2.new(1, -96, 1, 0),
         }, {
@@ -4857,7 +5009,8 @@ do
         end)
 
         -- ---------- Import Replace ----------
-        local imp = createFeature(page, "Import Replace", { noToggle = true, bodyHeight = 28 })
+        local imp = createFeature(tabs["Share"].page, "Import Replace", { noToggle = true, bodyHeight = 28 })
+        imp.card.LayoutOrder = 102
         local codeBox = createInput(imp.body, { Size = UDim2.new(1, -96, 1, 0) }, "Paste replace code")
         createButton(imp.body, {
             Size = UDim2.new(0, 90, 1, 0),
@@ -5576,7 +5729,7 @@ do
     })
 
     -- Share
-    local share = createFeature(page, "Share Macro", { noToggle = true, bodyHeight = 28 })
+    local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
     local shareSel = createSelect(share.body, {
         Size = UDim2.new(1, -96, 1, 0),
     }, {
@@ -5607,7 +5760,7 @@ do
     end)
 
     -- Import
-    local imp = createFeature(page, "Import Macro", { noToggle = true, bodyHeight = 108 })
+    local imp = createFeature(tabs["Share"].page, "Import Macro", { noToggle = true, bodyHeight = 108 })
     local jsonBox = createInput(imp.body, { Size = UDim2.new(1, 0, 0, 70) }, "Paste macro JSON here", true)
     local nameBox = createInput(imp.body, {
         Size = UDim2.new(1, -176, 0, 28),
@@ -6174,22 +6327,6 @@ runLoop(function()
     return 3
 end)
 
--- Re-run otomatis setelah teleport (butuh script disimpan sebagai LightHub.lua
--- di folder workspace executor dan dukungan queue_on_teleport)
-local RERUN_FILE = "LightHub.lua"
-
-local function queueRerun()
-    local q = queue_on_teleport
-        or (syn and syn.queue_on_teleport)
-        or (fluxus and fluxus.queue_on_teleport)
-    if not q then return false, "Your executor doesn't support queue_on_teleport." end
-    if not (isfile and isfile(RERUN_FILE)) then
-        return false, "Save this script as " .. RERUN_FILE .. " in your executor's workspace folder first."
-    end
-    pcall(q, 'loadstring(readfile("' .. RERUN_FILE .. '"))()')
-    return true
-end
-
 -- =================================================================
 -- Settings
 -- =================================================================
@@ -6464,24 +6601,19 @@ do
         end
     end
 
-    local fRerun
-    fRerun = createFeature(page, "Re-run after teleport", {
-        initial = settings.rerun,
+    -- Perkecil otomatis kalau tidak ada sentuhan ke GUI selama 7 detik
+    local fAutoMin = createFeature(page, "Auto minimize", {
+        initial = settings.autoMinimize,
         onToggle = function(v)
-            if v then
-                local ok, why = queueRerun()
-                if not ok then
-                    fRerun.set(false)
-                    notify("Re-run", why, 6)
-                    return
-                end
-            end
-            settings.rerun = v
+            settings.autoMinimize = v
             saveSettings()
+            ui.poke()
         end,
     })
+    fAutoMin.setNote("After 7s idle", C.dim)
 
-    local info = createCard(page, 214)
+    -- Kartu profil pindah ke halaman Profile
+    local info = createCard(tabs["Profile"].page, 214)
     local avatar = make("Frame", {
         Size = UDim2.new(0, 48, 0, 48),
         Position = UDim2.new(0, 12, 0, 12),
@@ -6878,13 +7010,47 @@ local function cleanup()
 end
 env.LightHubCleanup = cleanup
 
-local MINI_W = 420
+local MINI_W = 400   -- dihitung ulang oleh layoutMini sesuai isi
+local AUTO_MIN_SECS = 7
 
--- Diperkecil: kotak kecil berisi nama hub, wave, dan timer. Diperbesar: kembali normal.
-MinimizeBtn.MouseButton1Click:Connect(function()
+-- Susun ulang isi header untuk mode kecil secara rapat: lebar mengikuti isi
+-- (judul, wave, streak, timer), tanpa ruang kosong.
+local function layoutMini()
+    local TS = game:GetService("TextService")
+    local function tw(text, size)
+        return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
+    end
+    local x = 38 + tw(TitleLabel.Text, 12)
+    local waveW = math.max(44, tw("00/00", 14) + 4)
+    MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
+    MiniWave.Size = UDim2.new(0, waveW, 1, -1)
+    x = x + 14 + waveW
+    ui.streakBox.Position = UDim2.new(0, x + 14, 0, 0)
+    ui.streakBox.Size = UDim2.new(0, 44, 1, -1)
+    x = x + 14 + 44
+    ui.sepTimer.Position = UDim2.new(0, x + 6, 0.5, -10)
+    local timerW = tw("00:00:00", 13) + 2
+    TimerLabel.Position = UDim2.new(0, x + 12, 0, 0)
+    TimerLabel.Size = UDim2.new(0, timerW, 1, 0)
+    TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TimerLabel.TextSize = 13
+    TitleLabel.TextSize = 12
+    MINI_W = x + 12 + timerW + 6 + 68
+end
+
+local function restoreFull()
+    TimerLabel.Position = UDim2.new(1, -158, 0, 0)
+    TimerLabel.Size = UDim2.new(0, 84, 1, 0)
+    TimerLabel.TextXAlignment = Enum.TextXAlignment.Right
+    TimerLabel.TextSize = 14
+    TitleLabel.TextSize = 13
+end
+
+-- Diperkecil: bar tipis berisi nama hub, wave, streak, dan timer. Diperbesar: kembali normal.
+local function setMinimized(mini)
+    if ui.minimized == mini then return end
     closeOverlay()
-    ui.minimized = not ui.minimized
-    local mini = ui.minimized
+    ui.minimized = mini
     Body.Visible = not mini
     MinLine.Visible = not mini
     MinBox.Visible = mini
@@ -6892,10 +7058,35 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     MiniWave.Visible = mini
     ui.showMini(mini)
     MiniBarTrack.Visible = mini
+    if mini then layoutMini() else restoreFull() end
     applyTimerVisibility()
     tween(MainFrame, 0.15, {
         Size = mini and UDim2.new(0, MINI_W, 0, HEADER_H) or UDim2.new(0, WIN_W, 0, WIN_H),
     })
+    ui.poke()
+end
+ui.setMinimized = setMinimized
+
+MinimizeBtn.MouseButton1Click:Connect(function() setMinimized(not ui.minimized) end)
+
+-- Gear: buka Settings (kalau sedang di Settings, kembali ke halaman sebelumnya)
+ui.gearBtn.MouseButton1Click:Connect(function()
+    if ui.minimized then setMinimized(false) end
+    local g = nav.byPage[nav.cur]
+    if g == nav.settings then
+        selectTab(nav.lastMain)
+    else
+        selectTab(nav.lastSettings)
+    end
+end)
+
+-- Auto minimize: perkecil kalau tidak ada sentuhan ke GUI selama AUTO_MIN_SECS detik
+runLoop(function()
+    if settings.autoMinimize and not ui.minimized and not drag.on
+        and os.clock() - ui.lastTouch >= AUTO_MIN_SECS then
+        setMinimized(true)
+    end
+    return 0.5
 end)
 
 -- Tekan pertama: minta konfirmasi (X berubah oranye 3 detik). Tekan kedua: tutup.
@@ -6904,7 +7095,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     if not closeArmed then
         closeArmed = true
         for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.warn end
-        notify("Close Lightn Hub?", "Press X again within 3 seconds to close the script.", 3)
+        notify("Close", "Press X again within 3 seconds to close the script.", 3)
         task.delay(3, function()
             closeArmed = false
             for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.text end
@@ -6915,6 +7106,5 @@ CloseBtn.MouseButton1Click:Connect(function()
     cleanup()
 end)
 
-if settings.rerun then pcall(queueRerun) end
 selectTab("Main")
 notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)

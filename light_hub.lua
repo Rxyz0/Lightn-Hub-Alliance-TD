@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v4.4
+-- LIGHTN HUB v4.6
 -- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | Rewards
 -- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
@@ -15,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.4"
+local VERSION = "4.6"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -119,6 +119,7 @@ local POTION_OPTIONS = {
 -- =================================================================
 local settings = {
     antiAfk = true,
+    fpsCap = 120,
     showTimer = true,
     cheapestFirst = true,
     upgradeDelay = 0.5,
@@ -219,6 +220,7 @@ local function saveSettings()
     if not canFile then return end
     local data = {
         antiAfk = settings.antiAfk,
+        fpsCap = settings.fpsCap,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -263,6 +265,7 @@ local function loadSettings()
 
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
+    if type(data.fpsCap) == "number" then settings.fpsCap = data.fpsCap end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -686,8 +689,8 @@ do
 end
 
 local function applyTimerVisibility()
-    -- Saat diperkecil, timer selalu tampil
-    TimerLabel.Visible = settings.showTimer or ui.minimized
+    TimerLabel.Visible = settings.showTimer
+    if ui.sepTimer then ui.sepTimer.Visible = settings.showTimer and ui.minimized == true end
 end
 applyTimerVisibility()
 
@@ -823,7 +826,7 @@ do
     ui.streakBox, ui.sepTimer = box, sepTimer
     function ui.showMini(mini)
         box.Visible = mini
-        sepTimer.Visible = mini
+        sepTimer.Visible = mini and settings.showTimer
     end
 end
 
@@ -2611,6 +2614,13 @@ do
     --    argumen SkipWaveVote selalu benar dan tidak perlu membaca nomor wave.
     -- 2) Kalau tombol tidak ketemu: SkipWaveVote(wave) dan (wave+1) langsung.
     -- 3) Kalau wave tidak terbaca: menebak urutan 1, 2, 3, ...
+    do -- urutan kartu: Select Mode, Play, Speed
+        local o = fPlay.card.LayoutOrder
+        fMode.card.LayoutOrder = o
+        fPlay.card.LayoutOrder = o + 1
+        fSpeed.card.LayoutOrder = o + 2
+    end
+
     local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
 
     local function findSkipButton()
@@ -3173,217 +3183,6 @@ do
                 or "Auto Use Potion stopped. This potion can't stack further.")
         end
         return 1
-    end)
-end
-
--- =================================================================
--- Inventory: Fish Inventory (dropdown) + Sell
--- =================================================================
-do
-    local page = tabs["Inventory"].page
-
-    -- Fish: jumlah per JENIS dari Players.<kamu>.FishingData.Fish
-    local SELL_ENABLED = true
-    local FISH_WEIGHT = 1.22
-
-    -- Ikan disimpan sebagai daftar bobot per jenis ("[0.82,0.75]"), jadi jumlah = banyak bobot.
-    -- Data dicari di hasil GetData (maksimal sekali per 30 detik supaya ringan).
-    local dataCache, dataAt, dataBusy = nil, -100, false
-
-    local function findFish(t, depth)
-        if type(t) ~= "table" or depth > 4 then return nil end
-        local n = 0
-        for k, v in pairs(t) do
-            n = n + 1
-            if n > 400 then break end
-            if type(k) == "string" and type(v) == "string"
-                and string.sub(v, 1, 1) == "[" and string.sub(v, -1) == "]" then
-                return t
-            end
-        end
-        for _, v in pairs(t) do
-            if type(v) == "table" then
-                local r = findFish(v, depth + 1)
-                if r then return r end
-            end
-        end
-        return nil
-    end
-
-    local function refreshData()
-        if dataBusy or os.clock() - dataAt < 10 then return end
-        dataBusy = true
-        dataAt = os.clock()
-        task.spawn(function()
-            local ok, res = invoke("GetData")
-            local t = ok and type(res) == "table" and findFish(res, 0) or nil
-            if t then
-                local list, total = {}, 0
-                for k, v in pairs(t) do
-                    if type(k) == "string" and type(v) == "string" then
-                        local c = 0
-                        for _ in string.gmatch(v, "[%d%.]+") do c = c + 1 end
-                        if c > 0 then
-                            list[#list + 1] = { n = k, c = c }
-                            total = total + c
-                        end
-                    end
-                end
-                table.sort(list, function(a, b)
-                    if a.c ~= b.c then return a.c > b.c end
-                    return a.n < b.n
-                end)
-                dataCache = { list = list, total = total }
-            else
-                dataAt = os.clock() - 7 -- gagal baca: coba lagi sekitar 3 detik lagi
-            end
-            dataBusy = false
-        end)
-    end
-
-    -- Hitung jumlah ikan dari satu entri: angka, daftar bobot "[0.82,0.75]", atau folder isi
-    local function countOf(inst)
-        if inst:IsA("IntValue") or inst:IsA("NumberValue") then
-            return math.floor(inst.Value)
-        elseif inst:IsA("StringValue") then
-            local c = 0
-            for _ in string.gmatch(inst.Value, "[%d%.]+") do c = c + 1 end
-            return c
-        elseif inst:IsA("Folder") or inst:IsA("Configuration") then
-            return #inst:GetChildren()
-        end
-        local a = inst:GetAttribute("Amount") or inst:GetAttribute("Count")
-        return type(a) == "number" and math.floor(a) or 0
-    end
-
-    local function fishList()
-        local fd = LocalPlayer:FindFirstChild("FishingData")
-        local folder = fd and fd:FindFirstChild("Fish")
-        if folder then
-            local list, total = {}, 0
-            for _, v in ipairs(folder:GetChildren()) do
-                local c = countOf(v)
-                if c > 0 then
-                    list[#list + 1] = { n = v.Name, c = c }
-                    total = total + c
-                end
-            end
-            if #list > 0 then
-                table.sort(list, function(a, b)
-                    if a.c ~= b.c then return a.c > b.c end
-                    return a.n < b.n
-                end)
-                return list, total, true
-            end
-            -- folder ada tapi kosong / formatnya tidak terbaca: pakai GetData
-        end
-        refreshData()
-        if dataCache then return dataCache.list, dataCache.total, true end
-        return {}, 0, false
-    end
-
-    -- Siapkan data lebih awal supaya dropdown tidak kosong saat pertama dibuka
-    task.spawn(function()
-        task.wait(3)
-        while true do
-            pcall(refreshData)
-            task.wait(12)
-        end
-    end)
-
-    local function fishInvoke(action, args)
-        local fn = fishRemote("FishingFunction")
-        if not fn then return false, nil end
-        return pcall(function() return fn:InvokeServer(action, args) end)
-    end
-
-    local fish = createFeature(page, "Fish", { noToggle = true, bodyHeight = 64 })
-    if not SELL_ENABLED then
-        createLockIcon(fish.card, UDim2.new(1, -36, 0, 11)).Visible = true
-    end
-    local selectedFish, statusUntil, selling = nil, 0, false
-
-    local function say(t, color)
-        statusUntil = os.clock() + 4
-        fish.setNote(t, color)
-    end
-
-    createSelect(fish.body, {
-        Size = UDim2.new(1, 0, 0, 28),
-    }, {
-        placeholder = "Select a fish",
-        emptyMsg = "No fish yet",
-        getOptions = function()
-            local opts = {}
-            for _, f in ipairs((fishList())) do
-                opts[#opts + 1] = { label = f.n .. "   x" .. f.c, value = f.n }
-            end
-            return opts
-        end,
-        onChange = function(v) selectedFish = v end,
-    })
-
-    local amountBox = createInput(fish.body, {
-        Size = UDim2.new(0, 84, 0, 28),
-        Position = UDim2.new(0, 0, 0, 36),
-        TextXAlignment = Enum.TextXAlignment.Center,
-    }, "Amount")
-
-    local function sellFish(all)
-        if not SELL_ENABLED or selling then return end
-        if not selectedFish then
-            say("Select a fish", C.warn)
-            return
-        end
-        local have = 0
-        for _, f in ipairs((fishList())) do
-            if f.n == selectedFish then have = f.c end
-        end
-        if have <= 0 then
-            say("Out of stock", C.warn)
-            return
-        end
-        local amount = have
-        if not all then
-            amount = tonumber(amountBox.Text)
-            if not amount or amount < 1 then
-                say("Enter an amount", C.warn)
-                return
-            end
-            amount = math.min(math.floor(amount), have)
-        end
-        selling = true
-        task.spawn(function()
-            local ok, res = fishInvoke("SellFish", { Fish = selectedFish, Amount = amount, Weight = FISH_WEIGHT })
-            if accepted(ok, res) then
-                say("Sold " .. amount .. " " .. selectedFish, C.text)
-            else
-                say("Sale failed", C.warn)
-            end
-            selling = false
-        end)
-    end
-
-    local sellBtn = createButton(fish.body, {
-        Size = UDim2.new(0, 70, 0, 28),
-        Position = UDim2.new(0, 92, 0, 36),
-    }, "Sell", function() sellFish(false) end)
-    local sellAllBtn = createButton(fish.body, {
-        Size = UDim2.new(1, -170, 0, 28),
-        Position = UDim2.new(0, 170, 0, 36),
-    }, "Sell all", function() sellFish(true) end)
-    if not SELL_ENABLED then
-        sellBtn.TextTransparency = 0.6
-        sellAllBtn.TextTransparency = 0.6
-        amountBox.TextTransparency = 0.6
-    end
-
-    runLoop(function()
-        if os.clock() > statusUntil then
-            local list, total, found = fishList()
-            fish.setNote(found and (#list .. " types · " .. total .. " fish") or "No fishing data", C.muted)
-        end
-        return 2
     end)
 end
 
@@ -5043,7 +4842,7 @@ do
         end
 
         local share = createFeature(tabs["Share"].page, "Share Replace", { noToggle = true, bodyHeight = 28 })
-        share.card.LayoutOrder = 101  -- di bawah kartu macro
+        share.card.LayoutOrder = 101  -- tepat di bawah Share Macro
         local shareSel = createSelect(share.body, {
             Size = UDim2.new(1, -96, 1, 0),
         }, {
@@ -5087,7 +4886,7 @@ do
 
         -- ---------- Import Replace ----------
         local imp = createFeature(tabs["Share"].page, "Import Replace", { noToggle = true, bodyHeight = 28 })
-        imp.card.LayoutOrder = 102
+        imp.card.LayoutOrder = 103
         local codeBox = createInput(imp.body, { Size = UDim2.new(1, -96, 1, 0) }, "Paste replace code")
         createButton(imp.body, {
             Size = UDim2.new(0, 90, 1, 0),
@@ -5805,8 +5604,18 @@ do
         end,
     })
 
+    -- urutan kartu: File, Record, Playback, Make Macro
+    do
+        local o = mk.card.LayoutOrder
+        fileCard.card.LayoutOrder = o
+        fRec.card.LayoutOrder = o + 1
+        fPlay.card.LayoutOrder = o + 2
+        mk.card.LayoutOrder = o + 3
+    end
+
     -- Share
     local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
+    share.card.LayoutOrder = 100
     local shareSel = createSelect(share.body, {
         Size = UDim2.new(1, -96, 1, 0),
     }, {
@@ -5838,6 +5647,7 @@ do
 
     -- Import
     local imp = createFeature(tabs["Share"].page, "Import Macro", { noToggle = true, bodyHeight = 108 })
+    imp.card.LayoutOrder = 102
     local jsonBox = createInput(imp.body, { Size = UDim2.new(1, 0, 0, 70) }, "Paste macro JSON here", true)
     local nameBox = createInput(imp.body, {
         Size = UDim2.new(1, -176, 0, 28),
@@ -6516,6 +6326,7 @@ do
         onToggle = function(v)
             settings.showTimer = v
             applyTimerVisibility()
+            if ui.relayoutMini then ui.relayoutMini() end
             saveSettings()
         end,
     })
@@ -6634,19 +6445,33 @@ do
         -- jadi yang asli diambil lewat getrenv bila ada.
         local function renderSettings()
             local ok, r = pcall(function() return getrenv().settings().Rendering end)
-            if ok then return r end
+            if ok and r then return r end
+            ok, r = pcall(function() return getgenv().settings().Rendering end)
+            if ok and r then return r end
             return nil
         end
+
+        -- Batas FPS lewat setfpscap (ada di Delta dan kebanyakan executor lain)
+        local function applyFps()
+            if setfpscap then pcall(setfpscap, settings.fpsCap or 120) end
+        end
+
+        local frames, fpsNow = 0, 0
+        table.insert(conns, RunService.Heartbeat:Connect(function() frames = frames + 1 end))
 
         local function enable()
             token = token + 1
             local my = token
             active = true
             touched, crowd = 0, 0
+            frames = 0
 
             if not envSaved then
                 envSaved = {}
                 pcall(function() envSaved.shadows = Lighting.GlobalShadows end)
+                pcall(function() envSaved.diffuse = Lighting.EnvironmentDiffuseScale end)
+                pcall(function() envSaved.specular = Lighting.EnvironmentSpecularScale end)
+                if getfpscap then pcall(function() envSaved.fps = getfpscap() end) end
                 pcall(function()
                     local ugs = UserSettings():GetService("UserGameSettings")
                     envSaved.quality = ugs.SavedQualityLevel
@@ -6667,6 +6492,9 @@ do
             end
 
             pcall(function() Lighting.GlobalShadows = false end)
+            pcall(function() Lighting.EnvironmentDiffuseScale = 0 end)
+            pcall(function() Lighting.EnvironmentSpecularScale = 0 end)
+            applyFps()
             pcall(function()
                 UserSettings():GetService("UserGameSettings").SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
             end)
@@ -6684,12 +6512,17 @@ do
                     t.WaterReflectance = 0
                 end)
             end
-            for _, e in ipairs(Lighting:GetChildren()) do
-                if POST[e.ClassName] and postSaved[e] == nil then
-                    pcall(function()
-                        postSaved[e] = e.Enabled
-                        e.Enabled = false
-                    end)
+            local cam = workspace.CurrentCamera
+            for _, holder in ipairs({ Lighting, cam }) do
+                if holder then
+                    for _, e in ipairs(holder:GetChildren()) do
+                        if POST[e.ClassName] and postSaved[e] == nil then
+                            pcall(function()
+                                postSaved[e] = e.Enabled
+                                e.Enabled = false
+                            end)
+                        end
+                    end
                 end
             end
 
@@ -6717,6 +6550,9 @@ do
                 local e = envSaved
                 envSaved = nil
                 pcall(function() if e.shadows ~= nil then Lighting.GlobalShadows = e.shadows end end)
+                pcall(function() if e.diffuse then Lighting.EnvironmentDiffuseScale = e.diffuse end end)
+                pcall(function() if e.specular then Lighting.EnvironmentSpecularScale = e.specular end end)
+                if setfpscap then pcall(setfpscap, e.fps or 60) end
                 pcall(function()
                     if e.quality then
                         UserSettings():GetService("UserGameSettings").SavedQualityLevel = e.quality
@@ -6755,11 +6591,34 @@ do
 
         feat = createFeature(page, "Anti Lag", {
             initial = flags.antiLag,
+            bodyHeight = 28,
             onToggle = function(v)
                 setFlag("antiLag", v)
                 if v then enable() else disable() end
             end,
         })
+        make("TextLabel", {
+            Size = UDim2.new(0, 64, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "FPS limit",
+            TextColor3 = C.muted,
+            TextSize = 11,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, feat.body)
+        createSegmented(feat.body, {
+            Position = UDim2.new(0, 70, 0, 0),
+            Size = UDim2.new(0, 220, 1, 0),
+        }, {
+            { label = "60", value = 60 },
+            { label = "90", value = 90 },
+            { label = "120", value = 120 },
+            { label = "240", value = 240 },
+        }, settings.fpsCap or 120, function(v)
+            settings.fpsCap = v
+            saveSettings()
+            if active then applyFps() end
+        end)
         if flags.antiLag then enable() end
 
         -- Hanya menghitung musuh untuk ditampilkan di catatan card
@@ -6770,7 +6629,10 @@ do
                 if h.Parent then n = n + 1 else npcs[h] = nil end
             end
             crowd = n
-            if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
+            fpsNow, frames = frames, 0
+            if feat then
+                feat.setNote(fpsNow .. " FPS  |  " .. touched .. " optimized  |  " .. n .. " enemies")
+            end
             return 1
         end)
 
@@ -6788,7 +6650,9 @@ do
             ui.poke()
         end,
     })
-    fAutoMin.setNote("After 7s idle", C.dim)
+    -- urutan: Show timer, Auto minimize, Anti Lag, Anti AFK, Skip Animation
+    fAutoMin.card.LayoutOrder = 2
+    fSkipAnim.card.LayoutOrder = 100
 
     createFeature(page, "Anti AFK", {
         initial = settings.antiAfk,
@@ -6799,7 +6663,7 @@ do
     })
 
     -- Kartu profil pindah ke halaman Profile
-    local info = createCard(tabs["Profile"].page, 214)
+    local info = createCard(tabs["Profile"].page, 134)
     local avatar = make("Frame", {
         Size = UDim2.new(0, 48, 0, 48),
         Position = UDim2.new(0, 12, 0, 12),
@@ -6813,8 +6677,8 @@ do
         Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150",
     }, avatar)
     make("TextLabel", {
-        Size = UDim2.new(1, -150, 0, 20),
-        Position = UDim2.new(0, 70, 0, 14),
+        Size = UDim2.new(1, -150, 0, 18),
+        Position = UDim2.new(0, 70, 0, 11),
         BackgroundTransparency = 1,
         Text = LocalPlayer.DisplayName,
         TextColor3 = C.white,
@@ -6825,12 +6689,23 @@ do
     }, info)
     make("TextLabel", {
         Size = UDim2.new(1, -150, 0, 14),
-        Position = UDim2.new(0, 70, 0, 36),
+        Position = UDim2.new(0, 70, 0, 30),
         BackgroundTransparency = 1,
         Text = "@" .. LocalPlayer.Name,
         TextColor3 = C.muted,
         TextSize = 10,
         Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, info)
+    make("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 14),
+        Position = UDim2.new(0, 70, 0, 45),
+        BackgroundTransparency = 1,
+        Text = "ID " .. tostring(LocalPlayer.UserId),
+        TextColor3 = C.dim,
+        TextSize = 10,
+        Font = Enum.Font.RobotoMono,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, info)
@@ -6851,27 +6726,17 @@ do
         BorderSizePixel = 0,
     }, info)
     local grid = make("Frame", {
-        Size = UDim2.new(1, -24, 0, 128),
+        Size = UDim2.new(1, -24, 0, 46),
         Position = UDim2.new(0, 12, 0, 80),
         BackgroundTransparency = 1,
     }, info)
     local function row(top, defs)
         return createCells(grid, defs, top, 0)
     end
-    local r2 = row(0, {
+    local r1 = row(0, {
         { caption = "COINS", value = "-" },
         { caption = "WINS", value = "-" },
-        { caption = "STREAK", value = "-" },
-    })
-    local r3 = row(42, {
-        { caption = "UNITS", value = "-" },
-        { caption = "TOKENS", value = "-" },
         { caption = "ENDLESS BEST", value = "-" },
-    })
-    local r4 = row(84, {
-        { caption = "ROD", value = "-" },
-        { caption = "CASH BOOST", value = "-" },
-        { caption = "LUCK", value = "-" },
     })
 
     local function compact(n)
@@ -6882,26 +6747,12 @@ do
         if n >= 1e4 then return string.format("%.1fK", n / 1e3) end
         return tostring(math.floor(n))
     end
-    local function hm(sec)
-        sec = tonumber(sec) or 0
-        if sec <= 0 then return "-" end
-        local h, m = math.floor(sec / 3600), math.floor(sec % 3600 / 60)
-        return h > 0 and (h .. "h " .. m .. "m") or (m .. "m")
-    end
     local function attr(k) return LocalPlayer:GetAttribute(k) end
 
     runLoop(function()
-        r2[1].value.Text = compact(getStatN("Coins"))
-        r2[2].value.Text = compact(getStatN("Wins"))
-        r2[3].value.Text = tostring(attr("WinStreak") or "-")
-        local uc, ul = attr("UnitCount"), attr("UnitLimit")
-        r3[1].value.Text = uc and (uc .. "/" .. tostring(ul or "?")) or "-"
-        r3[2].value.Text = compact(attr("EventTokens"))
-        r3[3].value.Text = tostring(attr("EndlessWeeklyBest") or "-")
-        r4[1].value.Text = tostring(attr("FishingRod") or "-")
-        r4[2].value.Text = hm(attr("MoneyBoostTimeRemaining"))
-        local lk = tonumber(attr("LuckMultiplier"))
-        r4[3].value.Text = lk and ("x" .. tostring(math.floor(lk * 100 + 0.5) / 100)) or "-"
+        r1[1].value.Text = compact(getStatN("Coins"))
+        r1[2].value.Text = compact(getStatN("Wins"))
+        r1[3].value.Text = tostring(attr("EndlessWeeklyBest") or "-")
         return 3
     end)
 end
@@ -7214,14 +7065,19 @@ local function layoutMini()
     ui.streakBox.Position = UDim2.new(0, x + 14, 0, 0)
     ui.streakBox.Size = UDim2.new(0, 44, 1, -1)
     x = x + 14 + 44
-    ui.sepTimer.Position = UDim2.new(0, x + 6, 0.5, -10)
-    local timerW = tw("00:00:00", 13) + 2
-    TimerLabel.Position = UDim2.new(0, x + 12, 0, 0)
-    TimerLabel.Size = UDim2.new(0, timerW, 1, 0)
-    TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TimerLabel.TextSize = 13
     TitleLabel.TextSize = 12
-    MINI_W = x + 12 + timerW + 6 + 68
+    if settings.showTimer then
+        ui.sepTimer.Position = UDim2.new(0, x + 6, 0.5, -10)
+        local timerW = tw("00:00:00", 13) + 2
+        TimerLabel.Position = UDim2.new(0, x + 12, 0, 0)
+        TimerLabel.Size = UDim2.new(0, timerW, 1, 0)
+        TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+        TimerLabel.TextSize = 13
+        MINI_W = x + 12 + timerW + 6 + 68
+    else
+        -- tanpa timer: bar berhenti di streak, langsung disusul tombol
+        MINI_W = x + 14 + 68
+    end
 end
 
 local function restoreFull()
@@ -7252,6 +7108,12 @@ local function setMinimized(mini)
     ui.poke()
 end
 ui.setMinimized = setMinimized
+function ui.relayoutMini()
+    if not ui.minimized then return end
+    layoutMini()
+    ui.showMini(true)
+    MainFrame.Size = UDim2.new(0, MINI_W, 0, HEADER_H)
+end
 
 MinimizeBtn.MouseButton1Click:Connect(function() setMinimized(not ui.minimized) end)
 

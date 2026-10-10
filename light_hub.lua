@@ -1,6 +1,6 @@
 -- =================================================================
--- LIGHTN HUB v4.3
--- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | AFK
+-- LIGHTN HUB v4.4
+-- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | Rewards
 -- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
 
@@ -15,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.3"
+local VERSION = "4.4"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -142,6 +142,7 @@ local FLAG_DEFAULTS = {
     autoLucky = false, luckyAmount = 1, luckyType = "",
     autoPotion = false, potionType = "",
     antiLag = false,
+    autoSeason = false,
 }
 -- Fitur yang menghabiskan koin/item: selalu mati saat script dijalankan
 local SPEND_KEYS = { "autoSummon", "autoSpin", "autoCrate", "autoLucky", "autoPotion" }
@@ -592,7 +593,7 @@ make("Frame", {
 
 local TitleRow = make("Frame", {
     Size = UDim2.new(0, 220, 1, 0),
-    Position = UDim2.new(0, 38, 0, 0),
+    Position = UDim2.new(0, 34, 0, 0),
     BackgroundTransparency = 1,
 }, Header)
 make("UIListLayout", {
@@ -653,15 +654,15 @@ table.insert(conns, MainFrame.DescendantAdded:Connect(ui.watch))
 -- sama seperti ikon lain di hub ini. Berputar 45 derajat saat Settings terbuka.
 do
     local btn = make("TextButton", {
-        Size = UDim2.new(0, 26, 0, 26),
-        Position = UDim2.new(0, 8, 0.5, -13),
+        Size = UDim2.new(0, 22, 0, 22),
+        Position = UDim2.new(0, 8, 0.5, -11),
         BackgroundTransparency = 1,
         Text = "",
         AutoButtonColor = false,
         BorderSizePixel = 0,
     }, Header)
     local icon = make("Frame", {
-        Size = UDim2.new(0, 18, 0, 18),
+        Size = UDim2.new(0, 15, 0, 15),
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0.5, 0, 0.5, 0),
         BackgroundTransparency = 1,
@@ -678,9 +679,9 @@ do
         if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
         return f
     end
-    for _, rot in ipairs({ 0, 45, 90, 135 }) do part(18, 4, rot, C.white) end -- 8 gigi
-    part(12, 12, 0, C.white, true)                                           -- badan
-    part(5, 5, 0, Color3.fromRGB(14, 14, 16), true)                           -- lubang tengah
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do part(15, 3, rot, C.white) end -- 8 gigi
+    part(9, 9, 0, C.white, true)                                           -- badan
+    part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)                           -- lubang tengah
     ui.gearBtn, ui.gear = btn, icon
 end
 
@@ -1885,7 +1886,7 @@ local nav = {
         { name = "Fishing", pages = { { "Fishing", "Fishing" } } },
         { name = "Macro", pages = { { "Macro", "Macro" }, { "Share", "Sharing" } } },
         { name = "Endless", pages = { { "Endless", "Endless" } } },
-        { name = "AFK", pages = { { "AFK", "AFK" } } },
+        { name = "Rewards", pages = { { "AFK", "Rewards" } } },
     },
     settings = { name = "Settings", pages = { { "Settings", "Settings" }, { "Profile", "Profile" } } },
     byPage = {}, top = {}, cur = nil, lastMain = "Main", lastSettings = "Settings",
@@ -1903,6 +1904,20 @@ make("Frame", {
     BorderSizePixel = 0,
 }, nav.bar)
 
+-- Garis penanda tab aktif: satu garis yang meluncur ke tab terpilih
+nav.ind = make("Frame", {
+    AnchorPoint = Vector2.new(0.5, 1),
+    Size = UDim2.new(0.5, 0, 0, 2),
+    Position = UDim2.new(0.25, 0, 1, 0),
+    BackgroundColor3 = C.white,
+    BorderSizePixel = 0,
+}, nav.bar)
+function nav.place(i, count, animate)
+    nav.ind.Size = UDim2.new(0.5 / count, 0, 0, 2)
+    local pos = UDim2.new((i - 0.5) / count, 0, 1, 0)
+    if animate then tween(nav.ind, 0.15, { Position = pos }) else nav.ind.Position = pos end
+end
+
 local function selectTab(name)
     closeOverlay()
     local g = nav.byPage[name]
@@ -1913,10 +1928,19 @@ local function selectTab(name)
     if isSettings then nav.lastSettings = name else nav.lastMain = name end
 
     for _, grp in ipairs(nav.groups) do
-        local on = (grp == g)
-        grp.label.TextColor3 = on and C.white or C.muted
-        grp.item.BackgroundTransparency = on and 0 or 1
-        grp.bar.Visible = on
+        grp.label.TextColor3 = (grp == g) and C.white or C.muted
+    end
+    -- Papan penanda geser ke item yang dibuka; disembunyikan saat di Settings (gear)
+    if g == nav.settings then
+        nav.sel.Visible = false
+    else
+        nav.sel.Visible = true
+        if nav.selReady then
+            tween(nav.sel, 0.18, { Position = UDim2.new(0, 0, 0, g.y) })
+        else
+            nav.sel.Position = UDim2.new(0, 0, 0, g.y)
+            nav.selReady = true
+        end
     end
 
     local multi = #g.pages > 1
@@ -1937,7 +1961,10 @@ local function selectTab(name)
             tb.btn.Size = UDim2.new(1 / count, 0, 1, 0)
             tb.btn.Position = UDim2.new((i - 1) / count, 0, 0, 0)
             tb.label.TextColor3 = on and C.white or C.muted
-            tb.line.Visible = on
+            if on then
+                nav.place(i, count, nav.indReady)
+                nav.indReady = true
+            end
         end
     end
 
@@ -1986,16 +2013,17 @@ local function addTopButton(pg)
         TextSize = 12,
         Font = Enum.Font.GothamMedium,
     }, btn)
-    local line = make("Frame", {
-        Size = UDim2.new(0.5, 0, 0, 2),
-        AnchorPoint = Vector2.new(0.5, 1),
-        Position = UDim2.new(0.5, 0, 1, 0),
-        BackgroundColor3 = C.white,
-        BorderSizePixel = 0,
-        Visible = false,
-    }, btn)
-    nav.top[pg[1]] = { btn = btn, label = label, line = line }
-    btn.MouseButton1Click:Connect(function() selectTab(pg[1]) end)
+    nav.top[pg[1]] = { btn = btn, label = label }
+    btn.MouseButton1Click:Connect(function()
+        if nav.suppress and os.clock() - nav.suppress < 0.25 then return end -- baru selesai digeser
+        selectTab(pg[1])
+    end)
+    btn.InputBegan:Connect(function(input)
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            nav.dragging = { x0 = input.Position.X, moved = false }
+        end
+    end)
 end
 
 for _, grp in ipairs(nav.groups) do
@@ -2006,7 +2034,63 @@ for _, grp in ipairs({ nav.groups[2], nav.groups[4], nav.settings }) do
     for _, pg in ipairs(grp.pages) do addTopButton(pg) end
 end
 
+-- Papan penanda item sidebar yang sedang dibuka (di bawah label, bergeser saat pindah)
+nav.sel = make("Frame", {
+    Size = UDim2.new(1, -1, 0, 30),
+    Position = UDim2.new(0, 0, 0, 8),
+    BackgroundColor3 = C.white,
+    BackgroundTransparency = 0.1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, Sidebar)
+swing(nav.sel, Color3.fromRGB(34, 34, 38), Color3.fromRGB(66, 66, 72), 0, 30, 0.22, 1)
+make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, nav.sel)
+make("Frame", {
+    Size = UDim2.new(0, 3, 1, 0),
+    BackgroundColor3 = C.white,
+    BorderSizePixel = 0,
+}, nav.sel)
+
+-- Geser di topbar: garis mengikuti jari, lepas = pindah ke tab yang ditunjuk.
+-- Ketuk langsung tetap bekerja seperti biasa.
+do
+    local function slotAt(x)
+        local g = nav.byPage[nav.cur]
+        if not g or #g.pages < 2 then return nil end
+        local bx, bw = nav.bar.AbsolutePosition.X, math.max(1, nav.bar.AbsoluteSize.X)
+        return math.clamp(math.floor((x - bx) / bw * #g.pages) + 1, 1, #g.pages), g
+    end
+    table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+        local d = nav.dragging
+        if not d then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseMovement and t ~= Enum.UserInputType.Touch then return end
+        local x = input.Position.X
+        if not d.moved and math.abs(x - d.x0) > 8 then d.moved = true end
+        if d.moved then
+            local i, g = slotAt(x)
+            if i then
+                d.slot = i
+                nav.place(i, #g.pages, true)
+            end
+        end
+    end))
+    table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+        local d = nav.dragging
+        if not d then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+        nav.dragging = nil
+        if d.moved and d.slot then
+            local g = nav.byPage[nav.cur]
+            nav.suppress = os.clock()
+            if g then selectTab(g.pages[d.slot][1]) end
+        end
+    end))
+end
+
 for i, grp in ipairs(nav.groups) do
+    grp.y = 8 + (i - 1) * 32
     local item = make("TextButton", {
         Size = UDim2.new(1, -1, 0, 30),
         Position = UDim2.new(0, 0, 0, 8 + (i - 1) * 32),
@@ -2016,14 +2100,7 @@ for i, grp in ipairs(nav.groups) do
         Text = "",
         AutoButtonColor = false,
     }, Sidebar)
-    swing(item, Color3.fromRGB(32, 32, 36), Color3.fromRGB(62, 62, 67), 0, 30, 0.22, i * 1.3)
 
-    grp.bar = make("Frame", {
-        Size = UDim2.new(0, 2, 1, 0),
-        BackgroundColor3 = C.white,
-        BorderSizePixel = 0,
-        Visible = false,
-    }, item)
     grp.label = make("TextLabel", {
         Size = UDim2.new(1, -16, 1, 0),
         Position = UDim2.new(0, 16, 0, 0),
@@ -2870,7 +2947,7 @@ do
             fSummon.setNote("Summoning...", C.text)
         else
             summonFails = summonFails + 1
-            fSummon.setNote("Retrying", C.warn)
+            fSummon.setNote("")
             if summonFails >= 8 then
                 summonFails = 0
                 stopFeature(fSummon, "autoSummon", "Auto Summon stopped. Try again in a moment.")
@@ -2975,7 +3052,7 @@ do
         else
             crateFails = crateFails + 1
             local limit = blind and 3 or 8
-            fCrate.setNote("Retrying", C.warn)
+            fCrate.setNote("")
             if crateFails >= limit then
                 crateFails = 0
                 stopFeature(fCrate, "autoCrate", blind
@@ -3032,7 +3109,7 @@ do
         else
             luckyFails = luckyFails + 1
             local limit = blind and 3 or 8
-            fLucky.setNote("Retrying", C.warn)
+            fLucky.setNote("")
             if luckyFails >= limit then
                 luckyFails = 0
                 stopFeature(fLucky, "autoLucky", blind
@@ -3088,7 +3165,7 @@ do
             return POTION_INTERVAL
         end
         potionFails = potionFails + 1
-        fPotion.setNote("Retrying", C.warn)
+        fPotion.setNote("")
         if potionFails >= (blind and 3 or 8) then
             potionFails = 0
             stopFeature(fPotion, "autoPotion", blind
@@ -5962,7 +6039,7 @@ do
 end
 
 -- =================================================================
--- AFK: Auto Claim Gift + Anti AFK
+-- Rewards: Auto Claim Gift + Auto Claim Season Pass
 -- =================================================================
 do
     local page = tabs["AFK"].page
@@ -6263,15 +6340,116 @@ do
         end
         return 0.5
     end)
-
-    createFeature(page, "Anti AFK", {
-        initial = settings.antiAfk,
-        onToggle = function(v)
-            settings.antiAfk = v
-            saveSettings()
-        end,
-    })
 end
+
+-- =================================================================
+-- Rewards: Auto Claim Season Pass
+-- ClaimSeasonReward(level, "Free" | "Premium"), level 1-50.
+-- Isi data season dari game tidak diketahui, jadi tiap reward dicoba dan server yang
+-- memutuskan (sudah diklaim, belum terbuka, atau tidak punya Premium = ditolak).
+-- Reward yang berhasil diingat selama sesi. Premium baru dicoba terus kalau ada
+-- bukti pemain punya Premium; sapuan penuh tiap 5 menit memeriksa ulang semuanya.
+-- =================================================================
+do
+    local page = tabs["AFK"].page
+    local MAX_LEVEL = 50
+    local TRACKS = { "Free", "Premium" }
+    local done = {}                          -- "level|track" -> true
+    local total, premCount = 0, 0
+    local frontier = { Free = 1, Premium = 1 }
+    local premiumLikely = nil                -- nil = belum tahu
+    local lastFull, lastLevel, wasOn = 0, nil, false
+
+    local feat = visualFeature(page, "Auto Claim Season Pass", "autoSeason", 0)
+
+    -- Level dan status Premium dibaca dari atribut player kalau game menyediakannya
+    local function attrLevel()
+        for k, v in pairs(LocalPlayer:GetAttributes()) do
+            local n = string.lower(k)
+            if type(v) == "number" and string.find(n, "season", 1, true)
+                and string.find(n, "level", 1, true) then
+                return math.floor(v)
+            end
+        end
+        return nil
+    end
+    local function attrPremium()
+        for k, v in pairs(LocalPlayer:GetAttributes()) do
+            local n = string.lower(k)
+            if type(v) == "boolean" and string.find(n, "season", 1, true)
+                and (string.find(n, "premium", 1, true) or string.find(n, "pass", 1, true)) then
+                return v
+            end
+        end
+        return nil
+    end
+
+    local function claim(level, track)
+        local ok, res = invoke("ClaimSeasonReward", level, track)
+        return ok and (res == true
+            or (type(res) == "table" and (res.Success == true or res.success == true)))
+    end
+
+    -- full = coba semua level 1..N. Bukan full = lanjut dari level terakhir yang berhasil
+    -- dan berhenti di reward pertama yang ditolak (level di atasnya pasti belum terbuka).
+    local function sweep(full)
+        local lv = attrLevel()
+        local top = lv and math.clamp(lv, 1, MAX_LEVEL) or MAX_LEVEL
+        local prem = attrPremium()
+        local got = 0
+        for _, track in ipairs(TRACKS) do
+            local skip = (track == "Premium")
+                and (prem == false or (premiumLikely == false and not full))
+            if not skip then
+                for level = (full and 1 or frontier[track]), top do
+                    if not flags.autoSeason or not ScreenGui.Parent then return got end
+                    local key = level .. "|" .. track
+                    if not done[key] then
+                        if claim(level, track) then
+                            done[key] = true
+                            total, got = total + 1, got + 1
+                            if track == "Premium" then premCount = premCount + 1 end
+                            frontier[track] = math.max(frontier[track], level + 1)
+                        elseif not full then
+                            break
+                        end
+                        task.wait(0.12)
+                    end
+                end
+            end
+        end
+        if full and prem == nil then premiumLikely = premCount > 0 end
+        return got
+    end
+
+    runLoop(function()
+        if not flags.autoSeason then
+            wasOn = false
+            feat.setNote("")
+            return 0.5
+        end
+        if not RF("ClaimSeasonReward") then
+            feat.setNote("Unavailable", C.muted)
+            return 3
+        end
+        if not wasOn then
+            wasOn = true
+            lastFull = 0 -- baru dinyalakan: sapuan penuh
+        end
+        local lv = attrLevel()
+        local needFull = (os.clock() - lastFull > 300) or (lv ~= nil and lv ~= lastLevel)
+        lastLevel = lv
+        feat.setNote(needFull and "Scanning" or "Checking", C.text)
+        local n = sweep(needFull)
+        if needFull then lastFull = os.clock() end
+        if n > 0 then
+            notify("Season Pass", "Claimed " .. n .. (n > 1 and " rewards" or " reward"), 3)
+        end
+        feat.setNote(total > 0 and ("Claimed " .. total) or "Nothing to claim", total > 0 and C.text or C.muted)
+        return needFull and 5 or 20
+    end)
+end
+
 
 -- =================================================================
 -- Skip animation: mematikan handler animasi bawaan game di sisi client
@@ -6611,6 +6789,14 @@ do
         end,
     })
     fAutoMin.setNote("After 7s idle", C.dim)
+
+    createFeature(page, "Anti AFK", {
+        initial = settings.antiAfk,
+        onToggle = function(v)
+            settings.antiAfk = v
+            saveSettings()
+        end,
+    })
 
     -- Kartu profil pindah ke halaman Profile
     local info = createCard(tabs["Profile"].page, 214)
@@ -7020,7 +7206,7 @@ local function layoutMini()
     local function tw(text, size)
         return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     end
-    local x = 38 + tw(TitleLabel.Text, 12)
+    local x = 34 + tw(TitleLabel.Text, 12)
     local waveW = math.max(44, tw("00/00", 14) + 4)
     MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
     MiniWave.Size = UDim2.new(0, waveW, 1, -1)

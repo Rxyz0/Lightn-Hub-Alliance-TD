@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v4.6
+-- LIGHTN HUB v4.3
 -- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | Rewards
 -- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
@@ -15,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.6"
+local VERSION = "4.3"
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -119,7 +119,8 @@ local POTION_OPTIONS = {
 -- =================================================================
 local settings = {
     antiAfk = true,
-    fpsCap = 120,
+    fpsLimit = 120,
+    fpsBoost = false,
     showTimer = true,
     cheapestFirst = true,
     upgradeDelay = 0.5,
@@ -220,7 +221,8 @@ local function saveSettings()
     if not canFile then return end
     local data = {
         antiAfk = settings.antiAfk,
-        fpsCap = settings.fpsCap,
+        fpsLimit = settings.fpsLimit,
+        fpsBoost = settings.fpsBoost,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -265,7 +267,10 @@ local function loadSettings()
 
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
-    if type(data.fpsCap) == "number" then settings.fpsCap = data.fpsCap end
+    if data.fpsLimit == 60 or data.fpsLimit == 90 or data.fpsLimit == 120 then
+        settings.fpsLimit = data.fpsLimit
+    end
+    if type(data.fpsBoost) == "boolean" then settings.fpsBoost = data.fpsBoost end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -6349,16 +6354,17 @@ do
     if not getconnections then fSkipAnim.setNote("Spin only", C.muted) end
 
     -- =================================================================
-    -- Settings: Anti Lag (toggle, agresif)
-    -- Hanya mengubah tampilan di sisi client. MUSUH TIDAK DISEMBUNYIKAN: bodi,
-    -- posisi, dan health bar tetap terlihat supaya bisa dipantau.
-    --   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan
-    --   - Decal/Texture disembunyikan, material dibuat polos, bayangan dimatikan,
-    --     mesh diturunkan ke detail terendah, kualitas grafik diturunkan
-    --   - Terrain: dekorasi rumput dan gelombang air dimatikan
-    --   - Animasi dan gerakan musuh tidak disentuh sama sekali
+    -- Settings: Anti Lag
+    -- Hanya mengubah tampilan di sisi client. Musuh tidak disembunyikan dan
+    -- animasinya tidak disentuh, jadi tetap bisa dipantau.
+    --   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan.
+    --     Particle juga dibuat tidak bisa memancar lagi lewat Emit.
+    --   - Decal/Texture disembunyikan, bayangan dan efek layar dimatikan,
+    --     material peta dibuat polos, mesh peta diturunkan ke detail terendah
+    --   - Karakter (pemain, musuh, tower) tidak disentuh sama sekali, jadi tidak ada
+    --     beban tambahan setiap musuh baru muncul
+    --   - Kualitas grafik diturunkan, dekorasi rumput dan gelombang air dimatikan
     -- Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
-    -- Objek baru (musuh yang baru muncul) ikut ditangani lewat DescendantAdded.
     -- =================================================================
     do
         local page = tabs["Settings"].page
@@ -6381,19 +6387,26 @@ do
         local conn = nil
         local active = false
         local token = 0
-        local touched, crowd = 0, 0
+        local touched = 0
         local feat
 
-        local function inMyCharacter(inst)
-            local ch = LocalPlayer.Character
-            return ch ~= nil and inst:IsDescendantOf(ch)
+        -- Bagian dari model ber-Humanoid (pemain, musuh, tower): tidak disentuh
+        local function inCharacter(inst)
+            local m = inst:FindFirstAncestorOfClass("Model")
+            return m ~= nil and m:FindFirstChildOfClass("Humanoid") ~= nil
         end
 
         local function handle(inst)
             if saved[inst] then return end
             local cn = inst.ClassName
             if FX[cn] then
-                saved[inst] = { kind = "fx", v = inst.Enabled }
+                local rec = { kind = "fx", v = inst.Enabled }
+                if cn == "ParticleEmitter" then
+                    rec.rate, rec.life = inst.Rate, inst.Lifetime
+                    inst.Rate = 0
+                    inst.Lifetime = NumberRange.new(0)
+                end
+                saved[inst] = rec
                 inst.Enabled = false
                 touched = touched + 1
             elseif cn == "Explosion" then
@@ -6401,16 +6414,16 @@ do
                 inst.Visible = false
                 touched = touched + 1
             elseif cn == "Decal" or cn == "Texture" then
-                if inMyCharacter(inst) then return end
+                if inCharacter(inst) then return end
                 saved[inst] = { kind = "decal", v = inst.Transparency }
                 inst.Transparency = 1
                 touched = touched + 1
             elseif cn == "Humanoid" then
                 local tw = workspace:FindFirstChild("Towers")
-                if inMyCharacter(inst) or (tw and inst:IsDescendantOf(tw)) then return end
+                if tw and inst:IsDescendantOf(tw) then return end
                 if not Players:GetPlayerFromCharacter(inst.Parent) then npcs[inst] = true end
             elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
-                if inMyCharacter(inst) then return end
+                if inCharacter(inst) then return end
                 local rec = { kind = "part", m = inst.Material, s = inst.CastShadow, r = inst.Reflectance }
                 if inst:IsA("MeshPart") then rec.f = inst.RenderFidelity end
                 saved[inst] = rec
@@ -6428,6 +6441,10 @@ do
             if not inst.Parent then return end
             local k = rec.kind
             if k == "fx" then
+                if rec.rate then
+                    inst.Rate = rec.rate
+                    inst.Lifetime = rec.life
+                end
                 inst.Enabled = rec.v
             elseif k == "expl" then
                 inst.Visible = rec.v
@@ -6442,7 +6459,7 @@ do
         end
 
         -- Pengaturan render global. `settings` di script ini adalah tabel milik hub,
-        -- jadi yang asli diambil lewat getrenv bila ada.
+        -- jadi yang asli diambil lewat getrenv / getgenv bila ada.
         local function renderSettings()
             local ok, r = pcall(function() return getrenv().settings().Rendering end)
             if ok and r then return r end
@@ -6451,27 +6468,15 @@ do
             return nil
         end
 
-        -- Batas FPS lewat setfpscap (ada di Delta dan kebanyakan executor lain)
-        local function applyFps()
-            if setfpscap then pcall(setfpscap, settings.fpsCap or 120) end
-        end
-
-        local frames, fpsNow = 0, 0
-        table.insert(conns, RunService.Heartbeat:Connect(function() frames = frames + 1 end))
-
         local function enable()
             token = token + 1
             local my = token
             active = true
-            touched, crowd = 0, 0
-            frames = 0
+            touched = 0
 
             if not envSaved then
                 envSaved = {}
                 pcall(function() envSaved.shadows = Lighting.GlobalShadows end)
-                pcall(function() envSaved.diffuse = Lighting.EnvironmentDiffuseScale end)
-                pcall(function() envSaved.specular = Lighting.EnvironmentSpecularScale end)
-                if getfpscap then pcall(function() envSaved.fps = getfpscap() end) end
                 pcall(function()
                     local ugs = UserSettings():GetService("UserGameSettings")
                     envSaved.quality = ugs.SavedQualityLevel
@@ -6492,9 +6497,6 @@ do
             end
 
             pcall(function() Lighting.GlobalShadows = false end)
-            pcall(function() Lighting.EnvironmentDiffuseScale = 0 end)
-            pcall(function() Lighting.EnvironmentSpecularScale = 0 end)
-            applyFps()
             pcall(function()
                 UserSettings():GetService("UserGameSettings").SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
             end)
@@ -6512,8 +6514,8 @@ do
                     t.WaterReflectance = 0
                 end)
             end
-            local cam = workspace.CurrentCamera
-            for _, holder in ipairs({ Lighting, cam }) do
+
+            for _, holder in ipairs({ Lighting, workspace.CurrentCamera }) do
                 if holder then
                     for _, e in ipairs(holder:GetChildren()) do
                         if POST[e.ClassName] and postSaved[e] == nil then
@@ -6537,7 +6539,7 @@ do
                 for i, inst in ipairs(list) do
                     if my ~= token or not active then return end
                     pcall(handle, inst)
-                    if i % 250 == 0 then task.wait() end
+                    if i % 200 == 0 then task.wait() end
                 end
             end)
         end
@@ -6550,9 +6552,6 @@ do
                 local e = envSaved
                 envSaved = nil
                 pcall(function() if e.shadows ~= nil then Lighting.GlobalShadows = e.shadows end end)
-                pcall(function() if e.diffuse then Lighting.EnvironmentDiffuseScale = e.diffuse end end)
-                pcall(function() if e.specular then Lighting.EnvironmentSpecularScale = e.specular end end)
-                if setfpscap then pcall(setfpscap, e.fps or 60) end
                 pcall(function()
                     if e.quality then
                         UserSettings():GetService("UserGameSettings").SavedQualityLevel = e.quality
@@ -6583,7 +6582,7 @@ do
                     pcall(restore, inst, rec)
                     saved[inst] = nil
                     n = n + 1
-                    if n % 250 == 0 then task.wait() end
+                    if n % 200 == 0 then task.wait() end
                 end
             end)
             if feat then feat.setNote("") end
@@ -6591,54 +6590,97 @@ do
 
         feat = createFeature(page, "Anti Lag", {
             initial = flags.antiLag,
-            bodyHeight = 28,
             onToggle = function(v)
                 setFlag("antiLag", v)
                 if v then enable() else disable() end
             end,
         })
-        make("TextLabel", {
-            Size = UDim2.new(0, 64, 1, 0),
-            BackgroundTransparency = 1,
-            Text = "FPS limit",
-            TextColor3 = C.muted,
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, feat.body)
-        createSegmented(feat.body, {
-            Position = UDim2.new(0, 70, 0, 0),
-            Size = UDim2.new(0, 220, 1, 0),
-        }, {
-            { label = "60", value = 60 },
-            { label = "90", value = 90 },
-            { label = "120", value = 120 },
-            { label = "240", value = 240 },
-        }, settings.fpsCap or 120, function(v)
-            settings.fpsCap = v
-            saveSettings()
-            if active then applyFps() end
-        end)
         if flags.antiLag then enable() end
 
-        -- Hanya menghitung musuh untuk ditampilkan di catatan card
+        -- Catatan kartu: jumlah objek yang dioptimalkan dan musuh terlihat
         runLoop(function()
             if not active then return 1 end
             local n = 0
             for h in pairs(npcs) do
                 if h.Parent then n = n + 1 else npcs[h] = nil end
             end
-            crowd = n
-            fpsNow, frames = frames, 0
-            if feat then
-                feat.setNote(fpsNow .. " FPS  |  " .. touched .. " optimized  |  " .. n .. " enemies")
-            end
-            return 1
+            if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
+            return 2
         end)
 
         EP.antiLagOff = function()
             if active then pcall(disable) end
         end
+    end
+
+    -- =================================================================
+    -- Settings: FPS Boost
+    -- Membuka batas FPS lewat setfpscap (ada di Delta dan kebanyakan executor).
+    -- Ini hanya mengubah batas frame rate, tidak mengurangi beban game.
+    -- =================================================================
+    do
+        local page = tabs["Settings"].page
+        local original = nil
+        local fb
+
+        local function apply()
+            if not setfpscap then return end
+            if original == nil then
+                original = 60
+                if getfpscap then
+                    local ok, v = pcall(getfpscap)
+                    if ok and type(v) == "number" and v > 0 then original = v end
+                end
+            end
+            pcall(setfpscap, settings.fpsLimit or 120)
+        end
+        local function release()
+            if setfpscap and original then pcall(setfpscap, original) end
+            original = nil
+        end
+
+        fb = createFeature(page, "FPS Boost", {
+            initial = settings.fpsBoost,
+            bodyHeight = 28,
+            onToggle = function(v)
+                settings.fpsBoost = v
+                saveSettings()
+                if v then apply() else release() end
+                fb.setNote(v and ((settings.fpsLimit or 120) .. " FPS") or "", C.text)
+            end,
+        })
+        make("TextLabel", {
+            Size = UDim2.new(0, 64, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "Max FPS",
+            TextColor3 = C.muted,
+            TextSize = 11,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, fb.body)
+        createSegmented(fb.body, {
+            Position = UDim2.new(0, 70, 0, 0),
+            Size = UDim2.new(0, 165, 1, 0),
+        }, {
+            { label = "60", value = 60 },
+            { label = "90", value = 90 },
+            { label = "120", value = 120 },
+        }, settings.fpsLimit or 120, function(v)
+            settings.fpsLimit = v
+            saveSettings()
+            if settings.fpsBoost then
+                apply()
+                fb.setNote(v .. " FPS", C.text)
+            end
+        end)
+        if not setfpscap then
+            fb.setNote("Not supported", C.muted)
+        elseif settings.fpsBoost then
+            apply()
+            fb.setNote((settings.fpsLimit or 120) .. " FPS", C.text)
+        end
+
+        EP.fpsOff = release
     end
 
     -- Perkecil otomatis kalau tidak ada sentuhan ke GUI selama 7 detik
@@ -7037,6 +7079,7 @@ local function cleanup()
     pcall(function() applySkip("summon", false) end)
     pcall(function() applySkip("uttm", false) end)
     pcall(function() EP.antiLagOff() end)
+    pcall(function() if EP.fpsOff then EP.fpsOff() end end)
     if env.LightHubDrone then env.LightHubDrone.active = false end
     pcall(function() idledConn:Disconnect() end)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end

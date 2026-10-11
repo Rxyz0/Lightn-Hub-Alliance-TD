@@ -3184,6 +3184,177 @@ do
 end
 
 -- =================================================================
+-- Inventory: Units (lihat jumlah per unit + jual)
+-- Data dari LocalPlayer.Inventory: tiap unit adalah objek bernama UUID.
+-- Jual: RemoteFunctions.SellUnits({ [uuid] = true, ... })
+-- Unit yang terkunci / sedang dipakai tidak dihitung dan tidak dijual.
+-- =================================================================
+do
+    local page = tabs["Inventory"].page
+
+    local NAME_KEYS = { "UnitName", "Unit", "DisplayName", "Name", "Type", "UnitId", "Id", "ID" }
+    local KEEP_KEYS = { "Locked", "Lock", "Equipped", "Favorite", "Favourite", "InUse", "Placed" }
+
+    local function isUuid(str)
+        return type(str) == "string"
+            and string.match(str, "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") ~= nil
+    end
+
+    local function unitName(o, inv)
+        for _, k in ipairs(NAME_KEYS) do
+            local a = o:GetAttribute(k)
+            if type(a) == "string" and a ~= "" and not isUuid(a) then return a end
+        end
+        for _, k in ipairs(NAME_KEYS) do
+            local c = o:FindFirstChild(k)
+            if c and c:IsA("StringValue") and c.Value ~= "" and not isUuid(c.Value) then return c.Value end
+        end
+        if o:IsA("StringValue") and o.Value ~= "" and not isUuid(o.Value) then return o.Value end
+        for _, v in pairs(o:GetAttributes()) do
+            if type(v) == "string" and v ~= "" and not isUuid(v) then return v end
+        end
+        local par = o.Parent
+        if par and par ~= inv and not isUuid(par.Name) then return par.Name end
+        return nil
+    end
+
+    local function kept(o)
+        for _, k in ipairs(KEEP_KEYS) do
+            if o:GetAttribute(k) == true then return true end
+            local c = o:FindFirstChild(k)
+            if c and c:IsA("BoolValue") and c.Value then return true end
+        end
+        return false
+    end
+
+    -- { { n = "Cameraman", ids = { uuid, ... } }, ... } diurutkan dari nama, dan total unit
+    local function readUnits()
+        local inv = LocalPlayer:FindFirstChild("Inventory")
+        if not inv then return nil, 0 end
+        local groups, order, total = {}, {}, 0
+        for _, o in ipairs(inv:GetDescendants()) do
+            if isUuid(o.Name) and not kept(o) then
+                local n = unitName(o, inv) or "Unknown"
+                local g = groups[n]
+                if not g then
+                    g = { n = n, ids = {} }
+                    groups[n] = g
+                    order[#order + 1] = g
+                end
+                g.ids[#g.ids + 1] = o.Name
+                total = total + 1
+            end
+        end
+        table.sort(order, function(a, b) return a.n < b.n end)
+        return order, total
+    end
+
+    local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
+    card.card.LayoutOrder = 0   -- paling atas di halaman Inventory
+    local selected, statusUntil, selling = nil, 0, false
+
+    local function say(t, color)
+        statusUntil = os.clock() + 4
+        card.setNote(t, color)
+    end
+
+    createSelect(card.body, {
+        Size = UDim2.new(1, 0, 0, 28),
+    }, {
+        placeholder = "Select a unit",
+        emptyMsg = "No units found",
+        getOptions = function()
+            local opts = {}
+            local list = readUnits()
+            for _, g in ipairs(list or {}) do
+                opts[#opts + 1] = { label = g.n .. "   x" .. #g.ids, value = g.n }
+            end
+            return opts
+        end,
+        onChange = function(v) selected = v end,
+    })
+
+    local amountBox = createInput(card.body, {
+        Size = UDim2.new(0, 90, 0, 28),
+        Position = UDim2.new(0, 0, 0, 36),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, "Amount")
+
+    local function sellUnits()
+        if selling then return end
+        if not selected then
+            say("Select a unit", C.warn)
+            return
+        end
+        local amount = tonumber(amountBox.Text)
+        if not amount or amount < 1 then
+            say("Enter an amount", C.warn)
+            return
+        end
+        local list = readUnits()
+        local group
+        for _, g in ipairs(list or {}) do
+            if g.n == selected then group = g end
+        end
+        if not group then
+            say("Out of stock", C.warn)
+            return
+        end
+        amount = math.min(math.floor(amount), #group.ids)
+        selling = true
+        task.spawn(function()
+            local sold, failed = 0, false
+            local i = 1
+            while i <= amount and not failed do
+                local batch, count = {}, 0
+                while i <= amount and count < 25 do
+                    batch[group.ids[i]] = true
+                    i, count = i + 1, count + 1
+                end
+                local ok, res = invoke("SellUnits", batch)
+                if accepted(ok, res) then
+                    sold = sold + count
+                else
+                    failed = true
+                end
+                task.wait(0.2)
+            end
+            if sold > 0 then
+                say("Sold " .. sold .. " " .. selected, failed and C.warn or C.text)
+            else
+                say("Sale failed", C.warn)
+            end
+            selling = false
+        end)
+    end
+
+    createButton(card.body, {
+        Size = UDim2.new(1, -98, 0, 28),
+        Position = UDim2.new(0, 98, 0, 36),
+    }, "Sell", sellUnits)
+
+    local hinted = false
+    runLoop(function()
+        if os.clock() > statusUntil then
+            if not LocalPlayer:FindFirstChild("Inventory") then
+                card.setNote("No inventory data", C.muted)
+            else
+                local list, total = readUnits()
+                card.setNote(#list .. " types · " .. total .. " units", C.muted)
+                if total == 0 and not hinted then
+                    hinted = true
+                    local inv = LocalPlayer.Inventory
+                    local first = inv:GetChildren()[1]
+                    print("[Lightn Hub] Units: tidak ada objek bernama UUID di Inventory. Isi pertama: "
+                        .. (first and (first.ClassName .. " " .. first.Name) or "kosong"))
+                end
+            end
+        end
+        return 3
+    end)
+end
+
+-- =================================================================
 -- Fishing: Auto Fishing + Craft Fishing Island
 --   Urutan: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
 --   -> Hit{Index 1..10, ClickTime} (sekitar 1 detik per Hit)

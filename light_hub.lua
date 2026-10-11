@@ -42,6 +42,84 @@ local C = {
     warn = Color3.fromRGB(255, 184, 64),
 }
 
+-- Tema: Default (abu-abu) atau Halloween (hitam keunguan + oranye labu).
+-- Warna abu-abu dipetakan ke palet tema; warna berwarna (streak, UTTM, peringatan) tidak diubah.
+-- C.hi = teks terang, C.accent = isian aktif (toggle, penanda, tombol nyala).
+local DEF = {}
+for k, v in pairs(C) do DEF[k] = v end
+C.hi = C.white
+C.accent = C.white
+
+local theme = { name = "Default", rev = {} }
+local toHalloween, fromHalloween, T, setPalette
+do
+    local ACCENT = Color3.fromRGB(255, 132, 28)
+    local BONE = Color3.fromRGB(250, 236, 220)
+    local DARK_STOPS = {
+        { 0, 7, 5, 12 }, { 0.12, 22, 16, 32 }, { 0.22, 40, 30, 56 },
+        { 0.33, 66, 50, 86 }, { 0.6, 142, 124, 168 }, { 1, 205, 194, 222 },
+    }
+    local function rgb(r, g, b)
+        return Color3.fromRGB(math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
+    end
+    local function darkRamp(l)
+        local t = math.clamp(l / 215, 0, 1)
+        for i = 2, #DARK_STOPS do
+            local a, b = DARK_STOPS[i - 1], DARK_STOPS[i]
+            if t <= b[1] then
+                local k = (t - a[1]) / (b[1] - a[1])
+                return rgb(a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k, a[4] + (b[4] - a[4]) * k)
+            end
+        end
+        return rgb(205, 194, 222)
+    end
+    local function colorKey(c)
+        return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
+    end
+    -- kind: "bg" isian polos, "base" isian yang diwarnai gradient, "txt" teks, "gen" garis/gradient
+    function toHalloween(kind, c)
+        local r, g, b = c.R * 255, c.G * 255, c.B * 255
+        if math.max(r, g, b) - math.min(r, g, b) > 9 then return c end
+        local l = (r + g + b) / 3
+        local out
+        if kind == "bg" then
+            out = (l >= 215) and ACCENT or darkRamp(l)
+        elseif kind == "base" then
+            if l >= 215 then return c end
+            out = darkRamp(l)
+        elseif kind == "txt" then
+            out = (l >= 215) and BONE or darkRamp(l)
+        elseif l >= 150 then
+            local k = (l - 150) / 105
+            out = rgb(168 + (255 - 168) * k, 90 + (132 - 90) * k, 200 + (28 - 200) * k)
+        else
+            out = darkRamp(l)
+        end
+        theme.rev[kind .. colorKey(out)] = c
+        return out
+    end
+    function fromHalloween(kind, c)
+        return theme.rev[kind .. colorKey(c)] or c
+    end
+    -- Untuk warna yang dibuat saat program berjalan
+    function T(c, kind)
+        if theme.name ~= "Halloween" then return c end
+        return toHalloween(kind or "gen", c)
+    end
+    local PALETTE_KIND = {
+        text = "txt", muted = "txt", dim = "txt", ink = "txt",
+        line = "gen", control = "bg", controlLine = "gen", hover = "bg",
+    }
+    function setPalette(name)
+        local on = (name == "Halloween")
+        for k, v in pairs(DEF) do
+            C[k] = (on and PALETTE_KIND[k]) and toHalloween(PALETTE_KIND[k], v) or v
+        end
+        C.hi = on and BONE or DEF.white
+        C.accent = on and ACCENT or DEF.white
+    end
+end
+
 -- =================================================================
 -- Pilihan dropdown / segmen
 -- value Crate & Potion = ID asli dari game (dari log remote)
@@ -118,6 +196,7 @@ local POTION_OPTIONS = {
 -- State
 -- =================================================================
 local settings = {
+    theme = "Default",
     antiAfk = true,
     showTimer = true,
     cheapestFirst = true,
@@ -190,6 +269,145 @@ local function tween(obj, t, goal)
     TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
 end
 
+-- Dekorasi tema Halloween: jaring laba-laba, labu, kelelawar, laba-laba menggantung.
+-- Semuanya Frame statis di belakang konten dan hanya tampil saat tema Halloween aktif.
+-- Hanya labu (berkedip) dan laba-laba (berayun) yang bergerak, lewat satu tween pelan.
+local decor = { roots = {}, tweens = {}, hideMini = {} }
+do
+    local WEB_COLOR = Color3.fromRGB(176, 154, 205)
+
+    function decor.root(par, props)
+        props.BackgroundTransparency = 1
+        props.BorderSizePixel = 0
+        props.Visible = false
+        props.ClipsDescendants = true
+        local f = make("Frame", props, par)
+        decor.roots[#decor.roots + 1] = f
+        return f
+    end
+
+    local function drawLine(par, x1, y1, x2, y2, color, alpha, thick)
+        local dx, dy = x2 - x1, y2 - y1
+        make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0, (x1 + x2) / 2, 0, (y1 + y2) / 2),
+            Size = UDim2.new(0, math.sqrt(dx * dx + dy * dy), 0, thick or 1),
+            Rotation = math.deg(math.atan2(dy, dx)),
+            BackgroundColor3 = color,
+            BackgroundTransparency = alpha,
+            BorderSizePixel = 0,
+        }, par)
+    end
+
+    -- Jaring seperempat lingkaran dari titik (cx, cy), sudut a0..a1 (derajat, 0 = kanan, 90 = bawah)
+    function decor.web(par, cx, cy, R, a0, a1, spokes, rings, alpha)
+        local function pt(r, a)
+            local rad = math.rad(a)
+            return cx + r * math.cos(rad), cy + r * math.sin(rad)
+        end
+        for i = 0, spokes do
+            local x, y = pt(R, a0 + (a1 - a0) * i / spokes)
+            drawLine(par, cx, cy, x, y, WEB_COLOR, alpha)
+        end
+        for j = 1, rings do
+            local r = R * (j / rings) ^ 1.2
+            local px, py = pt(r, a0)
+            for i = 1, spokes do
+                local nx, ny = pt(r, a0 + (a1 - a0) * i / spokes)
+                drawLine(par, px, py, nx, ny, WEB_COLOR, alpha + 0.04)
+                px, py = nx, ny
+            end
+        end
+    end
+
+    local function oval(par, x, y, w, h, color, alpha)
+        local f = make("Frame", {
+            Position = UDim2.new(0, x, 0, y),
+            Size = UDim2.new(0, w, 0, h),
+            BackgroundColor3 = color,
+            BackgroundTransparency = alpha or 0,
+            BorderSizePixel = 0,
+        }, par)
+        make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
+        return f
+    end
+
+    local function pulse(objs, lo, hi, secs)
+        for _, o in ipairs(objs) do
+            o.BackgroundTransparency = lo
+            decor.tweens[#decor.tweens + 1] = TweenService:Create(o,
+                TweenInfo.new(secs, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                { BackgroundTransparency = hi })
+        end
+    end
+
+    function decor.pumpkin(par, pos)
+        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 46, 0, 40), BackgroundTransparency = 1 }, par)
+        oval(box, 0, 5, 26, 34, Color3.fromRGB(168, 62, 12))
+        oval(box, 20, 5, 26, 34, Color3.fromRGB(168, 62, 12))
+        oval(box, 9, 3, 28, 36, Color3.fromRGB(222, 98, 20))
+        local stem = make("Frame", {
+            Position = UDim2.new(0, 20, 0, 0), Size = UDim2.new(0, 6, 0, 8),
+            BackgroundColor3 = Color3.fromRGB(78, 98, 34), BorderSizePixel = 0, Rotation = 12,
+        }, box)
+        local glow = {}
+        for _, x in ipairs({ 14, 28 }) do
+            glow[#glow + 1] = make("Frame", {
+                Position = UDim2.new(0, x, 0, 15), Size = UDim2.new(0, 6, 0, 6), Rotation = 45,
+                BackgroundColor3 = Color3.fromRGB(255, 200, 70), BorderSizePixel = 0,
+            }, box)
+        end
+        for _, m in ipairs({ { 14, 27 }, { 21, 29 }, { 28, 27 } }) do
+            glow[#glow + 1] = make("Frame", {
+                Position = UDim2.new(0, m[1], 0, m[2]), Size = UDim2.new(0, 5, 0, 5),
+                BackgroundColor3 = Color3.fromRGB(255, 200, 70), BorderSizePixel = 0,
+            }, box)
+        end
+        pulse(glow, 0.05, 0.55, 1.6)
+    end
+
+    function decor.bat(par, pos)
+        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 22, 0, 12), BackgroundTransparency = 1 }, par)
+        local c = Color3.fromRGB(26, 18, 38)
+        oval(box, 8, 3, 6, 8, c)
+        for _, w in ipairs({ { 0, -22 }, { 12, 22 } }) do
+            local f = oval(box, w[1], 2, 11, 5, c)
+            f.Rotation = w[2]
+        end
+        make("Frame", { Position = UDim2.new(0, 8, 0, 1), Size = UDim2.new(0, 2, 0, 3), BackgroundColor3 = c, BorderSizePixel = 0 }, box)
+        make("Frame", { Position = UDim2.new(0, 12, 0, 1), Size = UDim2.new(0, 2, 0, 3), BackgroundColor3 = c, BorderSizePixel = 0 }, box)
+    end
+
+    function decor.spider(par, x)
+        local box = decor.root(par, {
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0, x, 0, 0),
+            Size = UDim2.new(0, 20, 0, 31),
+        })
+        box.ClipsDescendants = false
+        drawLine(box, 10, 0, 10, 17, WEB_COLOR, 0.35)
+        local dark = Color3.fromRGB(40, 30, 58)
+        for _, l in ipairs({
+            { 6, 21, 0, 15 }, { 6, 22, 0, 22 }, { 6, 23, 1, 28 },
+            { 14, 21, 20, 15 }, { 14, 22, 20, 22 }, { 14, 23, 19, 28 },
+        }) do
+            drawLine(box, l[1], l[2], l[3], l[4], dark, 0.1)
+        end
+        oval(box, 5, 17, 10, 10, Color3.fromRGB(34, 24, 50))
+        for _, ex in ipairs({ 7, 11 }) do
+            make("Frame", {
+                Position = UDim2.new(0, ex, 0, 20), Size = UDim2.new(0, 2, 0, 2),
+                BackgroundColor3 = Color3.fromRGB(255, 70, 40), BorderSizePixel = 0,
+            }, box)
+        end
+        box.Rotation = -8
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(box,
+            TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = 8 })
+        decor.hideMini[box] = true
+        return box
+    end
+end
+
 local function nextOrder(par)
     local n = (par:GetAttribute("_n") or 0) + 1
     par:SetAttribute("_n", n)
@@ -219,6 +437,7 @@ local function saveSettings()
     if not canFile then return end
     local data = {
         antiAfk = settings.antiAfk,
+        theme = settings.theme,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -263,6 +482,7 @@ local function loadSettings()
 
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
+    if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -489,6 +709,7 @@ end
 -- punya fase dan kecepatan sendiri sehingga tidak selaras dengan teks judul.
 local movers = {}
 local function swing(frame, lo, hi, base, amp, speed, phase)
+    lo, hi = T(lo, "gen"), T(hi, "gen")
     local g = make("UIGradient", {
         Color = ColorSequence.new({
             ColorSequenceKeypoint.new(0, lo),
@@ -509,7 +730,7 @@ local function titleSeq(t)
         local x = i / n
         local v = 0.5 + 0.5 * math.sin((x * 1.3 - t * 0.12) * math.pi * 2)
         local g = math.floor(125 + 130 * v)
-        kps[#kps + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(g, g, g))
+        kps[#kps + 1] = ColorSequenceKeypoint.new(x, T(Color3.fromRGB(g, g, g), "gen"))
     end
     return ColorSequence.new(kps)
 end
@@ -576,6 +797,13 @@ local function runLoop(fn)
     end)
 end
 
+-- Dekorasi: jaring di pojok kanan atas jendela
+do
+    local root = decor.root(MainFrame, { Size = UDim2.new(1, 0, 1, 0) })
+    decor.web(root, WIN_W, 0, 130, 90, 180, 6, 5, 0.86)
+    decor.hideMini[root] = true
+end
+
 -- Header
 local Header = make("Frame", {
     Size = UDim2.new(1, 0, 0, HEADER_H),
@@ -590,6 +818,7 @@ make("Frame", {
     BackgroundColor3 = C.line,
     BorderSizePixel = 0,
 }, Header)
+decor.spider(Header, 262)
 
 local TitleRow = make("Frame", {
     Size = UDim2.new(0, 220, 1, 0),
@@ -607,7 +836,7 @@ local TitleLabel = make("TextLabel", {
     AutomaticSize = Enum.AutomaticSize.X,
     BackgroundTransparency = 1,
     Text = "LIGHTN HUB",
-    TextColor3 = C.white,
+    TextColor3 = C.hi,
     TextSize = 13,
     Font = Enum.Font.GothamBold,
     LayoutOrder = 1,
@@ -629,7 +858,7 @@ local TimerLabel = make("TextLabel", {
     Position = UDim2.new(1, -158, 0, 0),
     BackgroundTransparency = 1,
     Text = "00:00:00",
-    TextColor3 = C.white,
+    TextColor3 = C.hi,
     TextSize = 14,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Right,
@@ -719,7 +948,7 @@ local MiniWaveValue = make("TextLabel", {
     Position = UDim2.new(0, 0, 0, 12),
     BackgroundTransparency = 1,
     Text = "-",
-    TextColor3 = C.white,
+    TextColor3 = C.hi,
     TextSize = 14,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -809,7 +1038,7 @@ do
     function ui.setStreak(n)
         n = math.max(0, math.floor(tonumber(n) or 0))
         value.Text = tostring(n)
-        value.TextColor3 = n > 0 and C.white or C.muted
+        value.TextColor3 = n > 0 and C.hi or C.muted
         local tier
         for _, t in ipairs(TIERS) do
             if n >= t.min then tier = t break end
@@ -837,7 +1066,7 @@ local MiniBarTrack = make("Frame", {
 }, Header)
 local MiniBarFill = make("Frame", {
     Size = UDim2.new(0, 0, 1, 0),
-    BackgroundColor3 = C.white,
+    BackgroundColor3 = C.accent,
     BorderSizePixel = 0,
 }, MiniBarTrack)
 
@@ -902,6 +1131,15 @@ make("Frame", {
     BackgroundColor3 = C.line,
     BorderSizePixel = 0,
 }, Sidebar)
+
+-- Dekorasi sidebar: jaring raksasa dari pojok kiri atas, labu dan kelelawar di bawah
+do
+    local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
+    decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
+    decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
+    decor.bat(root, UDim2.new(0, 72, 1, -64))
+    decor.bat(root, UDim2.new(0, 86, 1, -38))
+end
 
 local PageHolder = make("Frame", {
     Size = UDim2.new(1, -SIDEBAR_W, 1, 0),
@@ -988,7 +1226,7 @@ local ListScroll = make("ScrollingFrame", {
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 3,
-    ScrollBarImageColor3 = Color3.fromRGB(120, 120, 126),
+    ScrollBarImageColor3 = T(Color3.fromRGB(120, 120, 126), "gen"),
     CanvasSize = UDim2.new(0, 0, 0, 0),
     ZIndex = 3,
 }, ListFrame)
@@ -1061,7 +1299,7 @@ local function openList(anchor, options, current, onPick, chev)
             Position = UDim2.new(0, 10, 0, 0),
             BackgroundTransparency = 1,
             Text = o.label,
-            TextColor3 = selected and C.white or C.muted,
+            TextColor3 = selected and C.hi or C.muted,
             TextSize = 11,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -1071,7 +1309,7 @@ local function openList(anchor, options, current, onPick, chev)
         if selected then
             make("Frame", {
                 Size = UDim2.new(0, 2, 1, 0),
-                BackgroundColor3 = C.white,
+                BackgroundColor3 = C.accent,
                 BorderSizePixel = 0,
                 ZIndex = 5,
             }, b)
@@ -1272,7 +1510,7 @@ local function createFeature(par, title, opts)
     local track = make("Frame", {
         Size = UDim2.new(0, 34, 0, 16),
         Position = UDim2.new(1, -48, 0, 9),
-        BackgroundColor3 = Color3.fromRGB(34, 34, 37),
+        BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
         BorderSizePixel = 0,
     }, card)
     local trackStroke = make("UIStroke", {
@@ -1307,11 +1545,11 @@ local function createFeature(par, title, opts)
     local function render(animate)
         local tc, kc
         if locked then
-            tc, kc = Color3.fromRGB(28, 28, 30), Color3.fromRGB(64, 64, 68)
+            tc, kc = T(Color3.fromRGB(28, 28, 30), "bg"), T(Color3.fromRGB(64, 64, 68), "bg")
         elseif state then
-            tc, kc = Color3.fromRGB(232, 232, 234), Color3.fromRGB(14, 14, 15)
+            tc, kc = T(Color3.fromRGB(232, 232, 234), "bg"), T(Color3.fromRGB(14, 14, 15), "bg")
         else
-            tc, kc = Color3.fromRGB(34, 34, 37), C.muted
+            tc, kc = T(Color3.fromRGB(34, 34, 37), "bg"), C.muted
         end
         local kp = state and POS_ON or POS_OFF
         local sc = (state and not locked) and tc or C.controlLine
@@ -1385,7 +1623,7 @@ local function createSegmented(par, props, options, initial, onChange)
         local b = make("TextButton", {
             Size = UDim2.new(1 / n, -2, 1, -4),
             Position = UDim2.new((i - 1) / n, 2, 0, 2),
-            BackgroundColor3 = Color3.fromRGB(226, 226, 228),
+            BackgroundColor3 = T(Color3.fromRGB(226, 226, 228), "bg"),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Text = "",
@@ -1535,7 +1773,7 @@ local function createPill(par, props, text, initial, onChange)
 
     -- Saat aktif: gradient biru-es ke lavender yang bergeser pelan
     local grad = make("UIGradient", {
-        Color = ColorSequence.new(Color3.fromRGB(240, 240, 242), Color3.fromRGB(160, 160, 166)),
+        Color = ColorSequence.new(T(Color3.fromRGB(240, 240, 242), "gen"), T(Color3.fromRGB(160, 160, 166), "gen")),
         Rotation = 0,
         Offset = Vector2.new(-0.25, 0),
         Enabled = false,
@@ -1596,7 +1834,7 @@ local function createButton(par, props, text, onClick)
     btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.hover end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.control end)
     btn.MouseButton1Click:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(96, 96, 102)
+        btn.BackgroundColor3 = T(Color3.fromRGB(96, 96, 102), "bg")
         tween(btn, 0.25, { BackgroundColor3 = C.control })
         if onClick then onClick() end
     end)
@@ -1672,7 +1910,7 @@ end
 local function createMiniSwitch(par, props, initial, onChange)
     local track = make("Frame", {
         Size = UDim2.new(0, 34, 0, 16),
-        BackgroundColor3 = Color3.fromRGB(34, 34, 37),
+        BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
         BorderSizePixel = 0,
     }, par)
     for k, v in pairs(props) do track[k] = v end
@@ -1694,8 +1932,8 @@ local function createMiniSwitch(par, props, initial, onChange)
     local api = { state = false }
     function api.set(v, animate)
         api.state = v and true or false
-        local tc = api.state and Color3.fromRGB(232, 232, 234) or Color3.fromRGB(34, 34, 37)
-        local kc = api.state and Color3.fromRGB(14, 14, 15) or C.muted
+        local tc = api.state and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+        local kc = api.state and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
         local sc = api.state and tc or C.controlLine
         local kp = api.state and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
         if animate then
@@ -1759,7 +1997,7 @@ local function createFloat(title, startPos)
         Font = Enum.Font.GothamMedium,
         AutoButtonColor = false,
     }, f)
-    close.MouseEnter:Connect(function() close.TextColor3 = C.white end)
+    close.MouseEnter:Connect(function() close.TextColor3 = C.hi end)
     close.MouseLeave:Connect(function() close.TextColor3 = C.muted end)
     close.MouseButton1Click:Connect(function() f.Visible = false end)
     make("Frame", {
@@ -1909,7 +2147,7 @@ nav.ind = make("Frame", {
     AnchorPoint = Vector2.new(0.5, 1),
     Size = UDim2.new(0.5, 0, 0, 2),
     Position = UDim2.new(0.25, 0, 1, 0),
-    BackgroundColor3 = C.white,
+    BackgroundColor3 = C.accent,
     BorderSizePixel = 0,
 }, nav.bar)
 function nav.place(i, count, animate)
@@ -1928,7 +2166,7 @@ local function selectTab(name)
     if isSettings then nav.lastSettings = name else nav.lastMain = name end
 
     for _, grp in ipairs(nav.groups) do
-        grp.label.TextColor3 = (grp == g) and C.white or C.muted
+        grp.label.TextColor3 = (grp == g) and C.hi or C.muted
     end
     -- Papan penanda geser ke item yang dibuka; disembunyikan saat di Settings (gear)
     if g == nav.settings then
@@ -1960,7 +2198,7 @@ local function selectTab(name)
             tb.btn.Visible = true
             tb.btn.Size = UDim2.new(1 / count, 0, 1, 0)
             tb.btn.Position = UDim2.new((i - 1) / count, 0, 0, 0)
-            tb.label.TextColor3 = on and C.white or C.muted
+            tb.label.TextColor3 = on and C.hi or C.muted
             if on then
                 nav.place(i, count, nav.indReady)
                 nav.indReady = true
@@ -1978,7 +2216,7 @@ local function addPage(name, grp)
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ScrollBarThickness = 3,
-        ScrollBarImageColor3 = Color3.fromRGB(120, 120, 126),
+        ScrollBarImageColor3 = T(Color3.fromRGB(120, 120, 126), "gen"),
         CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ScrollingDirection = Enum.ScrollingDirection.Y,
@@ -2047,7 +2285,7 @@ swing(nav.sel, Color3.fromRGB(34, 34, 38), Color3.fromRGB(66, 66, 72), 0, 30, 0.
 make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, nav.sel)
 make("Frame", {
     Size = UDim2.new(0, 3, 1, 0),
-    BackgroundColor3 = C.white,
+    BackgroundColor3 = C.accent,
     BorderSizePixel = 0,
 }, nav.sel)
 
@@ -2239,7 +2477,7 @@ do
             local row = make("Frame", {
                 Size = UDim2.new(1, 0, 0, 22),
                 Position = UDim2.new(0, 0, 0, (i - 1) * 24),
-                BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+                BackgroundColor3 = T(Color3.fromRGB(24, 24, 27), "bg"),
                 BorderSizePixel = 0,
             }, histRows)
             make("TextLabel", {
@@ -2247,7 +2485,7 @@ do
                 Position = UDim2.new(0, 8, 0, 0),
                 BackgroundTransparency = 1,
                 Text = e.win and "Win" or "Lose",
-                TextColor3 = e.win and C.white or C.muted,
+                TextColor3 = e.win and C.hi or C.muted,
                 TextSize = 11,
                 Font = Enum.Font.GothamBold,
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -3495,7 +3733,7 @@ do
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             Text = "Disable",
-            TextColor3 = C.white,
+            TextColor3 = C.hi,
             TextSize = 34,
             Font = Enum.Font.GothamBold,
         }, area)
@@ -3823,7 +4061,7 @@ do
             Position = UDim2.new(0, 12, 0, y + 4),
             BackgroundTransparency = 1,
             Text = r.name,
-            TextColor3 = C.white,
+            TextColor3 = C.hi,
             TextSize = 12,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -4217,7 +4455,7 @@ do
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
         Text = "Teleport",
-        TextColor3 = C.white,
+        TextColor3 = C.hi,
         TextSize = 12,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -4231,7 +4469,7 @@ do
         Position = UDim2.new(0, 12 + prefixW, 0, 0),
         BackgroundTransparency = 1,
         Text = "UTTM",
-        TextColor3 = C.white,
+        TextColor3 = C.hi,
         TextSize = 12,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -4524,7 +4762,7 @@ do
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
             Text = "Unit Replace",
-            TextColor3 = C.white,
+            TextColor3 = C.hi,
             TextSize = 12,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -5293,7 +5531,7 @@ do
         local track = make("Frame", {
             Size = UDim2.new(0, 34, 0, 16),
             Position = UDim2.new(1, -48, 0, 9),
-            BackgroundColor3 = Color3.fromRGB(34, 34, 37),
+            BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
             BorderSizePixel = 0,
         }, parent)
         local stroke = make("UIStroke", {
@@ -5313,8 +5551,8 @@ do
         local api = { state = false }
         function api.set(v, animate)
             api.state = v and true or false
-            local tc = api.state and Color3.fromRGB(232, 232, 234) or Color3.fromRGB(34, 34, 37)
-            local kc = api.state and Color3.fromRGB(14, 14, 15) or C.muted
+            local tc = api.state and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+            local kc = api.state and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
             local sc = api.state and tc or C.controlLine
             local kp = api.state and UDim2.new(1, -13, 0.5, -5) or UDim2.new(0, 3, 0.5, -5)
             if animate then
@@ -5346,7 +5584,7 @@ do
             Size = UDim2.new(0, wordW + 4, 1, 0),
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
-            Text = word, TextColor3 = C.white, TextSize = 12,
+            Text = word, TextColor3 = C.hi, TextSize = 12,
             Font = Enum.Font.GothamBold,
             TextXAlignment = Enum.TextXAlignment.Left,
         }, frame)
@@ -6163,7 +6401,7 @@ do
         BackgroundTransparency = 1,
         RichText = true,
         Text = "",
-        TextColor3 = C.white,
+        TextColor3 = C.hi,
         TextSize = 14,
         Font = Enum.Font.RobotoMono,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -6245,7 +6483,7 @@ do
             local row = make("Frame", {
                 Size = UDim2.new(1, 0, 0, 20),
                 Position = UDim2.new(0, 0, 0, (r - 1) * 22),
-                BackgroundColor3 = Color3.fromRGB(24, 24, 27),
+                BackgroundColor3 = T(Color3.fromRGB(24, 24, 27), "bg"),
                 BorderSizePixel = 0,
             }, GiftList)
             make("TextLabel", {
@@ -6602,6 +6840,17 @@ end)
 do
     local page = tabs["Settings"].page
 
+    local themeCard = createFeature(page, "Theme", { noToggle = true, bodyHeight = 28 })
+    themeCard.card.LayoutOrder = -3
+    createSegmented(themeCard.body, {
+        Size = UDim2.new(1, 0, 1, 0),
+    }, {
+        { label = "Default", value = "Default" },
+        { label = "Halloween", value = "Halloween" },
+    }, settings.theme, function(v)
+        ui.applyTheme(v)
+    end)
+
     createFeature(page, "Show timer", {
         initial = settings.showTimer,
         onToggle = function(v)
@@ -6929,7 +7178,7 @@ do
         Position = UDim2.new(0, 70, 0, 11),
         BackgroundTransparency = 1,
         Text = LocalPlayer.DisplayName,
-        TextColor3 = C.white,
+        TextColor3 = C.hi,
         TextSize = 14,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -7350,6 +7599,7 @@ local function setMinimized(mini)
     MiniBarTrack.Visible = mini
     if mini then layoutMini() else restoreFull() end
     applyTimerVisibility()
+    if ui.decorRefresh then ui.decorRefresh() end
     tween(MainFrame, 0.15, {
         Size = mini and UDim2.new(0, MINI_W, 0, HEADER_H) or UDim2.new(0, WIN_W, 0, WIN_H),
     })
@@ -7401,6 +7651,76 @@ CloseBtn.MouseButton1Click:Connect(function()
     notify("Terminated", "Lightn Hub closed. All features stopped.", 2)
     cleanup()
 end)
+
+-- Tema: dekorasi tampil/sembunyi, warna objek yang sudah ada diganti
+function ui.decorRefresh()
+    local on = theme.name == "Halloween"
+    for _, r in ipairs(decor.roots) do
+        r.Visible = on and not (decor.hideMini[r] and ui.minimized)
+    end
+    for _, tw in ipairs(decor.tweens) do
+        if on then tw:Play() else tw:Pause() end
+    end
+end
+
+do
+    local themePass = 0
+    local function recolor(d, map)
+        if d:IsA("GuiObject") then
+            local kind = d:FindFirstChildOfClass("UIGradient") and "base" or "bg"
+            d.BackgroundColor3 = map(kind, d.BackgroundColor3)
+            if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                d.TextColor3 = map("txt", d.TextColor3)
+                if d:IsA("TextBox") then d.PlaceholderColor3 = map("txt", d.PlaceholderColor3) end
+            end
+            if d:IsA("ScrollingFrame") then d.ScrollBarImageColor3 = map("gen", d.ScrollBarImageColor3) end
+        elseif d:IsA("UIStroke") then
+            d.Color = map("gen", d.Color)
+        elseif d:IsA("UIGradient") then
+            local kps = {}
+            for i, k in ipairs(d.Color.Keypoints) do
+                kps[i] = ColorSequenceKeypoint.new(k.Time, map("gen", k.Value))
+            end
+            d.Color = ColorSequence.new(kps)
+        end
+    end
+
+    function ui.applyTheme(name)
+        if name ~= "Halloween" then name = "Default" end
+        if theme.name == name then return end
+        local to = (name == "Halloween")
+        theme.name = name
+        settings.theme = name
+        setPalette(name)
+
+        -- Dekorasi dan ikon gear tidak ikut diwarnai ulang
+        local skip = {}
+        for _, root in ipairs(decor.roots) do
+            skip[root] = true
+            for _, d in ipairs(root:GetDescendants()) do skip[d] = true end
+        end
+        if ui.gearBtn then
+            for _, d in ipairs(ui.gearBtn:GetDescendants()) do skip[d] = true end
+        end
+        local map = to and toHalloween or fromHalloween
+
+        themePass = themePass + 1
+        local my = themePass
+        local list = ScreenGui:GetDescendants()
+        task.spawn(function()
+            for i, d in ipairs(list) do
+                if my ~= themePass then return end
+                if not skip[d] then pcall(recolor, d, map) end
+                if i % 250 == 0 then task.wait() end
+            end
+        end)
+        ui.decorRefresh()
+        saveSettings()
+    end
+
+end
+
+if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
 
 selectTab("Main")
 notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)

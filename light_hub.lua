@@ -119,8 +119,6 @@ local POTION_OPTIONS = {
 -- =================================================================
 local settings = {
     antiAfk = true,
-    fpsLimit = 120,
-    fpsBoost = false,
     showTimer = true,
     cheapestFirst = true,
     upgradeDelay = 0.5,
@@ -221,8 +219,6 @@ local function saveSettings()
     if not canFile then return end
     local data = {
         antiAfk = settings.antiAfk,
-        fpsLimit = settings.fpsLimit,
-        fpsBoost = settings.fpsBoost,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -267,10 +263,6 @@ local function loadSettings()
 
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
-    if data.fpsLimit == 60 or data.fpsLimit == 90 or data.fpsLimit == 120 then
-        settings.fpsLimit = data.fpsLimit
-    end
-    if type(data.fpsBoost) == "boolean" then settings.fpsBoost = data.fpsBoost end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -6160,81 +6152,104 @@ end
 -- =================================================================
 -- Rewards: Auto Claim Season Pass
 -- ClaimSeasonReward(level, "Free" | "Premium"), level 1-50.
--- Isi data season dari game tidak diketahui, jadi tiap reward dicoba dan server yang
--- memutuskan (sudah diklaim, belum terbuka, atau tidak punya Premium = ditolak).
--- Reward yang berhasil diingat selama sesi. Premium baru dicoba terus kalau ada
--- bukti pemain punya Premium; sapuan penuh tiap 5 menit memeriksa ulang semuanya.
+-- Tiap reward dicoba dan server yang memutuskan (sudah diklaim, belum terbuka, atau
+-- belum punya Premium = ditolak). Reward yang berhasil diingat selama sesi.
+-- Sapuan penuh dijalankan saat dinyalakan, saat data season pemain berubah (naik level,
+-- beli Premium), setelah pembelian di game selesai, dan tiap 2 menit sebagai cadangan.
 -- =================================================================
 do
     local page = tabs["AFK"].page
     local MAX_LEVEL = 50
     local TRACKS = { "Free", "Premium" }
     local done = {}                          -- "level|track" -> true
-    local total, premCount = 0, 0
-    local frontier = { Free = 1, Premium = 1 }
-    local premiumLikely = nil                -- nil = belum tahu
-    local lastFull, lastLevel, wasOn = 0, nil, false
+    local total = 0
+    local lastFull, lastSig, wasOn = 0, nil, false
+    local kick = false                       -- ada pemicu sapuan baru
+    local MarketplaceService = game:GetService("MarketplaceService")
 
     local feat = visualFeature(page, "Auto Claim Season Pass", "autoSeason", 0)
 
-    -- Level dan status Premium dibaca dari atribut player kalau game menyediakannya
-    local function attrLevel()
-        for k, v in pairs(LocalPlayer:GetAttributes()) do
+    -- Ringkasan data season pemain (level, Premium, status klaim). Dipakai untuk tahu
+    -- kapan ada perubahan; XP dan progres sengaja diabaikan supaya tidak terus memicu.
+    local KEEP = { "level", "premium", "claim", "owned", "pass", "tier", "unlock" }
+    local SKIP = { "xp", "exp", "progress" }
+    local function hasAny(name, words)
+        for _, w in ipairs(words) do
+            if string.find(name, w, 1, true) then return true end
+        end
+        return false
+    end
+    local function snapshot()
+        local parts = {}
+        local function add(k, v)
             local n = string.lower(k)
-            if type(v) == "number" and string.find(n, "season", 1, true)
-                and string.find(n, "level", 1, true) then
-                return math.floor(v)
+            if hasAny(n, KEEP) and not hasAny(n, SKIP) and #parts < 200 then
+                parts[#parts + 1] = k .. "=" .. tostring(v)
             end
         end
-        return nil
-    end
-    local function attrPremium()
-        for k, v in pairs(LocalPlayer:GetAttributes()) do
-            local n = string.lower(k)
-            if type(v) == "boolean" and string.find(n, "season", 1, true)
-                and (string.find(n, "premium", 1, true) or string.find(n, "pass", 1, true)) then
-                return v
+        for k, v in pairs(LocalPlayer:GetAttributes()) do add(k, v) end
+        local c = LocalPlayer:FindFirstChild("SeasonPassController")
+        if c then
+            for k, v in pairs(c:GetAttributes()) do add(k, v) end
+            for _, o in ipairs(c:GetDescendants()) do
+                if o:IsA("ValueBase") then add(o.Name, o.Value) end
+                for k, v in pairs(o:GetAttributes()) do add(k, v) end
             end
         end
-        return nil
+        table.sort(parts)
+        return table.concat(parts, ";")
     end
 
-    local function claim(level, track)
-        local ok, res = invoke("ClaimSeasonReward", level, track)
-        return ok and (res == true
-            or (type(res) == "table" and (res.Success == true or res.success == true)))
+    local REJECT = { "already", "not ", "fail", "error", "invalid", "insufficient",
+        "locked", "need", "require", "cannot", "can't" }
+    local function success(ok, res)
+        if not ok then return false end
+        local t = type(res)
+        if t == "boolean" then return res end
+        if t == "nil" then return false end
+        if t == "table" then
+            if res.Success ~= nil then return res.Success == true end
+            if res.success ~= nil then return res.success == true end
+            if res.Error or res.error then return false end
+            return true
+        end
+        if t == "string" then return not hasAny(string.lower(res), REJECT) end
+        return true
     end
 
-    -- full = coba semua level 1..N. Bukan full = lanjut dari level terakhir yang berhasil
-    -- dan berhenti di reward pertama yang ditolak (level di atasnya pasti belum terbuka).
-    local function sweep(full)
-        local lv = attrLevel()
-        local top = lv and math.clamp(lv, 1, MAX_LEVEL) or MAX_LEVEL
-        local prem = attrPremium()
+    -- Satu sapuan: semua level 1..50, jalur Free lalu Premium. Premium selalu dicoba,
+    -- server yang menolak kalau belum punya.
+    local function sweep()
         local got = 0
+        local sample = {}
         for _, track in ipairs(TRACKS) do
-            local skip = (track == "Premium")
-                and (prem == false or (premiumLikely == false and not full))
-            if not skip then
-                for level = (full and 1 or frontier[track]), top do
-                    if not flags.autoSeason or not ScreenGui.Parent then return got end
-                    local key = level .. "|" .. track
-                    if not done[key] then
-                        if claim(level, track) then
-                            done[key] = true
-                            total, got = total + 1, got + 1
-                            if track == "Premium" then premCount = premCount + 1 end
-                            frontier[track] = math.max(frontier[track], level + 1)
-                        elseif not full then
-                            break
-                        end
-                        task.wait(0.12)
+            for level = 1, MAX_LEVEL do
+                if not flags.autoSeason or not ScreenGui.Parent then return got end
+                local key = level .. "|" .. track
+                if not done[key] then
+                    local ok, res = invoke("ClaimSeasonReward", level, track)
+                    if success(ok, res) then
+                        done[key] = true
+                        total, got = total + 1, got + 1
+                    else
+                        sample[track] = tostring(res)
                     end
+                    task.wait(0.1)
                 end
             end
         end
-        if full and prem == nil then premiumLikely = premCount > 0 end
+        if got == 0 then
+            print("[Lightn Hub] Season Pass: tidak ada yang berhasil. Balasan server Free = "
+                .. tostring(sample.Free) .. ", Premium = " .. tostring(sample.Premium))
+        end
         return got
+    end
+
+    -- Beli Premium atau item lain di game: periksa ulang segera
+    for _, ev in ipairs({ "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished", "PromptPurchaseFinished" }) do
+        pcall(function()
+            table.insert(conns, MarketplaceService[ev]:Connect(function() kick = true end))
+        end)
     end
 
     runLoop(function()
@@ -6249,19 +6264,23 @@ do
         end
         if not wasOn then
             wasOn = true
-            lastFull = 0 -- baru dinyalakan: sapuan penuh
+            lastFull, lastSig = 0, nil
         end
-        local lv = attrLevel()
-        local needFull = (os.clock() - lastFull > 300) or (lv ~= nil and lv ~= lastLevel)
-        lastLevel = lv
-        feat.setNote(needFull and "Scanning" or "Checking", C.text)
-        local n = sweep(needFull)
-        if needFull then lastFull = os.clock() end
+        local sig = snapshot()
+        local age = os.clock() - lastFull
+        local needFull = (lastFull == 0) or (age > 120)
+            or ((sig ~= lastSig or kick) and age > 15)
+        if not needFull then return 3 end
+        kick = false
+        lastSig = sig
+        feat.setNote("Scanning", C.text)
+        local n = sweep()
+        lastFull = os.clock()
         if n > 0 then
             notify("Season Pass", "Claimed " .. n .. (n > 1 and " rewards" or " reward"), 3)
         end
         feat.setNote(total > 0 and ("Claimed " .. total) or "Nothing to claim", total > 0 and C.text or C.muted)
-        return needFull and 5 or 20
+        return 3
     end)
 end
 
@@ -6611,76 +6630,6 @@ do
         EP.antiLagOff = function()
             if active then pcall(disable) end
         end
-    end
-
-    -- =================================================================
-    -- Settings: FPS Boost
-    -- Membuka batas FPS lewat setfpscap (ada di Delta dan kebanyakan executor).
-    -- Ini hanya mengubah batas frame rate, tidak mengurangi beban game.
-    -- =================================================================
-    do
-        local page = tabs["Settings"].page
-        local original = nil
-        local fb
-
-        local function apply()
-            if not setfpscap then return end
-            if original == nil then
-                original = 60
-                if getfpscap then
-                    local ok, v = pcall(getfpscap)
-                    if ok and type(v) == "number" and v > 0 then original = v end
-                end
-            end
-            pcall(setfpscap, settings.fpsLimit or 120)
-        end
-        local function release()
-            if setfpscap and original then pcall(setfpscap, original) end
-            original = nil
-        end
-
-        fb = createFeature(page, "FPS Boost", {
-            initial = settings.fpsBoost,
-            bodyHeight = 28,
-            onToggle = function(v)
-                settings.fpsBoost = v
-                saveSettings()
-                if v then apply() else release() end
-                fb.setNote(v and ((settings.fpsLimit or 120) .. " FPS") or "", C.text)
-            end,
-        })
-        make("TextLabel", {
-            Size = UDim2.new(0, 64, 1, 0),
-            BackgroundTransparency = 1,
-            Text = "Max FPS",
-            TextColor3 = C.muted,
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, fb.body)
-        createSegmented(fb.body, {
-            Position = UDim2.new(0, 70, 0, 0),
-            Size = UDim2.new(0, 165, 1, 0),
-        }, {
-            { label = "60", value = 60 },
-            { label = "90", value = 90 },
-            { label = "120", value = 120 },
-        }, settings.fpsLimit or 120, function(v)
-            settings.fpsLimit = v
-            saveSettings()
-            if settings.fpsBoost then
-                apply()
-                fb.setNote(v .. " FPS", C.text)
-            end
-        end)
-        if not setfpscap then
-            fb.setNote("Not supported", C.muted)
-        elseif settings.fpsBoost then
-            apply()
-            fb.setNote((settings.fpsLimit or 120) .. " FPS", C.text)
-        end
-
-        EP.fpsOff = release
     end
 
     -- Perkecil otomatis kalau tidak ada sentuhan ke GUI selama 7 detik
@@ -7079,7 +7028,6 @@ local function cleanup()
     pcall(function() applySkip("summon", false) end)
     pcall(function() applySkip("uttm", false) end)
     pcall(function() EP.antiLagOff() end)
-    pcall(function() if EP.fpsOff then EP.fpsOff() end end)
     if env.LightHubDrone then env.LightHubDrone.active = false end
     pcall(function() idledConn:Disconnect() end)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end

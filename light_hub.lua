@@ -3185,72 +3185,64 @@ end
 
 -- =================================================================
 -- Inventory: Units (lihat jumlah per unit + jual)
--- Data dari LocalPlayer.Inventory: tiap unit adalah objek bernama UUID.
+-- Data dari GetData.Inventory.Troops (daftar unit, tiap unit punya UUID dan Name).
 -- Jual: RemoteFunctions.SellUnits({ [uuid] = true, ... })
--- Unit yang terkunci / sedang dipakai tidak dihitung dan tidak dijual.
+-- Unit yang sedang dipakai (Equipped) atau terkunci tidak dihitung dan tidak dijual.
 -- =================================================================
 do
     local page = tabs["Inventory"].page
 
-    local NAME_KEYS = { "UnitName", "Unit", "DisplayName", "Name", "Type", "UnitId", "Id", "ID" }
-    local KEEP_KEYS = { "Locked", "Lock", "Equipped", "Favorite", "Favourite", "InUse", "Placed" }
+    local KEEP_KEYS = { "Equipped", "Locked", "Lock", "Favorite", "Favourite", "InUse", "Placed" }
 
-    local function isUuid(str)
-        return type(str) == "string"
-            and string.match(str, "^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") ~= nil
-    end
+    local cache = nil            -- { list = { {n, ids}... }, total = n }
+    local cacheAt, busy = -100, false
+    local warned = false
 
-    local function unitName(o, inv)
-        for _, k in ipairs(NAME_KEYS) do
-            local a = o:GetAttribute(k)
-            if type(a) == "string" and a ~= "" and not isUuid(a) then return a end
-        end
-        for _, k in ipairs(NAME_KEYS) do
-            local c = o:FindFirstChild(k)
-            if c and c:IsA("StringValue") and c.Value ~= "" and not isUuid(c.Value) then return c.Value end
-        end
-        if o:IsA("StringValue") and o.Value ~= "" and not isUuid(o.Value) then return o.Value end
-        for _, v in pairs(o:GetAttributes()) do
-            if type(v) == "string" and v ~= "" and not isUuid(v) then return v end
-        end
-        local par = o.Parent
-        if par and par ~= inv and not isUuid(par.Name) then return par.Name end
-        return nil
-    end
-
-    local function kept(o)
-        for _, k in ipairs(KEEP_KEYS) do
-            if o:GetAttribute(k) == true then return true end
-            local c = o:FindFirstChild(k)
-            if c and c:IsA("BoolValue") and c.Value then return true end
-        end
-        return false
-    end
-
-    -- { { n = "Cameraman", ids = { uuid, ... } }, ... } diurutkan dari nama, dan total unit
-    local function readUnits()
-        local inv = LocalPlayer:FindFirstChild("Inventory")
-        if not inv then return nil, 0 end
+    local function build(troops)
         local groups, order, total = {}, {}, 0
-        for _, o in ipairs(inv:GetDescendants()) do
-            if isUuid(o.Name) and not kept(o) then
-                local n = unitName(o, inv) or "Unknown"
-                local g = groups[n]
-                if not g then
-                    g = { n = n, ids = {} }
-                    groups[n] = g
-                    order[#order + 1] = g
+        for _, u in ipairs(troops) do
+            if type(u) == "table" and type(u.UUID) == "string" then
+                local keep = false
+                for _, k in ipairs(KEEP_KEYS) do
+                    if u[k] == true then keep = true end
                 end
-                g.ids[#g.ids + 1] = o.Name
-                total = total + 1
+                if not keep then
+                    local n = u.Name or u.DisplayName or "Unknown"
+                    local g = groups[n]
+                    if not g then
+                        g = { n = n, ids = {} }
+                        groups[n] = g
+                        order[#order + 1] = g
+                    end
+                    g.ids[#g.ids + 1] = u.UUID
+                    total = total + 1
+                end
             end
         end
         table.sort(order, function(a, b) return a.n < b.n end)
-        return order, total
+        return { list = order, total = total }
+    end
+
+    local function refresh(force)
+        if busy then return end
+        if not force and os.clock() - cacheAt < 8 then return end
+        busy = true
+        cacheAt = os.clock()
+        task.spawn(function()
+            local ok, res = invoke("GetData")
+            local inv = ok and type(res) == "table" and res.Inventory or nil
+            if type(inv) == "table" and type(inv.Troops) == "table" then
+                cache = build(inv.Troops)
+            elseif not warned then
+                warned = true
+                print("[Lightn Hub] Units: GetData.Inventory.Troops tidak ditemukan (ok=" .. tostring(ok) .. ")")
+            end
+            busy = false
+        end)
     end
 
     local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
-    card.card.LayoutOrder = 0   -- paling atas di halaman Inventory
+    card.card.LayoutOrder = -2   -- paling atas di halaman Inventory
     local selected, statusUntil, selling = nil, 0, false
 
     local function say(t, color)
@@ -3264,9 +3256,9 @@ do
         placeholder = "Select a unit",
         emptyMsg = "No units found",
         getOptions = function()
+            refresh(false)
             local opts = {}
-            local list = readUnits()
-            for _, g in ipairs(list or {}) do
+            for _, g in ipairs(cache and cache.list or {}) do
                 opts[#opts + 1] = { label = g.n .. "   x" .. #g.ids, value = g.n }
             end
             return opts
@@ -3291,9 +3283,8 @@ do
             say("Enter an amount", C.warn)
             return
         end
-        local list = readUnits()
         local group
-        for _, g in ipairs(list or {}) do
+        for _, g in ipairs(cache and cache.list or {}) do
             if g.n == selected then group = g end
         end
         if not group then
@@ -3324,6 +3315,7 @@ do
             else
                 say("Sale failed", C.warn)
             end
+            refresh(true)
             selling = false
         end)
     end
@@ -3333,21 +3325,153 @@ do
         Position = UDim2.new(0, 98, 0, 36),
     }, "Sell", sellUnits)
 
-    local hinted = false
     runLoop(function()
+        refresh(false)
         if os.clock() > statusUntil then
-            if not LocalPlayer:FindFirstChild("Inventory") then
-                card.setNote("No inventory data", C.muted)
+            if cache then
+                card.setNote(#cache.list .. " types · " .. cache.total .. " units", C.muted)
             else
-                local list, total = readUnits()
-                card.setNote(#list .. " types · " .. total .. " units", C.muted)
-                if total == 0 and not hinted then
-                    hinted = true
-                    local inv = LocalPlayer.Inventory
-                    local first = inv:GetChildren()[1]
-                    print("[Lightn Hub] Units: tidak ada objek bernama UUID di Inventory. Isi pertama: "
-                        .. (first and (first.ClassName .. " " .. first.Name) or "kosong"))
+                card.setNote("Loading...", C.muted)
+            end
+        end
+        return 3
+    end)
+end
+
+-- =================================================================
+-- Inventory: Fish (lihat jumlah per ikan + jual)
+-- Data dari GetData.Fishing.Fish (jumlah) dan FishLocksRaw (ikan terkunci tidak dijual).
+-- Jual: FishingFunction("SellFish", { Fish, Amount, Weight })
+-- =================================================================
+do
+    local page = tabs["Inventory"].page
+    local FISH_WEIGHT = 1.22
+
+    local cache = nil            -- { list = { {n, c}... }, total = n }
+    local cacheAt, busy = -100, false
+
+    local function lockedCount(raw)
+        if type(raw) ~= "string" then return 0 end
+        local n = 0
+        for tok in string.gmatch(raw, "[^,%[%]%s]+") do
+            if tok == "true" or tok == "1" then n = n + 1 end
+        end
+        return n
+    end
+
+    local function refresh(force)
+        if busy then return end
+        if not force and os.clock() - cacheAt < 8 then return end
+        busy = true
+        cacheAt = os.clock()
+        task.spawn(function()
+            local ok, res = invoke("GetData")
+            local fd = ok and type(res) == "table" and res.Fishing or nil
+            if type(fd) == "table" and type(fd.Fish) == "table" then
+                local locks = type(fd.FishLocksRaw) == "table" and fd.FishLocksRaw or {}
+                local list, total = {}, 0
+                for name, c in pairs(fd.Fish) do
+                    if type(c) == "number" then
+                        local free = math.floor(c) - lockedCount(locks[name])
+                        if free > 0 then
+                            list[#list + 1] = { n = name, c = free }
+                            total = total + free
+                        end
+                    end
                 end
+                table.sort(list, function(a, b)
+                    if a.c ~= b.c then return a.c > b.c end
+                    return a.n < b.n
+                end)
+                cache = { list = list, total = total }
+            end
+            busy = false
+        end)
+    end
+
+    local card = createFeature(page, "Fish", { noToggle = true, bodyHeight = 64 })
+    card.card.LayoutOrder = -1   -- di bawah kartu Units
+    local selected, statusUntil, selling = nil, 0, false
+
+    local function say(t, color)
+        statusUntil = os.clock() + 4
+        card.setNote(t, color)
+    end
+
+    createSelect(card.body, {
+        Size = UDim2.new(1, 0, 0, 28),
+    }, {
+        placeholder = "Select a fish",
+        emptyMsg = "No fish yet",
+        getOptions = function()
+            refresh(false)
+            local opts = {}
+            for _, f in ipairs(cache and cache.list or {}) do
+                opts[#opts + 1] = { label = f.n .. "   x" .. f.c, value = f.n }
+            end
+            return opts
+        end,
+        onChange = function(v) selected = v end,
+    })
+
+    local amountBox = createInput(card.body, {
+        Size = UDim2.new(0, 90, 0, 28),
+        Position = UDim2.new(0, 0, 0, 36),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, "Amount")
+
+    local function sellFish()
+        if selling then return end
+        if not selected then
+            say("Select a fish", C.warn)
+            return
+        end
+        local amount = tonumber(amountBox.Text)
+        if not amount or amount < 1 then
+            say("Enter an amount", C.warn)
+            return
+        end
+        local have = 0
+        for _, f in ipairs(cache and cache.list or {}) do
+            if f.n == selected then have = f.c end
+        end
+        if have <= 0 then
+            say("Out of stock", C.warn)
+            return
+        end
+        amount = math.min(math.floor(amount), have)
+        local fn = fishRemote("FishingFunction")
+        if not fn then
+            say("Fishing remote missing", C.warn)
+            return
+        end
+        selling = true
+        task.spawn(function()
+            local ok, res = pcall(function()
+                return fn:InvokeServer("SellFish", { Fish = selected, Amount = amount, Weight = FISH_WEIGHT })
+            end)
+            if accepted(ok, res) then
+                say("Sold " .. amount .. " " .. selected, C.text)
+            else
+                say("Sale failed", C.warn)
+            end
+            refresh(true)
+            selling = false
+        end)
+    end
+
+    createButton(card.body, {
+        Size = UDim2.new(1, -98, 0, 28),
+        Position = UDim2.new(0, 98, 0, 36),
+    }, "Sell", sellFish)
+
+    runLoop(function()
+        refresh(false)
+        if os.clock() > statusUntil then
+            if cache then
+                card.setNote(#cache.list .. " types · " .. cache.total .. " fish", C.muted)
+            else
+                card.setNote("Loading...", C.muted)
             end
         end
         return 3
@@ -6322,105 +6446,61 @@ end
 
 -- =================================================================
 -- Rewards: Auto Claim Season Pass
--- ClaimSeasonReward(level, "Free" | "Premium"), level 1-50.
--- Tiap reward dicoba dan server yang memutuskan (sudah diklaim, belum terbuka, atau
--- belum punya Premium = ditolak). Reward yang berhasil diingat selama sesi.
--- Sapuan penuh dijalankan saat dinyalakan, saat data season pemain berubah (naik level,
--- beli Premium), setelah pembelian di game selesai, dan tiap 2 menit sebagai cadangan.
+-- Status klaim dibaca dari GetData.SeasonPass (ClaimedFree, ClaimedPremium, Premium).
+-- Hanya level yang belum diklaim yang dicoba: ClaimSeasonReward(level, "Free" | "Premium").
+-- Jalur Premium hanya dicoba kalau pemain punya Premium. Berhasil tidaknya dinilai dari
+-- data yang dibaca ulang setelah klaim, bukan dari balasan remote.
 -- =================================================================
 do
     local page = tabs["AFK"].page
     local MAX_LEVEL = 50
-    local TRACKS = { "Free", "Premium" }
-    local done = {}                          -- "level|track" -> true
     local total = 0
-    local lastFull, lastSig, wasOn = 0, nil, false
-    local kick = false                       -- ada pemicu sapuan baru
-    local MarketplaceService = game:GetService("MarketplaceService")
+    local lastSig, lastRun, wasOn = nil, 0, false
 
     local feat = visualFeature(page, "Auto Claim Season Pass", "autoSeason", 0)
 
-    -- Ringkasan data season pemain (level, Premium, status klaim). Dipakai untuk tahu
-    -- kapan ada perubahan; XP dan progres sengaja diabaikan supaya tidak terus memicu.
-    local KEEP = { "level", "premium", "claim", "owned", "pass", "tier", "unlock" }
-    local SKIP = { "xp", "exp", "progress" }
-    local function hasAny(name, words)
-        for _, w in ipairs(words) do
-            if string.find(name, w, 1, true) then return true end
-        end
-        return false
+    local function seasonData()
+        local ok, res = invoke("GetData")
+        local sp = ok and type(res) == "table" and res.SeasonPass or nil
+        if type(sp) == "table" then return sp end
+        return nil
     end
-    local function snapshot()
-        local parts = {}
-        local function add(k, v)
-            local n = string.lower(k)
-            if hasAny(n, KEEP) and not hasAny(n, SKIP) and #parts < 200 then
-                parts[#parts + 1] = k .. "=" .. tostring(v)
-            end
+    local function isClaimed(map, level)
+        return type(map) == "table" and (map[level] == true or map[tostring(level)] == true)
+    end
+    local function claimedCount(sp)
+        local n = 0
+        for level = 1, MAX_LEVEL do
+            if isClaimed(sp.ClaimedFree, level) then n = n + 1 end
+            if isClaimed(sp.ClaimedPremium, level) then n = n + 1 end
         end
-        for k, v in pairs(LocalPlayer:GetAttributes()) do add(k, v) end
-        local c = LocalPlayer:FindFirstChild("SeasonPassController")
-        if c then
-            for k, v in pairs(c:GetAttributes()) do add(k, v) end
-            for _, o in ipairs(c:GetDescendants()) do
-                if o:IsA("ValueBase") then add(o.Name, o.Value) end
-                for k, v in pairs(o:GetAttributes()) do add(k, v) end
-            end
-        end
-        table.sort(parts)
-        return table.concat(parts, ";")
+        return n
     end
 
-    local REJECT = { "already", "not ", "fail", "error", "invalid", "insufficient",
-        "locked", "need", "require", "cannot", "can't" }
-    local function success(ok, res)
-        if not ok then return false end
-        local t = type(res)
-        if t == "boolean" then return res end
-        if t == "nil" then return false end
-        if t == "table" then
-            if res.Success ~= nil then return res.Success == true end
-            if res.success ~= nil then return res.success == true end
-            if res.Error or res.error then return false end
-            return true
+    -- Level naik berurutan: begitu satu level ditolak (belum tercapai), sisanya juga
+    local function sweep(sp)
+        local tracks = { { "Free", sp.ClaimedFree } }
+        if sp.Premium ~= false then
+            tracks[#tracks + 1] = { "Premium", sp.ClaimedPremium }
         end
-        if t == "string" then return not hasAny(string.lower(res), REJECT) end
-        return true
-    end
-
-    -- Satu sapuan: semua level 1..50, jalur Free lalu Premium. Premium selalu dicoba,
-    -- server yang menolak kalau belum punya.
-    local function sweep()
-        local got = 0
-        local sample = {}
-        for _, track in ipairs(TRACKS) do
+        for _, tr in ipairs(tracks) do
             for level = 1, MAX_LEVEL do
-                if not flags.autoSeason or not ScreenGui.Parent then return got end
-                local key = level .. "|" .. track
-                if not done[key] then
-                    local ok, res = invoke("ClaimSeasonReward", level, track)
-                    if success(ok, res) then
-                        done[key] = true
-                        total, got = total + 1, got + 1
-                    else
-                        sample[track] = tostring(res)
+                if not flags.autoSeason or not ScreenGui.Parent then return end
+                if not isClaimed(tr[2], level) then
+                    local ok, res = invoke("ClaimSeasonReward", level, tr[1])
+                    task.wait(0.15)
+                    local good = ok and (res == true
+                        or (type(res) == "table" and (res.Success == true or res.success == true)))
+                    if not good then
+                        -- Balasan tidak jelas: cek di data apakah level ini benar-benar terklaim
+                        local fresh = seasonData()
+                        local map = fresh and (tr[1] == "Free" and fresh.ClaimedFree or fresh.ClaimedPremium)
+                        good = isClaimed(map, level)
                     end
-                    task.wait(0.1)
+                    if not good then break end
                 end
             end
         end
-        if got == 0 then
-            print("[Lightn Hub] Season Pass: tidak ada yang berhasil. Balasan server Free = "
-                .. tostring(sample.Free) .. ", Premium = " .. tostring(sample.Premium))
-        end
-        return got
-    end
-
-    -- Beli Premium atau item lain di game: periksa ulang segera
-    for _, ev in ipairs({ "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished", "PromptPurchaseFinished" }) do
-        pcall(function()
-            table.insert(conns, MarketplaceService[ev]:Connect(function() kick = true end))
-        end)
     end
 
     runLoop(function()
@@ -6435,23 +6515,29 @@ do
         end
         if not wasOn then
             wasOn = true
-            lastFull, lastSig = 0, nil
+            lastSig, lastRun = nil, 0
         end
-        local sig = snapshot()
-        local age = os.clock() - lastFull
-        local needFull = (lastFull == 0) or (age > 120)
-            or ((sig ~= lastSig or kick) and age > 15)
-        if not needFull then return 3 end
-        kick = false
-        lastSig = sig
+        local sp = seasonData()
+        if not sp then
+            feat.setNote("No season data", C.muted)
+            return 6
+        end
+        local sig = tostring(sp.XP) .. "|" .. tostring(sp.Premium) .. "|" .. claimedCount(sp)
+        if sig == lastSig and os.clock() - lastRun < 120 then return 8 end
+        lastRun = os.clock()
+        local before = claimedCount(sp)
         feat.setNote("Scanning", C.text)
-        local n = sweep()
-        lastFull = os.clock()
-        if n > 0 then
-            notify("Season Pass", "Claimed " .. n .. (n > 1 and " rewards" or " reward"), 3)
+        sweep(sp)
+        local after = seasonData()
+        after = after or sp
+        local got = claimedCount(after) - before
+        lastSig = tostring(after.XP) .. "|" .. tostring(after.Premium) .. "|" .. claimedCount(after)
+        if got > 0 then
+            total = total + got
+            notify("Season Pass", "Claimed " .. got .. (got > 1 and " rewards" or " reward"), 3)
         end
         feat.setNote(total > 0 and ("Claimed " .. total) or "Nothing to claim", total > 0 and C.text or C.muted)
-        return 3
+        return 8
     end)
 end
 

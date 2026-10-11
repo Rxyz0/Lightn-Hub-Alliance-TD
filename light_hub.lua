@@ -53,11 +53,11 @@ C.accent = C.white
 local theme = { name = "Default", rev = {} }
 local toHalloween, fromHalloween, T, setPalette
 do
-    local ACCENT = Color3.fromRGB(255, 132, 28)
-    local BONE = Color3.fromRGB(250, 236, 220)
+    local ACCENT = Color3.fromRGB(255, 140, 24)
+    local BONE = Color3.fromRGB(255, 238, 212)
     local DARK_STOPS = {
-        { 0, 7, 5, 12 }, { 0.12, 22, 16, 32 }, { 0.22, 40, 30, 56 },
-        { 0.33, 66, 50, 86 }, { 0.6, 142, 124, 168 }, { 1, 205, 194, 222 },
+        { 0, 9, 6, 4 }, { 0.12, 26, 15, 8 }, { 0.22, 46, 27, 12 },
+        { 0.33, 78, 44, 18 }, { 0.6, 168, 128, 86 }, { 1, 222, 190, 148 },
     }
     local function rgb(r, g, b)
         return Color3.fromRGB(math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
@@ -71,7 +71,7 @@ do
                 return rgb(a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k, a[4] + (b[4] - a[4]) * k)
             end
         end
-        return rgb(205, 194, 222)
+        return rgb(222, 190, 148)
     end
     local function colorKey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
@@ -90,8 +90,9 @@ do
         elseif kind == "txt" then
             out = (l >= 215) and BONE or darkRamp(l)
         elseif l >= 150 then
+            -- gradient terang: oranye tua ke kuning-oranye cahaya
             local k = (l - 150) / 105
-            out = rgb(168 + (255 - 168) * k, 90 + (132 - 90) * k, 200 + (28 - 200) * k)
+            out = rgb(205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k)
         else
             out = darkRamp(l)
         end
@@ -274,7 +275,7 @@ end
 -- Hanya labu (berkedip) dan laba-laba (berayun) yang bergerak, lewat satu tween pelan.
 local decor = { roots = {}, tweens = {}, hideMini = {} }
 do
-    local WEB_COLOR = Color3.fromRGB(176, 154, 205)
+    local WEB_COLOR = Color3.fromRGB(232, 196, 140)
 
     function decor.root(par, props)
         props.BackgroundTransparency = 1
@@ -364,11 +365,64 @@ do
             }, box)
         end
         pulse(glow, 0.05, 0.55, 1.6)
+        return box
+    end
+
+    -- Labu kecil statis
+    function decor.mini(par, x, y)
+        oval(par, x, y + 3, 18, 14, Color3.fromRGB(232, 104, 18))
+        make("Frame", {
+            Position = UDim2.new(0, x + 8, 0, y), Size = UDim2.new(0, 2, 0, 4),
+            BackgroundColor3 = Color3.fromRGB(78, 98, 34), BorderSizePixel = 0,
+        }, par)
+        for _, ex in ipairs({ 4, 11 }) do
+            make("Frame", {
+                Position = UDim2.new(0, x + ex, 0, y + 8), Size = UDim2.new(0, 3, 0, 3),
+                BackgroundColor3 = Color3.fromRGB(255, 214, 70), BorderSizePixel = 0,
+            }, par)
+        end
+    end
+
+    -- Pohon seram bermata dan bermulut menyala, dengan lantai lava dan labu kecil
+    function decor.tree(par, pos)
+        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 100, 0, 84), BackgroundTransparency = 1 }, par)
+        local bark, bark2 = Color3.fromRGB(86, 30, 18), Color3.fromRGB(128, 46, 20)
+        local fire = Color3.fromRGB(255, 208, 44)
+        oval(box, 0, 74, 100, 12, Color3.fromRGB(255, 112, 16), 0.3)
+        for _, b in ipairs({
+            { 38, 42, 14, 22, 4 }, { 14, 22, 4, 8, 3 }, { 14, 22, 18, 6, 2 },
+            { 40, 36, 26, 14, 3 }, { 26, 14, 30, 2, 2 },
+            { 50, 34, 50, 10, 4 }, { 50, 20, 42, 6, 2 }, { 50, 18, 58, 4, 2 },
+            { 62, 42, 86, 22, 4 }, { 86, 22, 96, 8, 3 }, { 86, 22, 80, 6, 2 },
+            { 60, 36, 74, 14, 3 }, { 74, 14, 70, 2, 2 },
+        }) do
+            drawLine(box, b[1], b[2], b[3], b[4], bark, 0, b[5])
+        end
+        oval(box, 22, 62, 56, 20, bark)
+        oval(box, 27, 28, 46, 54, bark)
+        oval(box, 34, 34, 12, 34, bark2, 0.4)
+        local glow = {}
+        for _, e in ipairs({ { 35, 44, 22 }, { 54, 44, -22 } }) do
+            local f = oval(box, e[1], e[2], 11, 6, fire)
+            f.Rotation = e[3]
+            glow[#glow + 1] = f
+        end
+        glow[#glow + 1] = oval(box, 35, 56, 30, 10, fire)
+        for _, x in ipairs({ 40, 48, 56 }) do
+            make("Frame", {
+                Position = UDim2.new(0, x, 0, 54), Size = UDim2.new(0, 4, 0, 4), Rotation = 45,
+                BackgroundColor3 = bark, BorderSizePixel = 0,
+            }, box)
+        end
+        pulse(glow, 0, 0.4, 1.9)
+        decor.mini(box, 2, 62)
+        decor.mini(box, 80, 64)
+        return box
     end
 
     function decor.bat(par, pos)
         local box = make("Frame", { Position = pos, Size = UDim2.new(0, 22, 0, 12), BackgroundTransparency = 1 }, par)
-        local c = Color3.fromRGB(26, 18, 38)
+        local c = Color3.fromRGB(30, 17, 10)
         oval(box, 8, 3, 6, 8, c)
         for _, w in ipairs({ { 0, -22 }, { 12, 22 } }) do
             local f = oval(box, w[1], 2, 11, 5, c)
@@ -386,14 +440,14 @@ do
         })
         box.ClipsDescendants = false
         drawLine(box, 10, 0, 10, 17, WEB_COLOR, 0.35)
-        local dark = Color3.fromRGB(40, 30, 58)
+        local dark = Color3.fromRGB(56, 34, 18)
         for _, l in ipairs({
             { 6, 21, 0, 15 }, { 6, 22, 0, 22 }, { 6, 23, 1, 28 },
             { 14, 21, 20, 15 }, { 14, 22, 20, 22 }, { 14, 23, 19, 28 },
         }) do
             drawLine(box, l[1], l[2], l[3], l[4], dark, 0.1)
         end
-        oval(box, 5, 17, 10, 10, Color3.fromRGB(34, 24, 50))
+        oval(box, 5, 17, 10, 10, Color3.fromRGB(44, 26, 14))
         for _, ex in ipairs({ 7, 11 }) do
             make("Frame", {
                 Position = UDim2.new(0, ex, 0, 20), Size = UDim2.new(0, 2, 0, 2),
@@ -724,6 +778,18 @@ end
 
 -- Warna teks judul: pita abu-abu ke putih yang mengalir pelan ke kanan
 local function titleSeq(t)
+    if theme.name == "Halloween" then
+        -- oranye tua dengan pita cahaya emas yang lewat dari kiri ke kanan
+        local p = (t * 0.3) % 1.7 - 0.35
+        local list = {}
+        for i = 0, 8 do
+            local x = i / 8
+            local k = math.max(0, 1 - math.abs(x - p) / 0.24)
+            list[#list + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(
+                math.floor(214 + 41 * k), math.floor(96 + 130 * k), math.floor(18 + 100 * k)))
+        end
+        return ColorSequence.new(list)
+    end
     local kps = {}
     local n = 6
     for i = 0, n do
@@ -773,12 +839,29 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
     fluid.t = fluid.t + fluid.acc
     fluid.acc = 0
     local t = fluid.t
-    fluid.gradA.Rotation = (t * 4) % 360
-    fluid.gradA.Offset = Vector2.new(math.sin(t * 0.21) * 0.12, math.cos(t * 0.17) * 0.12)
-    fluid.gradB.Rotation = (120 - t * 3) % 360
-    fluid.gradB.Offset = Vector2.new(math.cos(t * 0.13) * 0.12, math.sin(t * 0.19) * 0.12)
-    for _, m in ipairs(movers) do
-        m.g.Rotation = m.base + math.sin(t * m.speed + m.phase) * m.amp
+    if theme.name == "Halloween" then
+        -- Cahaya api: kilau naik-turun pelan dengan kedipan tipis, seperti lava atau obor.
+        -- Arah gradient tetap, hanya posisinya yang bergeser.
+        local flick = math.sin(t * 2.3) * 0.03 + math.sin(t * 5.1) * 0.015
+        local a = math.sin(t * 0.32) * 0.3 + flick
+        local b = math.sin(t * 0.21 + 1.3) * 0.25 - flick
+        fluid.gradA.Rotation = 90
+        fluid.gradA.Offset = Vector2.new(a, a)
+        fluid.gradB.Rotation = 90
+        fluid.gradB.Offset = Vector2.new(b, -b)
+        for _, m in ipairs(movers) do
+            local o = math.sin(t * m.speed * 1.5 + m.phase) * 0.5 + flick
+            m.g.Rotation = m.base
+            m.g.Offset = Vector2.new(o, o)
+        end
+    else
+        fluid.gradA.Rotation = (t * 4) % 360
+        fluid.gradA.Offset = Vector2.new(math.sin(t * 0.21) * 0.12, math.cos(t * 0.17) * 0.12)
+        fluid.gradB.Rotation = (120 - t * 3) % 360
+        fluid.gradB.Offset = Vector2.new(math.cos(t * 0.13) * 0.12, math.sin(t * 0.19) * 0.12)
+        for _, m in ipairs(movers) do
+            m.g.Rotation = m.base + math.sin(t * m.speed + m.phase) * m.amp
+        end
     end
     if fluid.titleGrad then fluid.titleGrad.Color = titleSeq(t) end
 end))
@@ -1136,7 +1219,8 @@ make("Frame", {
 do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
-    decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
+    decor.treeBox = decor.tree(root, UDim2.new(0, 3, 1, -88))
+    decor.pumpkinBox = decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
     decor.bat(root, UDim2.new(0, 72, 1, -64))
     decor.bat(root, UDim2.new(0, 86, 1, -38))
 end
@@ -7653,11 +7737,16 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Tema: dekorasi tampil/sembunyi, warna objek yang sudah ada diganti
+-- Tiap script dijalankan, dekorasi sidebar diundi: pohon atau labu
+decor.style = (math.random(2) == 1) and "Tree" or "Pumpkin"
+
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
     for _, r in ipairs(decor.roots) do
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)
     end
+    if decor.treeBox then decor.treeBox.Visible = (decor.style == "Tree") end
+    if decor.pumpkinBox then decor.pumpkinBox.Visible = (decor.style ~= "Tree") end
     for _, tw in ipairs(decor.tweens) do
         if on then tw:Play() else tw:Pause() end
     end
@@ -7703,6 +7792,9 @@ do
             for _, d in ipairs(ui.gearBtn:GetDescendants()) do skip[d] = true end
         end
         local map = to and toHalloween or fromHalloween
+    if not to then
+        for _, m in ipairs(movers) do m.g.Offset = Vector2.new(0, 0) end
+    end
 
         themePass = themePass + 1
         local my = themePass

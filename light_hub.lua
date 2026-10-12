@@ -342,32 +342,6 @@ do
         end
     end
 
-    function decor.pumpkin(par, pos)
-        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 46, 0, 40), BackgroundTransparency = 1 }, par)
-        oval(box, 0, 5, 26, 34, Color3.fromRGB(168, 62, 12))
-        oval(box, 20, 5, 26, 34, Color3.fromRGB(168, 62, 12))
-        oval(box, 9, 3, 28, 36, Color3.fromRGB(222, 98, 20))
-        local stem = make("Frame", {
-            Position = UDim2.new(0, 20, 0, 0), Size = UDim2.new(0, 6, 0, 8),
-            BackgroundColor3 = Color3.fromRGB(78, 98, 34), BorderSizePixel = 0, Rotation = 12,
-        }, box)
-        local glow = {}
-        for _, x in ipairs({ 14, 28 }) do
-            glow[#glow + 1] = make("Frame", {
-                Position = UDim2.new(0, x, 0, 15), Size = UDim2.new(0, 6, 0, 6), Rotation = 45,
-                BackgroundColor3 = Color3.fromRGB(255, 200, 70), BorderSizePixel = 0,
-            }, box)
-        end
-        for _, m in ipairs({ { 14, 27 }, { 21, 29 }, { 28, 27 } }) do
-            glow[#glow + 1] = make("Frame", {
-                Position = UDim2.new(0, m[1], 0, m[2]), Size = UDim2.new(0, 5, 0, 5),
-                BackgroundColor3 = Color3.fromRGB(255, 200, 70), BorderSizePixel = 0,
-            }, box)
-        end
-        pulse(glow, 0.05, 0.55, 1.6)
-        return box
-    end
-
     -- Isi poligon dengan strip horizontal (tanpa rotasi), jadi bentuknya utuh dan tidak putus-putus.
     -- pts = { {x, y}, ... } dalam koordinat par; grow = pelebaran tepi (untuk garis tepi/cahaya)
     local function poly(par, pts, color, grow, step)
@@ -439,6 +413,83 @@ do
             }, par)
             make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
         end
+    end
+
+    local function ell(cx, cy, rx, ry)
+        local pts = {}
+        for k = 0, 23 do
+            local a = math.pi * 2 * k / 24
+            pts[#pts + 1] = { cx + rx * math.cos(a), cy + ry * math.sin(a) }
+        end
+        return pts
+    end
+
+    -- Tiga labu berwajah dengan kuburan batu (nisan melengkung, tanpa salib) di tengah.
+    function decor.pumpkin(par)
+        local box = make("Frame", {
+            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(0, 108, 0, 66), BackgroundTransparency = 1,
+        }, par)
+        oval(box, 0, 56, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
+        oval(box, 28, 55, 52, 11, Color3.fromRGB(38, 20, 12))        -- gundukan tanah
+
+        -- nisan: atas melengkung
+        local stone = { { 43, 58 }, { 43, 17 } }
+        for k = 0, 12 do
+            local a = math.pi - math.pi * k / 12
+            stone[#stone + 1] = { 54 + 11 * math.cos(a), 17 - 11 * math.sin(a) }
+        end
+        stone[#stone + 1] = { 65, 17 }
+        stone[#stone + 1] = { 65, 58 }
+        poly(box, stone, Color3.fromRGB(150, 142, 152), 1, 1)
+        poly(box, stone, Color3.fromRGB(98, 92, 104), 0, 1)
+        poly(box, { { 59, 14 }, { 65, 17 }, { 65, 58 }, { 59, 58 } }, Color3.fromRGB(78, 72, 86), 0, 1)
+        limb(box, { { 50, 41 }, { 53, 47 }, { 51, 53 } }, 1, 1, Color3.fromRGB(52, 48, 58))
+        make("TextLabel", {
+            Position = UDim2.new(0, 43, 0, 20), Size = UDim2.new(0, 22, 0, 12),
+            BackgroundTransparency = 1, Text = "RIP", TextSize = 9, Font = Enum.Font.GothamBold,
+            TextColor3 = Color3.fromRGB(46, 42, 54),
+        }, box)
+        oval(box, 39, 55, 30, 6, Color3.fromRGB(74, 68, 80))
+
+        local gg = make("CanvasGroup", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
+        }, box)
+        local RIM = Color3.fromRGB(150, 56, 10)
+        local SIDE = Color3.fromRGB(184, 70, 12)
+        local MID = Color3.fromRGB(240, 112, 20)
+        local function pumpkin(cx, cy, rx, ry)
+            local lobes = {
+                ell(cx - rx * 0.45, cy, rx * 0.62, ry),
+                ell(cx + rx * 0.45, cy, rx * 0.62, ry),
+                ell(cx, cy, rx * 0.58, ry * 1.04),
+            }
+            for _, l in ipairs(lobes) do poly(box, l, RIM, 1, 1) end
+            poly(box, lobes[1], SIDE, 0, 1)
+            poly(box, lobes[2], SIDE, 0, 1)
+            poly(box, lobes[3], MID, 0, 1)
+            poly(box, ell(cx - rx * 0.22, cy - ry * 0.45, rx * 0.2, ry * 0.18), Color3.fromRGB(255, 160, 60), 0, 1)
+            limb(box, { { cx, cy - ry + 1 }, { cx + 1, cy - ry - 3 }, { cx + 4, cy - ry - 5 } }, 4, 3,
+                Color3.fromRGB(84, 104, 38))
+            -- wajah menyala (di lapisan cahaya)
+            local f = {
+                { { cx - 0.5 * rx, cy - 0.05 * ry }, { cx - 0.12 * rx, cy - 0.05 * ry }, { cx - 0.31 * rx, cy - 0.5 * ry } },
+                { { cx + 0.5 * rx, cy - 0.05 * ry }, { cx + 0.12 * rx, cy - 0.05 * ry }, { cx + 0.31 * rx, cy - 0.5 * ry } },
+                { { cx - 0.55 * rx, cy + 0.25 * ry }, { cx - 0.3 * rx, cy + 0.2 * ry }, { cx - 0.15 * rx, cy + 0.45 * ry },
+                    { cx, cy + 0.2 * ry }, { cx + 0.15 * rx, cy + 0.45 * ry }, { cx + 0.3 * rx, cy + 0.2 * ry },
+                    { cx + 0.55 * rx, cy + 0.25 * ry }, { cx + 0.4 * rx, cy + 0.65 * ry }, { cx, cy + 0.8 * ry },
+                    { cx - 0.4 * rx, cy + 0.65 * ry } },
+            }
+            for _, sh in ipairs(f) do poly(gg, sh, Color3.fromRGB(255, 130, 20), 1, 1) end
+            for _, sh in ipairs(f) do poly(gg, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
+        end
+        pumpkin(18, 44, 16, 13)
+        pumpkin(90, 44, 16, 13)
+        pumpkin(46, 55, 9, 7)
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
+            TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { GroupTransparency = 0.4 })
+        return box
     end
 
     -- Pohon mati tinggi dan kurus (tinggi penuh sidebar, di belakang tombol), cabang
@@ -551,7 +602,7 @@ do
                 { 31, -3 }, { 27, 3 }, { 20, -2 }, { 14, 2 }, { 6, -1 },
             }) do
                 local lx = p[1] * 1.25
-                local y = p[2] + (sign < 0 and lx * 0.12 or 0) -- sayap kiri sedikit terkulai
+                local y = p[2]
                 pts[#pts + 1] = { cx + sign * lx, y }
             end
             return pts
@@ -565,8 +616,6 @@ do
         poly(par, { { cx + 6, -14 }, { cx + 5, -24 }, { cx + 1, -17 } }, RIM, 1, 1)
         oval(par, cx - 8, -11, 16, 16, RIM)
         oval(par, cx - 7, -20, 14, 13, RIM)
-        oval(par, cx - 10, 5, 9, 6, RIM)
-        oval(par, cx + 1, 5, 9, 6, RIM)
 
         -- selaput sayap, lalu tulang jari yang menyatu dengannya
         poly(par, wl, MEM, 0, 1)
@@ -579,10 +628,6 @@ do
         end
 
         -- kaki, telinga, badan, kepala
-        limb(par, { { cx - 3, 2 }, { cx - 6, 7 } }, 3, 2, BODY)
-        limb(par, { { cx + 3, 2 }, { cx + 6, 7 } }, 3, 2, BODY)
-        oval(par, cx - 9, 6, 7, 4, BODY)
-        oval(par, cx + 2, 6, 7, 4, BODY)
         poly(par, { { cx - 6, -14 }, { cx - 5, -24 }, { cx - 1, -17 } }, BODY, 0, 1)
         poly(par, { { cx + 6, -14 }, { cx + 5, -24 }, { cx + 1, -17 } }, BODY, 0, 1)
         oval(par, cx - 7, -10, 14, 14, BODY)
@@ -602,58 +647,56 @@ do
                 BackgroundColor3 = Color3.fromRGB(246, 236, 220), BorderSizePixel = 0,
             }, par)
         end
-        for _, cxo in ipairs({ -8, -6, -4, 3, 5, 7 }) do
-            local f = make("Frame", {
-                Position = UDim2.new(0, cx + cxo, 0, 8), Size = UDim2.new(0, 2, 0, 6),
-                BackgroundColor3 = Color3.fromRGB(238, 216, 180), BorderSizePixel = 0,
-            }, par)
-            make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
-        end
     end
 
-    -- Laba-laba menggantung. Dua engsel: seluruh benang berayun dari titik atas header
-    -- (benang lurus dan utuh), badannya berayun sendiri dari ujung benang dengan irama
-    -- lain, jadi geraknya lentur seperti bandul, tidak kaku.
+    -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);
+    -- badannya punya engsel sendiri di ujung benang supaya geraknya lentur.
     function decor.spider(par, x)
         local H = HEADER_H
+        local cx = 13
         local pivot = decor.root(par, {
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.new(0, x, 0, 0),
-            Size = UDim2.new(0, 30, 0, H * 2),
+            Size = UDim2.new(0, 26, 0, H * 2),
         })
         pivot.ClipsDescendants = false
         make("Frame", {
-            Position = UDim2.new(0, 14, 0, H), Size = UDim2.new(0, 2, 0, 16),
+            Position = UDim2.new(0, cx - 1, 0, H), Size = UDim2.new(0, 2, 0, 11),
             BackgroundColor3 = WEB_COLOR, BackgroundTransparency = 0.1, BorderSizePixel = 0,
         }, pivot)
         local hinge = make("Frame", {
             AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0, 15, 0, H + 15),
-            Size = UDim2.new(0, 30, 0, 30),
+            Position = UDim2.new(0, cx, 0, H + 11),
+            Size = UDim2.new(0, 26, 0, 26),
             BackgroundTransparency = 1,
         }, pivot)
-        local body = Color3.fromRGB(44, 22, 18)
-        for _, s in ipairs({ -1, 1 }) do
+        local legC = Color3.fromRGB(120, 48, 74)
+        local bodyC = Color3.fromRGB(58, 18, 44)
+        local rim = Color3.fromRGB(190, 80, 18)
+        -- 4 pasang kaki bersendi: pangkal, lutut, telapak
+        for _, sd in ipairs({ -1, 1 }) do
             for _, l in ipairs({
-                { { 3, 20 }, { 9, 16 }, { 12, 22 } },
-                { { 4, 22 }, { 11, 20 }, { 13, 27 } },
-                { { 4, 24 }, { 10, 26 }, { 12, 29 } },
+                { { 2, 15 }, { 6, 11 }, { 10, 14 } },
+                { { 2, 16 }, { 8, 15 }, { 11, 19 } },
+                { { 2, 18 }, { 8, 20 }, { 10, 24 } },
+                { { 2, 19 }, { 6, 23 }, { 7, 25 } },
             }) do
                 local pts = {}
-                for _, p in ipairs(l) do pts[#pts + 1] = { 15 + s * p[1], p[2] } end
-                limb(hinge, pts, 2, 1, body)
+                for _, q in ipairs(l) do pts[#pts + 1] = { cx + sd * q[1], q[2] } end
+                limb(hinge, pts, 2, 2, legC)
             end
         end
-        oval(hinge, 9, 17, 12, 12, Color3.fromRGB(150, 62, 14))
-        oval(hinge, 10, 18, 10, 10, body)
-        oval(hinge, 12, 15, 6, 6, body)
+        oval(hinge, cx - 5, 14, 10, 10, rim)
+        oval(hinge, cx - 4, 15, 8, 8, bodyC)
+        oval(hinge, cx - 3, 11, 6, 6, rim)
+        oval(hinge, cx - 2, 12, 4, 4, bodyC)
         make("Frame", {
-            Position = UDim2.new(0, 14, 0, 22), Size = UDim2.new(0, 2, 0, 4),
+            Position = UDim2.new(0, cx - 1, 0, 19), Size = UDim2.new(0, 2, 0, 3),
             BackgroundColor3 = Color3.fromRGB(255, 120, 20), BorderSizePixel = 0,
         }, hinge)
-        for _, ex in ipairs({ 12, 16 }) do
+        for _, ex in ipairs({ -2, 1 }) do
             make("Frame", {
-                Position = UDim2.new(0, ex, 0, 17), Size = UDim2.new(0, 2, 0, 2),
+                Position = UDim2.new(0, cx + ex, 0, 13), Size = UDim2.new(0, 1, 0, 2),
                 BackgroundColor3 = Color3.fromRGB(255, 70, 40), BorderSizePixel = 0,
             }, hinge)
         end
@@ -1179,19 +1222,7 @@ do
         AutoButtonColor = false,
         BorderSizePixel = 0,
     }, Header)
-    -- Piringan oranye di belakang gear (hanya tema Halloween)
     local GEAR_ORANGE = Color3.fromRGB(255, 140, 24)
-    local plate = make("Frame", {
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        Size = UDim2.new(0, 26, 0, 26),
-        BackgroundColor3 = Color3.fromRGB(46, 16, 4),
-        BackgroundTransparency = 0.1,
-        BorderSizePixel = 0,
-        Visible = false,
-    }, btn)
-    make("UICorner", { CornerRadius = UDim.new(1, 0) }, plate)
-    make("UIStroke", { Color = GEAR_ORANGE, Thickness = 1.5 }, plate)
     local icon = make("Frame", {
         Size = UDim2.new(0, 15, 0, 15),
         AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1220,15 +1251,42 @@ do
         for _, p in ipairs(gparts) do p.BackgroundColor3 = on and GEAR_ORANGE or Color3.fromRGB(255, 255, 255) end
         hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4) or Color3.fromRGB(14, 14, 16)
         gscale.Scale = 1
-        plate.Visible = on
     end
     ui.gearBtn, ui.gear = btn, icon
 
     -- Kelelawar besar yang memegang gear dengan kakinya. Ada di ScreenGui (bukan di MainFrame)
     -- supaya sayap dan kepalanya bisa keluar dari papan; posisinya mengikuti MainFrame.
-    local batRoot = decor.root(ScreenGui, { Position = MainFrame.Position, Size = UDim2.new(0, 0, 0, 0), ZIndex = 3 })
+    local batRoot = decor.root(ScreenGui, { Position = MainFrame.Position, Size = UDim2.new(0, 0, 0, 0), ZIndex = 20 })
     batRoot.ClipsDescendants = false
-    decor.bat(batRoot, 19)
+    -- Kelelawar dimiringkan ke kiri dengan pusat putar di tengah gear; badannya setengah
+    -- di belakang gear, kakinya tertutup penuh oleh ikon gear.
+    local tilt = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
+        Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = -22,
+    }, batRoot)
+    local shift = make("Frame", {
+        Position = UDim2.new(0, 1, 0, -1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+    }, tilt)
+    decor.bat(shift, 0)
+    -- Gear oranye digambar lagi di atas kelelawar (ikut berputar dengan gear asli)
+    local ov = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
+        Size = UDim2.new(0, 15, 0, 15), BackgroundTransparency = 1,
+    }, batRoot)
+    local function ovPart(w, h, rot, color, round)
+        local f = make("Frame", {
+            Size = UDim2.new(0, w, 0, h), AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0), Rotation = rot,
+            BackgroundColor3 = color, BorderSizePixel = 0,
+        }, ov)
+        if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
+    end
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, GEAR_ORANGE) end
+    ovPart(9, 9, 0, GEAR_ORANGE, true)
+    ovPart(4, 4, 0, Color3.fromRGB(34, 12, 4), true)
+    table.insert(conns, icon:GetPropertyChangedSignal("Rotation"):Connect(function()
+        ov.Rotation = icon.Rotation
+    end))
     table.insert(conns, MainFrame:GetPropertyChangedSignal("Position"):Connect(function()
         batRoot.Position = MainFrame.Position
     end))
@@ -1457,7 +1515,7 @@ do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
     decor.treeBox = decor.tree(root)
-    decor.pumpkinBox = decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
+    decor.pumpkinBox = decor.pumpkin(root)
 end
 
 local PageHolder = make("Frame", {

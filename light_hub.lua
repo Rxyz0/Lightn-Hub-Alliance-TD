@@ -424,68 +424,132 @@ do
         return pts
     end
 
-    -- Tiga labu berwajah dengan kuburan batu (nisan melengkung, tanpa salib) di tengah.
+    -- Labu jack-o'-lantern seperti di referensi: tiga cuping, tangkai hijau, mata kuning
+    -- miring marah, dan mulut bergerigi. Badan dan wajah digambar terpisah supaya wajah
+    -- bisa masuk lapisan cahaya (berdenyut).
+    local function drawPumpkinBody(body, cx, cy, rx, ry)
+        local RIM = Color3.fromRGB(150, 56, 10)
+        local SIDE = Color3.fromRGB(190, 72, 12)
+        local MID = Color3.fromRGB(242, 114, 20)
+        local lobes = {
+            ell(cx - rx * 0.45, cy, rx * 0.62, ry),
+            ell(cx + rx * 0.45, cy, rx * 0.62, ry),
+            ell(cx, cy, rx * 0.58, ry * 1.04),
+        }
+        for _, l in ipairs(lobes) do poly(body, l, RIM, 1, 1) end
+        poly(body, lobes[1], SIDE, 0, 1)
+        poly(body, lobes[2], SIDE, 0, 1)
+        poly(body, lobes[3], MID, 0, 1)
+        poly(body, ell(cx - rx * 0.3, cy - ry * 0.55, rx * 0.2, ry * 0.15), Color3.fromRGB(255, 165, 64), 0, 1)
+        for _, k in ipairs({ -0.5, 0.5 }) do
+            limb(body, { { cx + k * rx, cy - ry * 0.8 }, { cx + k * rx * 1.04, cy }, { cx + k * rx * 0.92, cy + ry * 0.8 } },
+                1, 1, Color3.fromRGB(128, 46, 8))
+        end
+        limb(body, { { cx, cy - ry + 1 }, { cx + 1, cy - ry - 3 }, { cx + 4, cy - ry - 5 } }, 4, 3,
+            Color3.fromRGB(84, 108, 38))
+    end
+
+    local function drawPumpkinFace(glow, cx, cy, rx, ry)
+        local eye = { { -0.66, -0.28 }, { -0.40, -0.24 }, { -0.10, 0.08 }, { -0.30, 0.10 }, { -0.52, -0.02 } }
+        local mouth = {
+            { -0.74, 0.22 }, { -0.58, 0.40 }, { -0.44, 0.26 }, { -0.30, 0.46 }, { -0.15, 0.30 }, { 0, 0.50 },
+            { 0.15, 0.30 }, { 0.30, 0.46 }, { 0.44, 0.26 }, { 0.58, 0.40 }, { 0.74, 0.22 },
+            { 0.66, 0.52 }, { 0.50, 0.66 }, { 0.36, 0.52 }, { 0.22, 0.72 }, { 0.10, 0.56 }, { 0, 0.78 },
+            { -0.10, 0.56 }, { -0.22, 0.72 }, { -0.36, 0.52 }, { -0.50, 0.66 }, { -0.66, 0.52 },
+        }
+        local function P(pts, flip)
+            local o = {}
+            for _, q in ipairs(pts) do o[#o + 1] = { cx + (flip and -q[1] or q[1]) * rx, cy + q[2] * ry } end
+            return o
+        end
+        local shapes = { P(eye), P(eye, true), P(mouth) }
+        for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 130, 20), 1, 1) end
+        for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
+    end
+
+    -- Adegan unit: Ghost Speaker Man (kepala speaker, tubuh hantu hijau) berdiri di depan
+    -- nisan abu-abu, dan Pumpkin Man (kepala labu, jas oranye) di sebelahnya.
     function decor.pumpkin(par)
         local box = make("Frame", {
             AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
-            Size = UDim2.new(0, 108, 0, 66), BackgroundTransparency = 1,
+            Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
         }, par)
-        oval(box, 0, 56, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
-        oval(box, 28, 55, 52, 11, Color3.fromRGB(38, 20, 12))        -- gundukan tanah
-
-        -- nisan: atas melengkung
-        local stone = { { 43, 58 }, { 43, 17 } }
-        for k = 0, 12 do
-            local a = math.pi - math.pi * k / 12
-            stone[#stone + 1] = { 54 + 11 * math.cos(a), 17 - 11 * math.sin(a) }
+        local function piece(pts, fill, rim)
+            poly(box, pts, rim, 1, 1)
+            poly(box, pts, fill, 0, 1)
         end
-        stone[#stone + 1] = { 65, 17 }
-        stone[#stone + 1] = { 65, 58 }
-        poly(box, stone, Color3.fromRGB(150, 142, 152), 1, 1)
-        poly(box, stone, Color3.fromRGB(98, 92, 104), 0, 1)
-        poly(box, { { 59, 14 }, { 65, 17 }, { 65, 58 }, { 59, 58 } }, Color3.fromRGB(78, 72, 86), 0, 1)
-        limb(box, { { 50, 41 }, { 53, 47 }, { 51, 53 } }, 1, 1, Color3.fromRGB(52, 48, 58))
-        make("TextLabel", {
-            Position = UDim2.new(0, 43, 0, 20), Size = UDim2.new(0, 22, 0, 12),
-            BackgroundTransparency = 1, Text = "RIP", TextSize = 9, Font = Enum.Font.GothamBold,
-            TextColor3 = Color3.fromRGB(46, 42, 54),
-        }, box)
-        oval(box, 39, 55, 30, 6, Color3.fromRGB(74, 68, 80))
+        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
 
+        -- tanah cokelat dan nisan
+        oval(box, 0, 73, 80, 16, Color3.fromRGB(58, 30, 16))
+        oval(box, 2, 74, 76, 13, Color3.fromRGB(100, 56, 30))
+        local stone = { { 6, 76 }, { 6, 46 }, { 12, 33 }, { 27, 31 }, { 34, 42 }, { 34, 76 } }
+        piece(stone, Color3.fromRGB(70, 68, 76), Color3.fromRGB(26, 26, 30))
+        poly(box, { { 6, 46 }, { 12, 33 }, { 18, 34 }, { 14, 48 }, { 14, 76 }, { 6, 76 } }, Color3.fromRGB(94, 92, 102), 0, 1)
+        poly(box, { { 27, 31 }, { 34, 42 }, { 34, 76 }, { 27, 76 } }, Color3.fromRGB(46, 44, 52), 0, 1)
+        piece({ { 3, 73 }, { 38, 73 }, { 38, 79 }, { 3, 79 } }, Color3.fromRGB(62, 60, 68), Color3.fromRGB(26, 26, 30))
+        piece({ { 0, 78 }, { 42, 78 }, { 42, 84 }, { 0, 84 } }, Color3.fromRGB(46, 44, 52), Color3.fromRGB(26, 26, 30))
+
+        -- Ghost Speaker Man: melayang, tanpa kaki; bayangan di tanah di bawahnya
+        oval(box, 28, 80, 38, 5, Color3.fromRGB(34, 16, 8), 0.35)
+        local GR = Color3.fromRGB(96, 170, 108)
+        -- ekor hantu menyatu dengan badan, ujungnya melengkung ke kanan
+        piece({ { 33, 52 }, { 58, 52 }, { 61, 60 }, { 60, 68 }, { 56, 74 }, { 49, 78 }, { 43, 78 }, { 46, 73 },
+            { 41, 68 }, { 36, 62 } }, Color3.fromRGB(176, 238, 182), GR)
+        -- kemeja (badan atas) dengan ujung bawah sobek
+        piece({ { 30, 23 }, { 58, 23 }, { 58, 43 }, { 30, 43 } }, Color3.fromRGB(190, 242, 190), GR)
+        piece({ { 30, 43 }, { 58, 43 }, { 58, 53 }, { 54, 57 }, { 50, 53 }, { 46, 58 }, { 42, 53 }, { 38, 57 },
+            { 34, 53 }, { 30, 56 } }, Color3.fromRGB(150, 236, 160), GR)
+        limb(box, { { 44, 33 }, { 44, 51 } }, 1, 1, Color3.fromRGB(216, 250, 216))
+        -- lengan blok besar dengan manset hijau bergerigi
+        piece({ { 14, 25 }, { 30, 25 }, { 30, 43 }, { 14, 43 } }, Color3.fromRGB(202, 246, 202), GR)
+        piece({ { 14, 43 }, { 30, 43 }, { 30, 55 }, { 26, 57 }, { 22, 54 }, { 18, 57 }, { 14, 54 } },
+            Color3.fromRGB(128, 232, 142), GR)
+        piece({ { 58, 25 }, { 74, 25 }, { 74, 41 }, { 58, 41 } }, Color3.fromRGB(202, 246, 202), GR)
+        piece({ { 58, 41 }, { 74, 41 }, { 74, 52 }, { 70, 54 }, { 66, 51 }, { 62, 54 }, { 58, 51 } },
+            Color3.fromRGB(128, 232, 142), GR)
+        piece({ { 40, 23 }, { 48, 23 }, { 44, 30 } }, Color3.fromRGB(214, 250, 214), GR)
+        piece({ { 46, 23 }, { 54, 23 }, { 50, 30 } }, Color3.fromRGB(214, 250, 214), GR)
+        -- kepala speaker
+        piece({ { 28, 1 }, { 58, 1 }, { 60, 3 }, { 60, 21 }, { 58, 23 }, { 28, 23 }, { 26, 21 }, { 26, 3 } },
+            Color3.fromRGB(184, 240, 186), GR)
+        poly(box, { { 28, 2 }, { 58, 2 }, { 59, 6 }, { 27, 6 } }, Color3.fromRGB(214, 252, 214), 0, 1)
+        oval(box, 37, 3, 18, 18, Color3.fromRGB(22, 34, 24))
+        oval(box, 38, 4, 16, 16, Color3.fromRGB(240, 255, 240))
+        oval(box, 41, 7, 10, 10, Color3.fromRGB(34, 140, 66))
+        for _, sc in ipairs({ { 29, 4 }, { 56, 4 }, { 29, 18 }, { 56, 18 } }) do
+            oval(box, sc[1], sc[2], 3, 3, Color3.fromRGB(28, 44, 30))
+        end
+
+        -- Pumpkin Man: kepala labu, kemeja, jas terbuka dengan lapel, dasi, gesper, celana, sepatu
+        local PR = Color3.fromRGB(120, 40, 10)
+        local JACKET = Color3.fromRGB(240, 128, 28)
+        piece({ { 81, 70 }, { 89, 70 }, { 89, 82 }, { 81, 82 } }, Color3.fromRGB(196, 48, 24), PR)
+        piece({ { 91, 70 }, { 99, 70 }, { 99, 82 }, { 91, 82 } }, Color3.fromRGB(196, 48, 24), PR)
+        piece({ { 79, 81 }, { 89, 81 }, { 89, 85 }, { 79, 85 } }, Color3.fromRGB(234, 100, 38), PR)
+        piece({ { 91, 81 }, { 101, 81 }, { 101, 85 }, { 91, 85 } }, Color3.fromRGB(234, 100, 38), PR)
+        piece({ { 86, 45 }, { 94, 45 }, { 94, 71 }, { 86, 71 } }, Color3.fromRGB(150, 36, 14), PR)        -- kemeja
+        piece({ { 80, 46 }, { 87, 46 }, { 88, 56 }, { 88, 72 }, { 78, 72 }, { 80, 62 } }, JACKET, PR)    -- jas kiri
+        piece({ { 100, 46 }, { 93, 46 }, { 92, 56 }, { 92, 72 }, { 102, 72 }, { 100, 62 } }, JACKET, PR) -- jas kanan
+        poly(box, { { 85, 46 }, { 89, 47 }, { 88, 58 }, { 84, 52 } }, Color3.fromRGB(210, 80, 18), 0, 1) -- lapel
+        poly(box, { { 95, 46 }, { 91, 47 }, { 92, 58 }, { 96, 52 } }, Color3.fromRGB(210, 80, 18), 0, 1)
+        poly(box, { { 89, 46 }, { 91, 46 }, { 92, 49 }, { 88, 49 } }, Color3.fromRGB(252, 208, 66), 0, 1)  -- simpul dasi
+        poly(box, { { 89, 49 }, { 91, 49 }, { 92, 62 }, { 90, 65 }, { 88, 62 } }, Color3.fromRGB(252, 208, 66), 0, 1)
+        limb(box, { { 81, 64 }, { 85, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))                         -- saku
+        limb(box, { { 99, 64 }, { 95, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
+        poly(box, { { 88, 68 }, { 92, 68 }, { 92, 71 }, { 88, 71 } }, Color3.fromRGB(206, 206, 216), 0, 1) -- gesper
+        piece({ { 72, 48 }, { 80, 48 }, { 80, 60 }, { 72, 60 } }, Color3.fromRGB(246, 142, 40), PR)
+        piece({ { 72, 60 }, { 80, 60 }, { 80, 68 }, { 78, 66 }, { 76, 69 }, { 74, 66 }, { 72, 68 } }, Color3.fromRGB(232, 70, 28), PR)
+        piece({ { 100, 48 }, { 108, 48 }, { 108, 60 }, { 100, 60 } }, Color3.fromRGB(246, 142, 40), PR)
+        piece({ { 100, 60 }, { 108, 60 }, { 108, 68 }, { 106, 66 }, { 104, 69 }, { 102, 66 }, { 100, 68 } }, Color3.fromRGB(232, 70, 28), PR)
+        drawPumpkinBody(box, 90, 36, 11, 10)
+
+        -- lapisan cahaya (berdenyut): wajah labu dan inti speaker, di atas semua bentuk
         local gg = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
         }, box)
-        local RIM = Color3.fromRGB(150, 56, 10)
-        local SIDE = Color3.fromRGB(184, 70, 12)
-        local MID = Color3.fromRGB(240, 112, 20)
-        local function pumpkin(cx, cy, rx, ry)
-            local lobes = {
-                ell(cx - rx * 0.45, cy, rx * 0.62, ry),
-                ell(cx + rx * 0.45, cy, rx * 0.62, ry),
-                ell(cx, cy, rx * 0.58, ry * 1.04),
-            }
-            for _, l in ipairs(lobes) do poly(box, l, RIM, 1, 1) end
-            poly(box, lobes[1], SIDE, 0, 1)
-            poly(box, lobes[2], SIDE, 0, 1)
-            poly(box, lobes[3], MID, 0, 1)
-            poly(box, ell(cx - rx * 0.22, cy - ry * 0.45, rx * 0.2, ry * 0.18), Color3.fromRGB(255, 160, 60), 0, 1)
-            limb(box, { { cx, cy - ry + 1 }, { cx + 1, cy - ry - 3 }, { cx + 4, cy - ry - 5 } }, 4, 3,
-                Color3.fromRGB(84, 104, 38))
-            -- wajah menyala (di lapisan cahaya)
-            local f = {
-                { { cx - 0.5 * rx, cy - 0.05 * ry }, { cx - 0.12 * rx, cy - 0.05 * ry }, { cx - 0.31 * rx, cy - 0.5 * ry } },
-                { { cx + 0.5 * rx, cy - 0.05 * ry }, { cx + 0.12 * rx, cy - 0.05 * ry }, { cx + 0.31 * rx, cy - 0.5 * ry } },
-                { { cx - 0.55 * rx, cy + 0.25 * ry }, { cx - 0.3 * rx, cy + 0.2 * ry }, { cx - 0.15 * rx, cy + 0.45 * ry },
-                    { cx, cy + 0.2 * ry }, { cx + 0.15 * rx, cy + 0.45 * ry }, { cx + 0.3 * rx, cy + 0.2 * ry },
-                    { cx + 0.55 * rx, cy + 0.25 * ry }, { cx + 0.4 * rx, cy + 0.65 * ry }, { cx, cy + 0.8 * ry },
-                    { cx - 0.4 * rx, cy + 0.65 * ry } },
-            }
-            for _, sh in ipairs(f) do poly(gg, sh, Color3.fromRGB(255, 130, 20), 1, 1) end
-            for _, sh in ipairs(f) do poly(gg, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
-        end
-        pumpkin(18, 44, 16, 13)
-        pumpkin(90, 44, 16, 13)
-        pumpkin(46, 55, 9, 7)
+        drawPumpkinFace(gg, 90, 36, 11, 10)
+        oval(gg, 43, 9, 6, 6, Color3.fromRGB(150, 255, 160))
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
             { GroupTransparency = 0.4 })
@@ -580,6 +644,9 @@ do
         }
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 112, 14), 2, 1) end
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 214, 60), 0, 1) end
+        -- labu di tanah, di bawah pohon (wajah ikut berdenyut)
+        drawPumpkinBody(g, 54, 270, 25, 15)
+        drawPumpkinFace(gg, 54, 270, 25, 15)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
             { GroupTransparency = 0.4 })

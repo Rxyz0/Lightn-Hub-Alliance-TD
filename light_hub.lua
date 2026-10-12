@@ -273,7 +273,7 @@ end
 -- Dekorasi tema Halloween: jaring laba-laba, pohon mati berwajah, labu, kelelawar besar di gear, laba-laba menggantung.
 -- Semuanya Frame statis di belakang konten dan hanya tampil saat tema Halloween aktif.
 -- Hanya labu (berkedip) dan laba-laba (berayun) yang bergerak, lewat satu tween pelan.
-local decor = { roots = {}, tweens = {}, hideMini = {} }
+local decor = { roots = {}, tweens = {}, hideMini = {}, steppers = {} }
 do
     local WEB_COLOR = Color3.fromRGB(232, 196, 140)
 
@@ -474,7 +474,7 @@ do
             AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
             Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
         }, par)
-        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
+        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya di tanah
         local scene = make("Frame", {
             Position = UDim2.new(0, 17, 0, 0), Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
         }, box)
@@ -530,7 +530,7 @@ do
         oval(gg, 43, 9, 6, 6, Color3.fromRGB(150, 255, 160))
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { GroupTransparency = 0.4 })
+            { GroupTransparency = 0.1 })
         -- naik-turun super lambat (5 detik per arah)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(fl,
             TweenInfo.new(5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
@@ -545,7 +545,7 @@ do
             AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
             Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
         }, par)
-        local S = 1.3
+        local S = 1.5
         local function T(pts)
             local o = {}
             for _, q in ipairs(pts) do o[#o + 1] = { 54 + (q[1] - 90) * S, 85 + (q[2] - 85) * S } end
@@ -561,7 +561,7 @@ do
         local function flat(pts, c) poly(box, T(pts), c, 0, 1) end
         local function ln(pts, w0, w1, c) limb(box, T(pts), w0 * S, w1 * S, c) end
 
-        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
+        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya di tanah
         oval(box, 22, 80, 64, 6, Color3.fromRGB(34, 16, 8), 0.35)    -- bayangan
 
         piece({ { 81, 70 }, { 89, 70 }, { 89, 82 }, { 81, 82 } }, Color3.fromRGB(196, 48, 24), PR)
@@ -584,7 +584,8 @@ do
         piece({ { 100, 56 }, { 108, 56 }, { 108, 69 }, { 100, 69 } }, Color3.fromRGB(232, 70, 28), PR)
         piece({ { 100, 48 }, { 108, 48 }, { 108, 62 }, { 106, 65 }, { 104, 60 }, { 102, 64 }, { 100, 61 } }, Color3.fromRGB(246, 142, 40), PR)
 
-        local hx, hy, hrx, hry = 54, 25.5, 10, 9.5
+        local hrx, hry = 11.5, 11
+        local hx, hy = 54, 85 + (46 - 85) * S - hry + 0.8 -- kepala duduk tepat di atas bahu
         drawPumpkinBody(box, hx, hy, hrx, hry)
         local gg = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
@@ -592,8 +593,165 @@ do
         drawPumpkinFace(gg, hx, hy, hrx, hry)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { GroupTransparency = 0.4 })
+            { GroupTransparency = 0.1 })
         return box
+    end
+
+    -- Burung gagak bertengger di cabang kanan pohon. Siluet gelap polos (tanpa cahaya);
+    -- sesekali kepalanya menoleh ke arah lain.
+    function decor.crow(par)
+        local BLK = Color3.fromRGB(18, 9, 20)
+        local SHEEN = Color3.fromRGB(46, 28, 52)
+        local BEAK = Color3.fromRGB(44, 32, 36)
+        poly(par, { { 80, 90 }, { 89, 94 }, { 88, 96.5 }, { 79, 93 } }, BLK, 0, 1)         -- ekor
+        limb(par, { { 75, 94 }, { 75, 97.5 } }, 1, 1, BLK)                                 -- kaki
+        limb(par, { { 78.5, 94 }, { 78.5, 97.5 } }, 1, 1, BLK)
+        poly(par, ell(76, 91, 6.5, 3.7), BLK, 0, 1)                                         -- badan
+        poly(par, { { 72, 89.5 }, { 80, 90.5 }, { 79, 92.5 }, { 72, 91.5 } }, SHEEN, 0, 1) -- sayap
+        local hl = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
+        local hr = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false }, par)
+        poly(hl, ell(70, 86.5, 3.2, 3), BLK, 0, 1)
+        poly(hl, { { 67.5, 85.5 }, { 63, 87.5 }, { 67.5, 88.8 } }, BEAK, 0, 1)
+        make("Frame", { Position = UDim2.new(0, 69, 0, 85), Size = UDim2.new(0, 1, 0, 1),
+            BackgroundColor3 = Color3.fromRGB(190, 170, 120), BorderSizePixel = 0 }, hl)
+        poly(hr, ell(77.5, 86, 3.2, 3), BLK, 0, 1)
+        poly(hr, { { 80, 85 }, { 84.5, 87 }, { 80, 88.3 } }, BEAK, 0, 1)
+        make("Frame", { Position = UDim2.new(0, 79, 0, 84), Size = UDim2.new(0, 1, 0, 1),
+            BackgroundColor3 = Color3.fromRGB(190, 170, 120), BorderSizePixel = 0 }, hr)
+        local timer = math.random(3, 6)
+        decor.steppers[#decor.steppers + 1] = function(dt)
+            timer = timer - dt
+            if timer <= 0 then
+                timer = math.random(40, 100) / 10
+                local right = not hr.Visible
+                hr.Visible = right
+                hl.Visible = not right
+            end
+        end
+    end
+
+    -- Percikan bara naik pelan (semua adegan) dan daun kering jatuh (hanya adegan pohon).
+    -- Titik kecil polos, tanpa efek cahaya. Posisi pakai skala supaya geraknya halus.
+    function decor.particles(par)
+        local W, H = 107, 286
+        local embers = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
+        local leafL = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false }, par)
+        local E, Lf = {}, {}
+        for i = 1, 9 do
+            local sz = (i % 3 == 0) and 3 or 2
+            local f = make("Frame", {
+                Size = UDim2.new(0, sz, 0, sz), BorderSizePixel = 0,
+                BackgroundColor3 = (i % 2 == 0) and Color3.fromRGB(255, 150, 46) or Color3.fromRGB(232, 110, 30),
+            }, embers)
+            E[i] = { f = f, x0 = math.random(8, 100), y = math.random(0, H), sp = math.random(9, 20),
+                ph = math.random() * 6.28, sw = 2 + math.random() * 3 }
+        end
+        local leafCols = { Color3.fromRGB(150, 66, 20), Color3.fromRGB(118, 50, 22),
+            Color3.fromRGB(176, 88, 28), Color3.fromRGB(132, 58, 20) }
+        for i = 1, 4 do
+            local f = make("Frame", {
+                Size = UDim2.new(0, 5, 0, 3), AnchorPoint = Vector2.new(0.5, 0.5),
+                BackgroundColor3 = leafCols[i], BorderSizePixel = 0,
+            }, leafL)
+            make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
+            Lf[i] = { f = f, x0 = math.random(10, 98), y = math.random(0, H - 20), sp = math.random(7, 13),
+                ph = math.random() * 6.28 }
+        end
+        local t = 0
+        decor.steppers[#decor.steppers + 1] = function(dt)
+            t = t + dt
+            for _, e in ipairs(E) do
+                e.y = e.y - e.sp * dt
+                if e.y < -4 then e.y = H + 4; e.x0 = math.random(8, 100) end
+                local x = e.x0 + math.sin(t * 0.8 + e.ph) * e.sw
+                local vis = math.max(0, math.min(1, (H - e.y) / 25, e.y / 60)) * 0.8
+                e.f.Position = UDim2.new(x / W, 0, e.y / H, 0)
+                e.f.BackgroundTransparency = 1 - vis
+            end
+            if leafL.Visible then
+                for _, l in ipairs(Lf) do
+                    l.y = l.y + l.sp * dt
+                    if l.y > H - 6 then l.y = -6; l.x0 = math.random(10, 98) end
+                    l.f.Position = UDim2.new((l.x0 + math.sin(t * 0.9 + l.ph) * 9) / W, 0, l.y / H, 0)
+                    l.f.Rotation = math.sin(t * 1.2 + l.ph) * 50
+                end
+            end
+        end
+        return leafL
+    end
+
+    -- Kabut tipis di dasar sidebar: lapisan datar sangat transparan yang bergeser pelan.
+    function decor.fog(par)
+        local layer = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
+        local F = {}
+        for i, d in ipairs({ { -14, 262, 92, 16 }, { 30, 272, 96, 14 }, { -4, 254, 70, 12 } }) do
+            for _, g in ipairs({ { 8, 4, 0.95 }, { 0, 0, 0.9 } }) do
+                local f = make("Frame", {
+                    Position = UDim2.new(0, d[1] - g[1] / 2, 0, d[2] - g[2] / 2),
+                    Size = UDim2.new(0, d[3] + g[1], 0, d[4] + g[2]),
+                    BackgroundColor3 = Color3.fromRGB(206, 190, 176), BackgroundTransparency = g[3], BorderSizePixel = 0,
+                }, layer)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+                F[#F + 1] = { f = f, x = d[1] - g[1] / 2, y = d[2] - g[2] / 2, ph = i * 2.1, amp = 10 + 4 * i, sp = 0.15 + 0.04 * i }
+            end
+        end
+        local t = 0
+        decor.steppers[#decor.steppers + 1] = function(dt)
+            t = t + dt
+            for _, q in ipairs(F) do
+                q.f.Position = UDim2.new((q.x + math.sin(t * q.sp + q.ph) * q.amp) / 107, 0, 0, q.y)
+            end
+        end
+        return layer
+    end
+
+    -- Kelelawar kecil melintas di header dari kanan ke kiri, sesekali saja, sayap mengepak.
+    function decor.flyBat(par)
+        local root = decor.root(par, { Size = UDim2.new(1, 0, 1, 0) })
+        decor.hideMini[root] = true
+        local bat = make("Frame", {
+            Size = UDim2.new(0, 20, 0, 12), BackgroundTransparency = 1, Visible = false,
+        }, root)
+        local C1 = Color3.fromRGB(74, 26, 60)
+        local up = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, bat)
+        local down = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false }, bat)
+        local function wings(par2, pts)
+            local r, l = {}, {}
+            for _, q in ipairs(pts) do
+                r[#r + 1] = { q[1], q[2] }
+                l[#l + 1] = { 20 - q[1], q[2] }
+            end
+            poly(par2, r, C1, 0, 1)
+            poly(par2, l, C1, 0, 1)
+        end
+        wings(up, { { 11, 6 }, { 13, 2 }, { 17, 0 }, { 19, 1 }, { 17, 3 }, { 18, 5 }, { 15, 5 }, { 13, 7 } })
+        wings(down, { { 11, 5 }, { 14, 8 }, { 17, 11 }, { 19, 11 }, { 17, 9 }, { 18, 8 }, { 15, 8 }, { 12, 8 } })
+        poly(bat, ell(10, 6.5, 2, 3.2), C1, 0, 1)
+        poly(bat, { { 8.4, 3.6 }, { 8.4, 1.4 }, { 9.8, 3 } }, C1, 0, 1)
+        poly(bat, { { 11.6, 3.6 }, { 11.6, 1.4 }, { 10.2, 3 } }, C1, 0, 1)
+        local state, timer, t, dur, y0, acc, flap = 0, math.random(6, 12), 0, 7.5, 10, 0, false
+        decor.steppers[#decor.steppers + 1] = function(dt)
+            if not root.Visible then return end
+            if state == 0 then
+                timer = timer - dt
+                if timer <= 0 then
+                    state = 1; t = 0; y0 = math.random(6, 20); bat.Visible = true
+                end
+                return
+            end
+            t = t + dt
+            acc = acc + dt
+            if acc > 0.13 then
+                acc = 0; flap = not flap
+                up.Visible = not flap; down.Visible = flap
+            end
+            local k = t / dur
+            bat.Position = UDim2.new(1.03 - 1.1 * k, 0, 0, math.floor(y0 + math.sin(t * 2.6) * 4))
+            if k >= 1 then
+                state = 0; bat.Visible = false; timer = math.random(25, 50)
+            end
+        end
+        return root
     end
 
     -- Pohon mati tinggi dan kurus (tinggi penuh sidebar, di belakang tombol), cabang
@@ -606,7 +764,7 @@ do
             Size = UDim2.new(0, 108, 0, 286),
             BackgroundTransparency = 1,
         }, par)
-        oval(box, 0, 276, 108, 18, Color3.fromRGB(255, 112, 16), 0.45) -- cahaya lava di dasar
+        oval(box, 0, 276, 108, 18, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya lava di dasar
         local g = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0.08,
         }, box)
@@ -687,9 +845,10 @@ do
         -- labu di tanah, di bawah pohon (wajah ikut berdenyut)
         drawPumpkinBody(g, 90, 275, 16, 10)
         drawPumpkinFace(gg, 90, 275, 16, 10)
+        decor.crow(box)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { GroupTransparency = 0.4 })
+            { GroupTransparency = 0.1 })
         return box
     end
 
@@ -1258,6 +1417,7 @@ make("Frame", {
     BorderSizePixel = 0,
 }, Header)
 decor.spider(Header, 262)
+decor.flyBat(Header)
 
 local TitleRow = make("Frame", {
     Size = UDim2.new(0, 220, 1, 0),
@@ -1624,6 +1784,8 @@ do
     decor.treeBox = decor.tree(root)
     decor.ghostBox = decor.ghost(root)
     decor.pumpkinBox = decor.pumpkinMan(root)
+    decor.leafLayer = decor.particles(root)
+    decor.fog(root)
 end
 
 local PageHolder = make("Frame", {
@@ -8149,11 +8311,18 @@ function ui.decorRefresh()
     end
     if decor.treeBox then decor.treeBox.Visible = (decor.style == "Tree") end
     if decor.ghostBox then decor.ghostBox.Visible = (decor.style == "Ghost") end
+    if decor.leafLayer then decor.leafLayer.Visible = (decor.style == "Tree") end
     if decor.pumpkinBox then decor.pumpkinBox.Visible = (decor.style == "Pumpkin") end
     for _, tw in ipairs(decor.tweens) do
         if on then tw:Play() else tw:Pause() end
     end
 end
+
+table.insert(conns, RunService.Heartbeat:Connect(function(dt)
+    if theme.name ~= "Halloween" then return end
+    if dt > 0.1 then dt = 0.1 end
+    for _, f in ipairs(decor.steppers) do f(dt) end
+end))
 
 do
     local themePass = 0

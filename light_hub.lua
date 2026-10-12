@@ -16,6 +16,17 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
 local VERSION = "4.3"
+
+-- Jadwal update Halloween (detik epoch, UTC): 12 Okt 2026 23:00 WIB = 16:00 UTC.
+-- Mulai saat itu tema Halloween aktif otomatis, pilihan Theme muncul di Settings,
+-- dan fitur Fishing disembunyikan. Waktu dibaca dari server Roblox, jadi sama untuk
+-- semua zona waktu (WIB, WITA, WIT) dan tidak terpengaruh jam perangkat.
+local EVENT = { start = 1791820800, live = false }
+function EVENT.now()
+    local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
+    if ok and type(t) == "number" and t > 1.6e9 then return t end
+    return os.time()
+end
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -198,6 +209,7 @@ local POTION_OPTIONS = {
 -- =================================================================
 local settings = {
     theme = "Default",
+    eventTheme = false,
     antiAfk = true,
     showTimer = true,
     cheapestFirst = true,
@@ -1007,6 +1019,7 @@ local function saveSettings()
     local data = {
         antiAfk = settings.antiAfk,
         theme = settings.theme,
+        eventTheme = settings.eventTheme,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -1052,6 +1065,7 @@ local function loadSettings()
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
     if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
+    if type(data.eventTheme) == "boolean" then settings.eventTheme = data.eventTheme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -1161,7 +1175,7 @@ local EP = {}
 -- Game memasang penanda _ExclusiveCrateOpening di player selama animasi, dan
 -- handler animasi bawaan-lah yang menghapusnya di akhir. Saat Skip Animation aktif
 -- handler itu dimatikan, jadi penandanya tidak pernah terhapus dan auto-open
--- macet di "Animation playing". Solusinya:
+-- macet di "Wait for animation". Solusinya:
 --   - Skip Animation aktif: tidak ada animasi yang perlu ditunggu, penanda dibersihkan.
 --   - Skip mati: tunggu normal, tapi kalau penanda menempel > 12 detik anggap macet
 --     dan bersihkan juga.
@@ -2345,7 +2359,6 @@ local function createSelect(par, props, cfg)
         if cfg.getOptions then
             options = cfg.getOptions()
             if #options == 0 then
-                notify("Select", cfg.emptyMsg or "Nothing to select yet.", 3)
                 return
             end
         end
@@ -2752,7 +2765,6 @@ local function visualFeature(par, title, key, bodyHeight, build, soon)
         onToggle = function(v) setFlag(key, v) end,
     })
     if build and f.body then build(f.body) end
-    if soon then f.setNote("SOON", C.dim) end
     return f
 end
 
@@ -2999,6 +3011,28 @@ for i, grp in ipairs(nav.groups) do
     grp.item = item
     -- Buka halaman terakhir yang dipakai di grup ini
     item.MouseButton1Click:Connect(function() selectTab(grp.last or grp.pages[1][1]) end)
+end
+
+-- Susun ulang sidebar: grup yang disembunyikan dilewati, sisanya naik mengisi tempatnya
+function nav.relayout()
+    local y = 8
+    for _, grp in ipairs(nav.groups) do
+        grp.item.Visible = not grp.hidden
+        if not grp.hidden then
+            grp.y = y
+            grp.item.Position = UDim2.new(0, 0, 0, y)
+            y = y + 32
+        end
+    end
+    local g = nav.cur and nav.byPage[nav.cur]
+    if g and g.hidden then
+        nav.lastMain = "Main"
+        selectTab("Main")
+    elseif g then
+        selectTab(nav.cur)
+    end
+    local lm = nav.byPage[nav.lastMain]
+    if lm and lm.hidden then nav.lastMain = "Main" end
 end
 
 -- =================================================================
@@ -3292,7 +3326,7 @@ do
         }, {
             options = MAP_OPTIONS,
             initial = flags.playMap,
-            placeholder = "Select map",
+            placeholder = "Select a map",
             onChange = function(v) setFlag("playMap", v) end,
         })
         createSelect(body, {
@@ -3362,7 +3396,7 @@ do
             return 0.5
         end
         if not inLobby then
-            fPlay.setNote("Lobby only", C.muted)
+            fPlay.setNote("")
             return 2
         end
         if flags.playMap == "" then
@@ -3371,7 +3405,7 @@ do
         end
         local remote = knitRF("MatchmakingService", "JoinQueue")
         if not remote then
-            fPlay.setNote("Loading", C.muted)
+            fPlay.setNote("")
             return 1
         end
         -- Kalau teleport belum terjadi, coba lagi setelah 25 detik
@@ -3394,9 +3428,14 @@ do
             task.wait(0.3)
         end
         if joined then
+            fPlay.fails = 0
             fPlay.setNote("Joining", C.text)
         else
-            fPlay.setNote("Couldn't join, retrying", C.warn)
+            fPlay.fails = (fPlay.fails or 0) + 1
+            if fPlay.fails == 5 then
+                notify("Auto Play", "Couldn't join the map. Check the map and party size.", 5)
+            end
+            fPlay.setNote("Join failed, retrying", C.warn)
             lastJoin = os.clock() - 20
         end
         return 1
@@ -3426,13 +3465,13 @@ do
             return 0.5
         end
         if not RE("SetGameSpeed") then
-            fSpeed.setNote("Match only", C.muted)
+            fSpeed.setNote("")
             return 1.5
         end
         if sendSpeed() then
-            fSpeed.setNote(tostring(flags.speedValue) .. "x speed", C.text)
+            fSpeed.setNote("")
         else
-            fSpeed.setNote("Speed not changed", C.warn)
+            fSpeed.setNote("Speed change failed", C.warn)
         end
         return 4
     end)
@@ -3446,7 +3485,7 @@ do
         }, {
             options = MODE_OPTIONS,
             initial = flags.modeValue,
-            placeholder = "Select mode",
+            placeholder = "Select a mode",
             onChange = function(v) setFlag("modeValue", v) end,
         })
     end)
@@ -3459,7 +3498,7 @@ do
             return 0.5
         end
         if not inMatch then
-            fMode.setNote("Match only", C.muted)
+            fMode.setNote("")
             votedMode = nil
             return 2
         end
@@ -3471,12 +3510,12 @@ do
         local folder = ReplicatedStorage:FindFirstChild("ModeVote")
         local ev = folder and folder:FindFirstChild("Vote")
         if not ev then
-            fMode.setNote("Waiting for vote", C.muted)
+            fMode.setNote("")
             votedMode = nil
             return 1.5
         end
         if votedMode == mode then
-            fMode.setNote("Mode: " .. mode, C.text)
+            fMode.setNote("Voted " .. mode, C.text)
             return 1.5
         end
         task.wait(0.8) -- beri waktu UI voting siap
@@ -3484,7 +3523,7 @@ do
         local ok = pcall(function() ev:FireServer(mode) end)
         if ok then
             votedMode = mode
-            fMode.setNote("Mode: " .. mode, C.text)
+            fMode.setNote("Voted " .. mode, C.text)
         else
             fMode.setNote("Vote failed", C.warn)
         end
@@ -3557,19 +3596,19 @@ do
         end
         local ev = RE("SkipWaveVote")
         if not ev then
-            fSkip.setNote("Match only", C.muted)
+            fSkip.setNote("")
             return 1.5
         end
 
         local btn = findSkipButton()
         if btn then
             if skipState.pressed then
-                fSkip.setNote("Skipped", C.text)
+                fSkip.setNote("")
                 return 1
             end
             if pressButton(btn) then
                 skipState.pressed = true
-                fSkip.setNote("Skipped", C.text)
+                fSkip.setNote("")
                 return 1
             end
         else
@@ -3606,7 +3645,7 @@ do
             skipState.blind = skipState.blind + 1
             pcall(function() ev:FireServer(skipState.blind) end)
         end
-        fSkip.setNote("Skipped", C.text)
+        fSkip.setNote("")
         return 1
     end)
 
@@ -3672,12 +3711,12 @@ do
         other.setNote("")
 
         if not inMatch then
-            f.setNote("Match only", C.muted)
+            f.setNote("")
             return 2
         end
         if not scanEndScreen() then
             acted = false
-            f.setNote("Waiting for match end", C.muted)
+            f.setNote("")
             return 1.5
         end
         if acted then
@@ -3823,7 +3862,7 @@ do
             return 0.4
         end
         if EP.animBusy() then
-            fSummon.setNote("Animation playing", C.warn)
+            fSummon.setNote("Wait for animation", C.warn)
             return 1
         end
         local amount = flags.summonAmount
@@ -3836,7 +3875,7 @@ do
         local ok, res = invoke("SummonUnits", amount)
         if accepted(ok, res) then
             summonFails = 0
-            fSummon.setNote("Summoning...", C.text)
+            fSummon.setNote("")
         else
             summonFails = summonFails + 1
             fSummon.setNote("")
@@ -3862,7 +3901,7 @@ do
         local ok, res = invoke("SpinWheel")
         if accepted(ok, res) then
             tickets = nil
-            fSpin.setNote("Spinning...", C.text)
+            fSpin.setNote("")
             return settings.skipAnim and 1.5 or 7
         end
         fSpin.setNote(noTickets and "Not enough tickets" or "Wheel not ready", C.warn)
@@ -3911,7 +3950,7 @@ do
         }, {
             options = CRATE_OPTIONS,
             initial = flags.crateType,
-            placeholder = "Select crate",
+            placeholder = "Select a crate",
             onChange = function(v) setFlag("crateType", v) end,
         })
     end)
@@ -3929,7 +3968,7 @@ do
             return 1
         end
         if EP.animBusy() then
-            fCrate.setNote("Animation playing", C.warn)
+            fCrate.setNote("Wait for animation", C.warn)
             return 1
         end
         local amount, why, blind = stockCheck(id, flags.crateAmount, "crate")
@@ -3940,7 +3979,7 @@ do
         local ok, res = invoke("OpenCrate", id, amount)
         if accepted(ok, res) then
             crateFails = 0
-            fCrate.setNote("Opening crates...", C.text)
+            fCrate.setNote("")
         else
             crateFails = crateFails + 1
             local limit = blind and 3 or 8
@@ -3968,7 +4007,7 @@ do
         }, {
             options = LUCKY_OPTIONS,
             initial = flags.luckyType,
-            placeholder = "Select block",
+            placeholder = "Select a block",
             onChange = function(v) setFlag("luckyType", v) end,
         })
     end)
@@ -3986,7 +4025,7 @@ do
             return 1
         end
         if EP.animBusy() then
-            fLucky.setNote("Animation playing", C.warn)
+            fLucky.setNote("Wait for animation", C.warn)
             return 1
         end
         local amount, why, blind = stockCheck(id, flags.luckyAmount, "block")
@@ -3997,7 +4036,7 @@ do
         local ok, res = invoke("OpenLuckyBlock", id, amount)
         if accepted(ok, res) then
             luckyFails = 0
-            fLucky.setNote("Opening blocks...", C.text)
+            fLucky.setNote("")
         else
             luckyFails = luckyFails + 1
             local limit = blind and 3 or 8
@@ -4019,7 +4058,7 @@ do
         }, {
             options = POTION_OPTIONS,
             initial = flags.potionType,
-            placeholder = "Select potion",
+            placeholder = "Select a potion",
             onChange = function(v) setFlag("potionType", v) end,
         })
     end)
@@ -4120,7 +4159,6 @@ do
                 cache = build(inv.Troops)
             elseif not warned then
                 warned = true
-                print("[Lightn Hub] Units: GetData.Inventory.Troops tidak ditemukan (ok=" .. tostring(ok) .. ")")
             end
             busy = false
         end)
@@ -4139,7 +4177,7 @@ do
         Size = UDim2.new(1, 0, 0, 28),
     }, {
         placeholder = "Select a unit",
-        emptyMsg = "No units found",
+        emptyMsg = "No units yet",
         getOptions = function()
             refresh(false)
             local opts = {}
@@ -4216,7 +4254,7 @@ do
             if cache then
                 card.setNote(#cache.list .. " types · " .. cache.total .. " units", C.muted)
             else
-                card.setNote("Loading...", C.muted)
+                card.setNote("")
             end
         end
         return 3
@@ -4276,6 +4314,7 @@ do
 
     local card = createFeature(page, "Fish", { noToggle = true, bodyHeight = 64 })
     card.card.LayoutOrder = -1   -- di bawah kartu Units
+    ui.fishCard = card.card
     local selected, statusUntil, selling = nil, 0, false
 
     local function say(t, color)
@@ -4327,7 +4366,7 @@ do
         amount = math.min(math.floor(amount), have)
         local fn = fishRemote("FishingFunction")
         if not fn then
-            say("Fishing remote missing", C.warn)
+            say("Fish selling unavailable", C.warn)
             return
         end
         selling = true
@@ -4356,7 +4395,7 @@ do
             if cache then
                 card.setNote(#cache.list .. " types · " .. cache.total .. " fish", C.muted)
             else
-                card.setNote("Loading...", C.muted)
+                card.setNote("")
             end
         end
         return 3
@@ -4427,6 +4466,11 @@ do
             if not v then feat.setNote("", C.muted) end
         end,
     })
+    ui.fishStop = function()
+        fishing = false
+        feat.set(false)
+        feat.setNote("", C.muted)
+    end
 
     local spotLabel = make("TextLabel", {
         Size = UDim2.new(1, 0, 0, 22),
@@ -4452,7 +4496,7 @@ do
         Position = UDim2.new(0, 0, 0, 2),
     }, "Set spot", function()
         picking = true
-        notify("Set spot", "Tap the water where you want to cast", 5)
+        notify("Set Spot", "Tap the water where you want to cast", 5)
     end)
 
     table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
@@ -4479,9 +4523,8 @@ do
             spot = hit.Position
             saveSpot()
             setSpotText()
-            notify("Set spot", "Spot saved", 2)
         else
-            notify("Set spot", "Missed that tap, try again", 3)
+            notify("Set Spot", "Missed that tap, try again", 3)
         end
     end))
 
@@ -4561,7 +4604,7 @@ do
         local started = nil
         for attempt = 1, 4 do
             local pos = spot + Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
-            feat.setNote("Casting", C.text)
+            feat.setNote("")
             ev:FireServer("Cast", { Position = pos })
             started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
             if started or not alive() then break end
@@ -4591,7 +4634,7 @@ do
 
         -- Tarik ikan: tiap Target dibalas satu Hit setelah target itu muncul
         local function isStep(e) return e.name == "Target" or e.name == "Catch" end
-        feat.setNote("Waiting for a bite", C.text)
+        feat.setNote("Waiting for bite", C.text)
         local step = waitEvent(isStep, 45)
         local caught = nil
         while step and alive() do
@@ -4744,7 +4787,7 @@ do
             if crafting then return end
             local fn = fishRemote("FishingFunction")
             if not fn then
-                notify("Craft", "Fishing remote not found.", 3)
+                notify("Craft", "Fishing isn't available right now", 3)
                 return
             end
             local n = math.clamp(math.floor(tonumber(qty.Text) or 1), 1, 99)
@@ -4761,11 +4804,10 @@ do
                     if done < n then task.wait(0.3) end
                 end
                 if done == n then
-                    notify("Crafted", n .. "x " .. r.name, 2)
                 elseif done > 0 then
-                    notify("Craft stopped", done .. "/" .. n .. " " .. r.name .. " (missing materials?)", 3)
+                    notify("Craft stopped", done .. "/" .. n .. " " .. r.name .. ", probably missing materials", 3)
                 else
-                    notify("Craft failed", r.name .. ": missing materials or refused.", 3)
+                    notify("Craft failed", r.name .. ": missing materials or request refused", 3)
                 end
                 crafting = false
             end)
@@ -4858,7 +4900,7 @@ do
 
         local remote = RF("UpgradeTower")
         if not remote then
-            upg.setNote("Match only", C.muted)
+            upg.setNote("")
             return 1
         end
 
@@ -4870,7 +4912,8 @@ do
 
         local target, reason = pickTarget(towers, getStat("Cash"))
         if target then
-            upg.setNote("Upgrading...", C.text)
+            upg.maxed = false
+            upg.setNote("")
             local sig = signature(target)
             local ok, res = pcall(function() return remote:InvokeServer(target) end)
 
@@ -4888,6 +4931,10 @@ do
             end
             return settings.upgradeDelay
         elseif reason == "MAX" then
+            if not upg.maxed then
+                upg.maxed = true
+                notify("Auto Upgrade", "All towers maxed", 3)
+            end
             upg.setNote("All towers maxed", C.muted)
             return 1
         end
@@ -4975,11 +5022,11 @@ do
         local token = os.clock()
         pick = { cb = cb, token = token, lastT = 0, lastPos = nil }
         pcall(function() mouse.TargetFilter = workspace:FindFirstChild("Towers") end)
-        notify("Select location", "Double-tap the ground where you want it (30s).", 6)
+        notify("Select Location", "Double-tap the ground where you want it (30s)", 6)
         task.delay(30, function()
             if pick and pick.token == token then
                 pick = nil
-                notify("Select location", "Selection timed out.", 3)
+                notify("Select Location", "Selection timed out", 3)
             end
         end)
     end
@@ -4998,7 +5045,7 @@ do
                 if hit then
                     cb(hit.Position)
                 else
-                    notify("Select location", "Couldn't read that spot. Try again.", 3)
+                    notify("Select Location", "Couldn't read that spot. Try again.", 3)
                 end
             end)
             return
@@ -5678,7 +5725,6 @@ do
             if #moves == 0 then
                 local msg = (same > 0) and "Already in place" or "No matching units"
                 say(msg, C.muted)
-                notify("Unit Replace", label .. ": " .. msg, 3)
                 return
             end
             say(label .. ": moving " .. #moves, C.muted)
@@ -5697,7 +5743,6 @@ do
             if lost > 0 then msg = msg .. ", " .. lost .. " lost" end
             if missing > 0 then msg = msg .. ", " .. missing .. " missing" end
             say(msg, (moved == #moves) and C.text or C.warn)
-            notify("Unit Replace", msg, 4)
         end
 
         -- ---------- Default (posisi awal) ----------
@@ -6023,7 +6068,7 @@ do
         local shareSel = createSelect(share.body, {
             Size = UDim2.new(1, -96, 1, 0),
         }, {
-            placeholder = "Select replace",
+            placeholder = "Select a replace",
             getOptions = replaceOptions,
             emptyMsg = "No replace layouts yet. Record one first.",
         })
@@ -6033,7 +6078,7 @@ do
         }, "Copy code", function()
             local pick = shareSel.get()
             if not pick or pick == "" then
-                notify("Unit Replace", "Select a replace to share first.", 3)
+                notify("Unit Replace", "Select a replace to share first", 3)
                 return
             end
             local list = {}
@@ -6046,18 +6091,17 @@ do
                 end
             end
             if #list == 0 then
-                notify("Unit Replace", "That replace no longer exists.", 3)
+                notify("Unit Replace", "That replace no longer exists", 3)
                 return
             end
             if not setclipboard then
-                notify("Unit Replace", "Your executor can't copy to the clipboard.", 4)
+                notify("Unit Replace", "This executor can't copy to the clipboard", 4)
                 return
             end
             local ok = pcall(setclipboard, HttpService:JSONEncode({ v = 1, t = "replace", list = list }))
             if ok then
-                notify("Unit Replace", "Code copied (" .. #list .. " layout).", 3)
             else
-                notify("Unit Replace", "Couldn't copy the code.", 3)
+                notify("Unit Replace", "Couldn't copy the code", 3)
             end
         end)
 
@@ -6071,12 +6115,12 @@ do
         }, "Import", function()
             local text = codeBox.Text
             if text == "" then
-                notify("Unit Replace", "Paste the replace code first.", 3)
+                notify("Unit Replace", "Paste the replace code first", 3)
                 return
             end
             local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
             if not ok or type(data) ~= "table" or data.t ~= "replace" or type(data.list) ~= "table" then
-                notify("Unit Replace", "That isn't a valid replace code.", 4)
+                notify("Unit Replace", "That isn't a valid replace code", 4)
                 return
             end
             local added = 0
@@ -6088,7 +6132,7 @@ do
                 end
             end
             if added == 0 then
-                notify("Unit Replace", "The code has no valid units.", 4)
+                notify("Unit Replace", "The code has no valid units", 4)
                 return
             end
             table.sort(spots.mowers, function(a, b) return a.id < b.id end)
@@ -6096,7 +6140,6 @@ do
             rebuildMower()
             refreshMowerFloat()
             codeBox.Text = ""
-            notify("Unit Replace", "Imported " .. added .. " layout.", 3)
         end)
     end
 end
@@ -6450,7 +6493,7 @@ do
 
     local function saveMacro(name, macro)
         if not canFile then
-            notify("Macro", "Your executor can't write files.", 4)
+            notify("Macro", "This executor can't write files", 4)
             return false
         end
         local ok = pcall(function() writefile(macroFile(name), HttpService:JSONEncode(macro)) end)
@@ -6535,7 +6578,7 @@ do
         if not rec then return end
         saveCurrentRec()
         mstate.rec = nil
-        notify("Macro saved", "'" .. rec.name .. "': " .. #rec.actions .. " actions.", 4)
+        notify("Macro saved", "'" .. rec.name .. "': " .. #rec.actions .. " actions", 4)
     end
 
     -- Dipanggil (deferred) saat game memanggil Place/Upgrade/SellTower.
@@ -6657,11 +6700,11 @@ do
     }, "Create", function()
         local name = cleanName(mkInput.Text)
         if badName(name) then
-            notify("Macro", "Enter a valid macro name first.", 3)
+            notify("Macro", "Enter a valid macro name", 3)
             return
         end
         if canFile and isfile(macroFile(name)) then
-            notify("Macro", "A macro with that name already exists.", 3)
+            notify("Macro", "A macro with that name already exists", 3)
             return
         end
         if saveMacro(name, { v = 1, name = name, actions = {} }) then
@@ -6669,7 +6712,6 @@ do
             setFlag("macroSelected", name)
             selFile.set(name)
             refreshSel()
-            notify("Macro", "Created '" .. name .. "'.", 3)
         end
     end)
 
@@ -6679,7 +6721,7 @@ do
         Size = UDim2.new(1, -86, 1, 0),
     }, {
         initial = flags.macroSelected ~= "" and flags.macroSelected or nil,
-        placeholder = "Select macro",
+        placeholder = "Select a macro",
         getOptions = macroOptions,
         emptyMsg = "No macros yet. Create or import one first.",
         onChange = function(v)
@@ -6696,7 +6738,7 @@ do
     }, "Delete", function()
         local name = flags.macroSelected
         if name == "" then
-            notify("Macro", "Select a macro to delete first.", 3)
+            notify("Macro", "Select a macro to delete first", 3)
             return
         end
         if not armed then
@@ -6714,7 +6756,6 @@ do
         setFlag("macroSelected", "")
         selFile.set(nil)
         refreshSel()
-        notify("Macro", "Deleted '" .. name .. "'.", 3)
     end)
 
     -- Record
@@ -6725,12 +6766,12 @@ do
             if v then
                 if flags.macroSelected == "" then
                     fRec.set(false)
-                    notify("Macro", "Select or create a macro first.", 3)
+                    notify("Macro", "Select or create a macro first", 3)
                     return
                 end
                 if not installHook() then
                     fRec.set(false)
-                    notify("Macro", "Your executor can't hook remotes, so recording isn't possible.", 5)
+                    notify("Macro", "Recording isn't supported on this executor", 5)
                     return
                 end
                 setFlag("macroRecord", true)
@@ -6739,7 +6780,6 @@ do
                     fPlay.set(false)
                 end
                 if not inMatch then
-                    notify("Macro", "Recording is armed. It starts when the match begins.", 4)
                 end
             else
                 setFlag("macroRecord", false)
@@ -6765,7 +6805,7 @@ do
             if v then
                 if flags.macroSelected == "" then
                     fPlay.set(false)
-                    notify("Macro", "Select a macro first.", 3)
+                    notify("Macro", "Select a macro first", 3)
                     return
                 end
                 setFlag("macroPlay", true)
@@ -6796,7 +6836,7 @@ do
     local shareSel = createSelect(share.body, {
         Size = UDim2.new(1, -96, 1, 0),
     }, {
-        placeholder = "Select macro",
+        placeholder = "Select a macro",
         getOptions = macroOptions,
         emptyMsg = "No macros yet. Create or import one first.",
     })
@@ -6806,20 +6846,19 @@ do
     }, "Copy JSON", function()
         local name = shareSel.get()
         if not name or name == "" then
-            notify("Macro", "Select a macro to share first.", 3)
+            notify("Macro", "Select a macro to share first", 3)
             return
         end
         local m = loadMacro(name)
         if not m then
-            notify("Macro", "Couldn't read that macro.", 3)
+            notify("Macro", "Couldn't read that macro", 3)
             return
         end
         if not setclipboard then
-            notify("Macro", "Your executor can't copy to the clipboard.", 4)
+            notify("Macro", "This executor can't copy to the clipboard", 4)
             return
         end
         pcall(setclipboard, HttpService:JSONEncode({ v = 1, name = name, actions = m.actions }))
-        notify("Macro", "JSON copied (" .. #m.actions .. " actions).", 3)
     end)
 
     -- Import
@@ -6838,7 +6877,7 @@ do
     }, "Import", function()
         local text = jsonBox.Text
         if text == "" then
-            notify("Macro", "Paste the macro JSON first.", 3)
+            notify("Macro", "Paste the macro JSON first", 3)
             return
         end
         local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
@@ -6847,7 +6886,7 @@ do
         end
         if not ok or not validMacro(data) then
             staged = nil
-            notify("Macro", "That isn't a valid macro JSON.", 4)
+            notify("Macro", "That isn't a valid macro JSON", 4)
             return
         end
         local removed = stripUttm(data)
@@ -6856,7 +6895,6 @@ do
             nameBox.Text = cleanName(data.name)
         end
         local extra = removed > 0 and (" (" .. removed .. " UTTM sell actions skipped)") or ""
-        notify("Macro", "Imported " .. #data.actions .. " actions" .. extra .. ". Enter a name and press Save.", 4)
     end)
 
     createButton(imp.body, {
@@ -6864,16 +6902,15 @@ do
         Position = UDim2.new(1, -80, 0, 78),
     }, "Save", function()
         if not staged then
-            notify("Macro", "Press Import first.", 3)
+            notify("Macro", "Press Import first", 3)
             return
         end
         local name = cleanName(nameBox.Text)
         if badName(name) then
-            notify("Macro", "Enter a valid macro name.", 3)
+            notify("Macro", "Enter a valid macro name", 3)
             return
         end
         if saveMacro(name, { v = 1, name = name, actions = staged.actions }) then
-            notify("Macro", "Saved '" .. name .. "'.", 3)
             staged = nil
             jsonBox.Text = ""
             nameBox.Text = ""
@@ -6896,20 +6933,19 @@ do
             return 1
         end
         if not inMatch then
-            fRec.setNote("Armed: starts in the match", C.muted)
+            fRec.setNote("")
             return 1.5
         end
         local rec = mstate.rec
         if not rec or rec.name ~= sel or rec.job ~= game.JobId then
             if not installHook() then
-                fRec.setNote("Executor can't record", C.warn)
+                fRec.setNote("Recording not supported", C.warn)
                 return 3
             end
             mstate.rec = { name = sel, job = game.JobId, actions = {} }
             mstate.handler = onCall
             saveCurrentRec()
             rec = mstate.rec
-            notify("Recording macro", "Recording into '" .. sel .. "'. Just play normally.", 5)
         end
         fRec.setNote("Recording (" .. #rec.actions .. " actions)", C.text)
         return 0.5
@@ -6925,7 +6961,7 @@ do
             return 0.5
         end
         if not inMatch then
-            fPlay.setNote("Starts when the match begins", C.muted)
+            fPlay.setNote("")
             return 2
         end
         local sel = flags.macroSelected
@@ -6937,10 +6973,12 @@ do
             play.macro = loadMacro(sel)
             play.name = sel
             play.idx = 1
+            play.notified = nil
+            play.skips = 0
             play.stepSince = nil
             if not play.macro then
                 play.name = nil
-                fPlay.setNote("Couldn't load this macro", C.warn)
+                fPlay.setNote("Macro load failed", C.warn)
                 return 2
             end
         end
@@ -6949,6 +6987,10 @@ do
         local a = acts[play.idx]
         if not a then
             fPlay.setNote("Macro finished", C.text)
+            if not play.notified then
+                play.notified = true
+                notify("Macro", "Playback finished", 3)
+            end
             return 1.5
         end
 
@@ -7013,11 +7055,16 @@ do
         if done then
             play.idx = play.idx + 1
             play.stepSince = nil
+            play.skips = 0
             fPlay.setNote("Playing " .. math.min(play.idx, #acts) .. "/" .. #acts, C.text)
             return 0.3
         end
         if os.clock() - play.stepSince > 90 + (a.d or 0) then
-            notify("Macro", "Skipped step " .. play.idx .. ": it couldn't be completed in 90s.", 4)
+            notify("Macro", "Skipped step " .. play.idx .. ": it couldn't be completed in 90s", 4)
+            play.skips = (play.skips or 0) + 1
+            if play.skips == 3 then
+                notify("Macro", "Several steps failed in a row. Check your cash and unit slots.", 6)
+            end
             play.idx = play.idx + 1
             play.stepSince = nil
         end
@@ -7305,7 +7352,6 @@ do
             if ok and res == true then
                 claimedCount = giftIndex
                 claimedAny = true
-                notify("Reward Claimed", "Claimed Gift #" .. giftIndex .. " for ID " .. tostring(day), 2)
             end
             if giftIndex < lastIdx then task.wait(0.5) end
         end
@@ -7404,14 +7450,14 @@ do
         end
         local sp = seasonData()
         if not sp then
-            feat.setNote("No season data", C.muted)
+            feat.setNote("Unavailable", C.muted)
             return 6
         end
         local sig = tostring(sp.XP) .. "|" .. tostring(sp.Premium) .. "|" .. claimedCount(sp)
         if sig == lastSig and os.clock() - lastRun < 120 then return 8 end
         lastRun = os.clock()
         local before = claimedCount(sp)
-        feat.setNote("Scanning", C.text)
+        feat.setNote("")
         sweep(sp)
         local after = seasonData()
         after = after or sp
@@ -7419,7 +7465,6 @@ do
         lastSig = tostring(after.XP) .. "|" .. tostring(after.Premium) .. "|" .. claimedCount(after)
         if got > 0 then
             total = total + got
-            notify("Season Pass", "Claimed " .. got .. (got > 1 and " rewards" or " reward"), 3)
         end
         feat.setNote(total > 0 and ("Claimed " .. total) or "Nothing to claim", total > 0 and C.text or C.muted)
         return 8
@@ -7489,7 +7534,8 @@ do
 
     local themeCard = createFeature(page, "Theme", { noToggle = true, bodyHeight = 28 })
     themeCard.card.LayoutOrder = -3
-    createSegmented(themeCard.body, {
+    ui.themeCard = themeCard.card
+    ui.themeSeg = createSegmented(themeCard.body, {
         Size = UDim2.new(1, 0, 1, 0),
     }, {
         { label = "Default", value = "Default" },
@@ -7498,7 +7544,7 @@ do
         ui.applyTheme(v)
     end)
 
-    createFeature(page, "Show timer", {
+    createFeature(page, "Show Timer", {
         initial = settings.showTimer,
         onToggle = function(v)
             settings.showTimer = v
@@ -7510,7 +7556,7 @@ do
 
     -- Satu tombol untuk semua animasi: crate, lucky block, summon, spin
     local fSkipAnim
-    fSkipAnim = createFeature(page, "Skip Animation (Gacha)", {
+    fSkipAnim = createFeature(page, "Skip Gacha Animation", {
         initial = settings.skipAnim,
         onToggle = function(v)
             settings.skipAnim = v
@@ -7519,11 +7565,10 @@ do
                 applySkip("crate", v)
                 applySkip("summon", v)
             elseif v then
-                notify("Skip Animation", "Animations can't be hidden here. Only the spin gets faster.", 5)
+                notify("Skip Gacha Animation", "Animations can't be hidden here. Only the spin gets faster.", 5)
             end
         end,
     })
-    if not getconnections then fSkipAnim.setNote("Spin only", C.muted) end
 
     -- =================================================================
     -- Settings: Anti Lag
@@ -7776,7 +7821,7 @@ do
             for h in pairs(npcs) do
                 if h.Parent then n = n + 1 else npcs[h] = nil end
             end
-            if feat then feat.setNote(touched .. " optimized  |  " .. n .. " enemies") end
+            if feat then feat.setNote("Active", C.muted) end
             return 2
         end)
 
@@ -7786,7 +7831,7 @@ do
     end
 
     -- Perkecil otomatis kalau tidak ada sentuhan ke GUI selama 7 detik
-    local fAutoMin = createFeature(page, "Auto minimize", {
+    local fAutoMin = createFeature(page, "Auto Minimize", {
         initial = settings.autoMinimize,
         onToggle = function(v)
             settings.autoMinimize = v
@@ -8288,7 +8333,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     if not closeArmed then
         closeArmed = true
         for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.warn end
-        notify("Close", "Press X again within 3 seconds to close the script.", 3)
+        notify("Close", "Press X again within 3 seconds to close the script", 3)
         task.delay(3, function()
             closeArmed = false
             for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.text end
@@ -8384,7 +8429,36 @@ do
 
 end
 
-if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
+-- Sinkron dengan jadwal update: sebelum waktunya tampilan tetap seperti biasa
+function ui.syncEvent()
+    if not EVENT.live and EVENT.now() >= EVENT.start then EVENT.live = true end
+    if EVENT.live == EVENT.applied then return end
+    EVENT.applied = EVENT.live
+    local live = EVENT.live
+    if ui.themeCard then ui.themeCard.Visible = live end
+    if ui.fishCard then ui.fishCard.Visible = not live end
+    nav.groups[3].hidden = live -- Fishing
+    if live and ui.fishStop then ui.fishStop() end
+    nav.relayout()
+    if live then
+        if not settings.eventTheme then
+            settings.eventTheme = true
+            ui.applyTheme("Halloween")
+            if ui.themeSeg then ui.themeSeg.set("Halloween") end
+            saveSettings()
+        elseif settings.theme == "Halloween" then
+            ui.applyTheme("Halloween")
+        end
+    else
+        settings.theme = "Default"
+        if ui.themeSeg then ui.themeSeg.set("Default") end
+    end
+end
+ui.syncEvent()
+runLoop(function()
+    if EVENT.live then return 600 end
+    ui.syncEvent()
+    return 20
+end)
 
 selectTab("Main")
-notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)

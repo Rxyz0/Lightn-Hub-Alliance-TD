@@ -368,109 +368,56 @@ do
         return box
     end
 
-    -- Pohon tua setinggi sidebar: batang berkelok, akar, cabang bercabang, wajah menyala.
-    -- Bagian atas dibuat lebih transparan supaya terasa seperti latar jauh.
+    -- Labu kecil statis
+    function decor.mini(par, x, y)
+        oval(par, x, y + 3, 18, 14, Color3.fromRGB(232, 104, 18))
+        make("Frame", {
+            Position = UDim2.new(0, x + 8, 0, y), Size = UDim2.new(0, 2, 0, 4),
+            BackgroundColor3 = Color3.fromRGB(78, 98, 34), BorderSizePixel = 0,
+        }, par)
+        for _, ex in ipairs({ 4, 11 }) do
+            make("Frame", {
+                Position = UDim2.new(0, x + ex, 0, y + 8), Size = UDim2.new(0, 3, 0, 3),
+                BackgroundColor3 = Color3.fromRGB(255, 214, 70), BorderSizePixel = 0,
+            }, par)
+        end
+    end
+
+    -- Pohon seram bermata dan bermulut menyala, dengan lantai lava dan labu kecil
     function decor.tree(par, pos)
-        local H = 286
-        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 106, 0, H), BackgroundTransparency = 1 }, par)
-        local bark, bark2 = Color3.fromRGB(70, 28, 14), Color3.fromRGB(120, 48, 20)
-        local fire, ember = Color3.fromRGB(255, 208, 44), Color3.fromRGB(255, 124, 14)
-        oval(box, 8, 120, 92, 150, ember, 0.9)
-        oval(box, 0, H - 14, 106, 14, ember, 0.3)
-        local function cx(i) return 53 + math.sin(i * 1.7) * 3 end
-        -- cabang: { x1, y1, x2, y2, tebal }
+        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 100, 0, 84), BackgroundTransparency = 1 }, par)
+        local bark, bark2 = Color3.fromRGB(86, 30, 18), Color3.fromRGB(128, 46, 20)
+        local fire = Color3.fromRGB(255, 208, 44)
+        oval(box, 0, 74, 100, 12, Color3.fromRGB(255, 112, 16), 0.3)
         for _, b in ipairs({
-            { 46, 96, 24, 74, 5 }, { 24, 74, 6, 60, 3 }, { 24, 74, 14, 46, 2 }, { 14, 46, 8, 30, 1 }, { 6, 60, 0, 52, 1 },
-            { 46, 70, 34, 40, 4 }, { 34, 40, 26, 14, 2 }, { 34, 40, 44, 22, 2 }, { 26, 14, 20, 2, 1 },
-            { 62, 90, 84, 66, 5 }, { 84, 66, 102, 56, 3 }, { 84, 66, 92, 38, 2 }, { 92, 38, 100, 24, 1 }, { 102, 56, 106, 46, 1 },
-            { 60, 64, 72, 34, 4 }, { 72, 34, 80, 12, 2 }, { 72, 34, 62, 20, 2 }, { 80, 12, 86, 0, 1 },
-            { 54, 50, 54, 22, 3 }, { 54, 22, 48, 6, 1 },
+            { 38, 42, 14, 22, 4 }, { 14, 22, 4, 8, 3 }, { 14, 22, 18, 6, 2 },
+            { 40, 36, 26, 14, 3 }, { 26, 14, 30, 2, 2 },
+            { 50, 34, 50, 10, 4 }, { 50, 20, 42, 6, 2 }, { 50, 18, 58, 4, 2 },
+            { 62, 42, 86, 22, 4 }, { 86, 22, 96, 8, 3 }, { 86, 22, 80, 6, 2 },
+            { 60, 36, 74, 14, 3 }, { 74, 14, 70, 2, 2 },
         }) do
-            local al = (b[4] < 50) and 0.5 or ((b[4] < 90) and 0.3 or 0.12)
-            drawLine(box, b[1], b[2], b[3], b[4], bark, al, b[5])
+            drawLine(box, b[1], b[2], b[3], b[4], bark, 0, b[5])
         end
-        -- akar
-        for _, r in ipairs({
-            { 40, 264, 10, 282, 6 }, { 44, 270, 24, 270, 4 }, { 24, 270, 6, 262, 2 },
-            { 68, 264, 98, 282, 6 }, { 64, 270, 86, 268, 4 }, { 86, 268, 102, 258, 2 },
-        }) do
-            drawLine(box, r[1], r[2], r[3], r[4], bark, 0, r[5])
-        end
-        -- batang: segmen oval menyempit ke atas, makin transparan
-        for i = 0, 12 do
-            local w = 72 - 38 * (i / 12)
-            local y = H - 40 - i * 16
-            oval(box, cx(i) - w / 2, y, w, 28, bark, math.max(0, (i - 7) * 0.08))
-        end
-        -- tekstur kulit kayu
-        for i = 0, 9 do
-            local x = cx(i) + ((i % 3) - 1) * 9
-            local y = H - 44 - i * 16
-            drawLine(box, x, y, x + ((i % 2 == 0) and 3 or -3), y - 22, bark2, 0.35 + i * 0.03, 1)
-        end
-        oval(box, 38, H - 150, 12, 90, bark2, 0.55)
-        -- wajah
+        oval(box, 22, 62, 56, 20, bark)
+        oval(box, 27, 28, 46, 54, bark)
+        oval(box, 34, 34, 12, 34, bark2, 0.4)
         local glow = {}
-        local eyeY = H - 112
-        for _, e in ipairs({ { 36, 24 }, { 59, -24 } }) do
-            oval(box, e[1] - 3, eyeY - 3, 19, 14, ember, 0.55)
-            local f = oval(box, e[1], eyeY, 13, 8, fire)
-            f.Rotation = e[2]
+        for _, e in ipairs({ { 35, 44, 22 }, { 54, 44, -22 } }) do
+            local f = oval(box, e[1], e[2], 11, 6, fire)
+            f.Rotation = e[3]
             glow[#glow + 1] = f
         end
-        local my = H - 86
-        oval(box, 34, my - 3, 38, 24, ember, 0.5)
-        glow[#glow + 1] = oval(box, 37, my, 32, 18, fire)
-        for _, x in ipairs({ 40, 48, 56, 63 }) do
+        glow[#glow + 1] = oval(box, 35, 56, 30, 10, fire)
+        for _, x in ipairs({ 40, 48, 56 }) do
             make("Frame", {
-                Position = UDim2.new(0, x, 0, my - 3), Size = UDim2.new(0, 5, 0, 5), Rotation = 45,
-                BackgroundColor3 = bark, BorderSizePixel = 0,
-            }, box)
-        end
-        for _, x in ipairs({ 43, 52, 60 }) do
-            make("Frame", {
-                Position = UDim2.new(0, x, 0, my + 14), Size = UDim2.new(0, 5, 0, 5), Rotation = 45,
+                Position = UDim2.new(0, x, 0, 54), Size = UDim2.new(0, 4, 0, 4), Rotation = 45,
                 BackgroundColor3 = bark, BorderSizePixel = 0,
             }, box)
         end
         pulse(glow, 0, 0.4, 1.9)
+        decor.mini(box, 2, 62)
+        decor.mini(box, 80, 64)
         return box
-    end
-
-    -- Kelelawar besar yang bertengger di tombol gear. Titik pegangan kaki ada di (42, 36).
-    -- Induknya ScreenGui supaya sayap dan kepalanya boleh keluar dari papan.
-    function decor.bigBat(par)
-        local root = decor.root(par, { Size = UDim2.new(0, 84, 0, 38), ZIndex = 5 })
-        root.ClipsDescendants = false
-        decor.hideMini[root] = true
-        local c, wing = Color3.fromRGB(24, 12, 7), Color3.fromRGB(40, 20, 10)
-        for _, w in ipairs({
-            { 2, 8, 34, 9, -18 }, { 6, 17, 30, 9, 12 }, { 14, 24, 24, 8, 28 },
-            { 48, 8, 34, 9, 18 }, { 48, 17, 30, 9, -12 }, { 46, 24, 24, 8, -28 },
-        }) do
-            local f = oval(root, w[1], w[2], w[3], w[4], wing)
-            f.Rotation = w[5]
-        end
-        oval(root, 35, 14, 14, 22, c)
-        oval(root, 35, 5, 14, 12, c)
-        for _, e in ipairs({ { 36, -10 }, { 45, 10 } }) do
-            make("Frame", {
-                Position = UDim2.new(0, e[1], 0, 0), Size = UDim2.new(0, 3, 0, 7),
-                Rotation = e[2], BackgroundColor3 = c, BorderSizePixel = 0,
-            }, root)
-        end
-        oval(root, 36, 33, 5, 4, c)
-        oval(root, 43, 33, 5, 4, c)
-        local eyes = {}
-        for _, x in ipairs({ 38, 43 }) do
-            eyes[#eyes + 1] = make("Frame", {
-                Position = UDim2.new(0, x, 0, 10), Size = UDim2.new(0, 3, 0, 2),
-                BackgroundColor3 = Color3.fromRGB(255, 150, 20), BorderSizePixel = 0,
-            }, root)
-        end
-        pulse(eyes, 0, 0.6, 1.4)
-        decor.bigBatBox = root
-        return root
     end
 
     function decor.bat(par, pos)
@@ -485,35 +432,32 @@ do
         make("Frame", { Position = UDim2.new(0, 12, 0, 1), Size = UDim2.new(0, 2, 0, 3), BackgroundColor3 = c, BorderSizePixel = 0 }, box)
     end
 
-    -- Laba-laba menggantung: pusat kotak = titik gantung, jadi berayun seperti bandul.
-    -- Gerakannya diatur dari Heartbeat (decor.sway) supaya benangnya terus lurus dan mulus.
     function decor.spider(par, x)
-        local L = 44
         local box = decor.root(par, {
-            AnchorPoint = Vector2.new(0.5, 0.5),
+            AnchorPoint = Vector2.new(0.5, 0),
             Position = UDim2.new(0, x, 0, 0),
-            Size = UDim2.new(0, 24, 0, L * 2),
+            Size = UDim2.new(0, 20, 0, 31),
         })
         box.ClipsDescendants = false
-        local m = 12
-        drawLine(box, m, L, m, L + 26, WEB_COLOR, 0.2, 1)
+        drawLine(box, 10, 0, 10, 17, WEB_COLOR, 0.35)
         local dark = Color3.fromRGB(56, 34, 18)
         for _, l in ipairs({
-            { m - 4, L + 30, m - 11, L + 24 }, { m - 4, L + 32, m - 12, L + 32 }, { m - 4, L + 34, m - 11, L + 41 },
-            { m + 4, L + 30, m + 11, L + 24 }, { m + 4, L + 32, m + 12, L + 32 }, { m + 4, L + 34, m + 11, L + 41 },
+            { 6, 21, 0, 15 }, { 6, 22, 0, 22 }, { 6, 23, 1, 28 },
+            { 14, 21, 20, 15 }, { 14, 22, 20, 22 }, { 14, 23, 19, 28 },
         }) do
-            drawLine(box, l[1], l[2], l[3], l[4], dark, 0.05)
+            drawLine(box, l[1], l[2], l[3], l[4], dark, 0.1)
         end
-        oval(box, m - 5, L + 25, 10, 8, Color3.fromRGB(44, 26, 14))
-        oval(box, m - 6, L + 30, 12, 11, Color3.fromRGB(44, 26, 14))
-        for _, ex in ipairs({ m - 3, m + 1 }) do
+        oval(box, 5, 17, 10, 10, Color3.fromRGB(44, 26, 14))
+        for _, ex in ipairs({ 7, 11 }) do
             make("Frame", {
-                Position = UDim2.new(0, ex, 0, L + 27), Size = UDim2.new(0, 2, 0, 2),
+                Position = UDim2.new(0, ex, 0, 20), Size = UDim2.new(0, 2, 0, 2),
                 BackgroundColor3 = Color3.fromRGB(255, 70, 40), BorderSizePixel = 0,
             }, box)
         end
+        box.Rotation = -8
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(box,
+            TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = 8 })
         decor.hideMini[box] = true
-        decor.spiderBox = box
         return box
     end
 end
@@ -1049,10 +993,9 @@ do
     end
     for _, rot in ipairs({ 0, 45, 90, 135 }) do part(15, 3, rot, C.white) end -- 8 gigi
     part(9, 9, 0, C.white, true)                                           -- badan
-    part(4, 4, 0, Color3.fromRGB(14, 14, 16), true):SetAttribute("hole", true)  -- lubang tengah
+    part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)                           -- lubang tengah
     ui.gearBtn, ui.gear = btn, icon
 end
-decor.bigBat(ScreenGui)
 
 local function applyTimerVisibility()
     TimerLabel.Visible = settings.showTimer
@@ -1276,7 +1219,7 @@ make("Frame", {
 do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
-    decor.treeBox = decor.tree(root, UDim2.new(0, 1, 1, -286))
+    decor.treeBox = decor.tree(root, UDim2.new(0, 3, 1, -88))
     decor.pumpkinBox = decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
     decor.bat(root, UDim2.new(0, 72, 1, -64))
     decor.bat(root, UDim2.new(0, 86, 1, -38))
@@ -7807,39 +7750,6 @@ function ui.decorRefresh()
     for _, tw in ipairs(decor.tweens) do
         if on then tw:Play() else tw:Pause() end
     end
-    if ui.gear then
-        for _, d in ipairs(ui.gear:GetChildren()) do
-            if d:IsA("Frame") then
-                if d:GetAttribute("hole") then
-                    d.BackgroundColor3 = on and Color3.fromRGB(34, 14, 4) or Color3.fromRGB(14, 14, 16)
-                else
-                    d.BackgroundColor3 = on and Color3.fromRGB(255, 150, 28) or Color3.fromRGB(255, 255, 255)
-                end
-            end
-        end
-    end
-end
-
--- Kelelawar mengikuti papan (termasuk saat digeser) dan sedikit naik-turun; laba-laba berayun
-do
-    local t0, acc = 0, 0
-    table.insert(conns, RunService.Heartbeat:Connect(function(dt)
-        if theme.name ~= "Halloween" then return end
-        t0 = t0 + dt
-        local bat = decor.bigBatBox
-        if bat and bat.Visible then
-            local p = MainFrame.Position
-            local bob = math.sin(t0 * 2.2) * 1.2
-            bat.Position = UDim2.new(p.X.Scale, p.X.Offset + 19 - 42, p.Y.Scale, p.Y.Offset + 19 - 36 + bob)
-        end
-        acc = acc + dt
-        if acc < 0.033 then return end
-        acc = 0
-        local sp = decor.spiderBox
-        if sp and sp.Visible then
-            sp.Rotation = math.sin(t0 * 1.15) * 11 + math.sin(t0 * 2.9 + 1) * 2.5
-        end
-    end))
 end
 
 do

@@ -505,12 +505,14 @@ do
         piece(fl, { { 30, 43 }, { 58, 43 }, { 58, 53 }, { 54, 57 }, { 50, 53 }, { 46, 58 }, { 42, 53 }, { 38, 57 },
             { 34, 53 }, { 30, 56 } }, Color3.fromRGB(150, 236, 160), GR)
         limb(fl, { { 44, 33 }, { 44, 51 } }, 1, 1, Color3.fromRGB(216, 250, 216))
-        piece(fl, { { 14, 25 }, { 30, 25 }, { 30, 43 }, { 14, 43 } }, Color3.fromRGB(202, 246, 202), GR)
-        piece(fl, { { 14, 43 }, { 30, 43 }, { 30, 55 }, { 26, 57 }, { 22, 54 }, { 18, 57 }, { 14, 54 } },
-            Color3.fromRGB(128, 232, 142), GR)
-        piece(fl, { { 58, 25 }, { 74, 25 }, { 74, 41 }, { 58, 41 } }, Color3.fromRGB(202, 246, 202), GR)
-        piece(fl, { { 58, 41 }, { 74, 41 }, { 74, 52 }, { 70, 54 }, { 66, 51 }, { 62, 54 }, { 58, 51 } },
-            Color3.fromRGB(128, 232, 142), GR)
+        -- lengan kiri (sisi penonton): blok lebar; bawah hijau rata, atas pucat bergerigi di tengah lengan
+        piece(fl, { { 14, 40 }, { 30, 40 }, { 30, 56 }, { 14, 56 } }, Color3.fromRGB(128, 232, 142), GR)
+        piece(fl, { { 14, 26 }, { 30, 26 }, { 30, 43 }, { 27, 47 }, { 24, 43 }, { 21, 48 }, { 18, 43 }, { 15, 46 }, { 14, 44 } },
+            Color3.fromRGB(202, 246, 202), GR)
+        -- lengan kanan (sisi penonton): lebih sempit, sedikit lebih tinggi, menempel di sisi badan
+        piece(fl, { { 58, 36 }, { 69, 36 }, { 69, 51 }, { 58, 51 } }, Color3.fromRGB(128, 232, 142), GR)
+        piece(fl, { { 58, 22 }, { 69, 22 }, { 69, 39 }, { 66, 43 }, { 63, 39 }, { 60, 44 }, { 58, 40 } },
+            Color3.fromRGB(202, 246, 202), GR)
         piece(fl, { { 40, 23 }, { 48, 23 }, { 44, 30 } }, Color3.fromRGB(214, 250, 214), GR)
         piece(fl, { { 46, 23 }, { 54, 23 }, { 50, 30 } }, Color3.fromRGB(214, 250, 214), GR)
         piece(fl, { { 28, 1 }, { 58, 1 }, { 60, 3 }, { 60, 21 }, { 58, 23 }, { 28, 23 }, { 26, 21 }, { 26, 3 } },
@@ -576,12 +578,13 @@ do
         ln({ { 81, 64 }, { 85, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
         ln({ { 99, 64 }, { 95, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
         flat({ { 88, 68 }, { 92, 68 }, { 92, 71 }, { 88, 71 } }, Color3.fromRGB(206, 206, 216))
-        piece({ { 72, 48 }, { 80, 48 }, { 80, 60 }, { 72, 60 } }, Color3.fromRGB(246, 142, 40), PR)
-        piece({ { 72, 60 }, { 80, 60 }, { 80, 68 }, { 78, 66 }, { 76, 69 }, { 74, 66 }, { 72, 68 } }, Color3.fromRGB(232, 70, 28), PR)
-        piece({ { 100, 48 }, { 108, 48 }, { 108, 60 }, { 100, 60 } }, Color3.fromRGB(246, 142, 40), PR)
-        piece({ { 100, 60 }, { 108, 60 }, { 108, 68 }, { 106, 66 }, { 104, 69 }, { 102, 66 }, { 100, 68 } }, Color3.fromRGB(232, 70, 28), PR)
+        -- lengan: bagian bawah merah (ujung rata), bagian atas oranye "meleleh" bergerigi di tengah lengan
+        piece({ { 72, 56 }, { 80, 56 }, { 80, 69 }, { 72, 69 } }, Color3.fromRGB(232, 70, 28), PR)
+        piece({ { 72, 48 }, { 80, 48 }, { 80, 61 }, { 78, 64 }, { 76, 60 }, { 74, 65 }, { 72, 62 } }, Color3.fromRGB(246, 142, 40), PR)
+        piece({ { 100, 56 }, { 108, 56 }, { 108, 69 }, { 100, 69 } }, Color3.fromRGB(232, 70, 28), PR)
+        piece({ { 100, 48 }, { 108, 48 }, { 108, 62 }, { 106, 65 }, { 104, 60 }, { 102, 64 }, { 100, 61 } }, Color3.fromRGB(246, 142, 40), PR)
 
-        local hx, hy, hrx, hry = 54, 85 + (36 - 85) * S, 11 * S, 10 * S
+        local hx, hy, hrx, hry = 54, 25.5, 10, 9.5
         drawPumpkinBody(box, hx, hy, hrx, hry)
         local gg = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,

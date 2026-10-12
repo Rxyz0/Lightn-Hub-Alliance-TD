@@ -1,7 +1,5 @@
 -- =================================================================
 -- LIGHTN HUB v4.3
--- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | Rewards
--- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
 
 local Players = game:GetService("Players")
@@ -23,12 +21,12 @@ local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json
 local WIN_W, WIN_H = 480, 320
 local HEADER_H, SIDEBAR_W = 34, 108
 
--- Place ID dari log SPY: lobby dan match
+-- Place
 local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
 -- Auto Skip mengirim SkipWaveVote(wave + offset) dan (wave + offset + 1)
 local SKIP_WAVE_OFFSET = 0
 
--- Warna: abu-abu dan hitam saja
+-- Color
 local C = {
     white = Color3.fromRGB(255, 255, 255),
     text = Color3.fromRGB(232, 232, 234),
@@ -42,9 +40,7 @@ local C = {
     warn = Color3.fromRGB(255, 184, 64),
 }
 
--- Tema: Default (abu-abu) atau Halloween (hitam keunguan + oranye labu).
--- Warna abu-abu dipetakan ke palet tema; warna berwarna (streak, UTTM, peringatan) tidak diubah.
--- C.hi = teks terang, C.accent = isian aktif (toggle, penanda, tombol nyala).
+-- Color Default and Helloween 
 local DEF = {}
 for k, v in pairs(C) do DEF[k] = v end
 C.hi = C.white
@@ -8052,3 +8048,24 @@ if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
 
 selectTab("Main")
 notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)
+  end
+
+end
+
+if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
+
+selectTab("Main")
+notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)
+end
+
+selectTab("Main")
+notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)
+  end
+
+end
+
+if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
+
+selectTab("Main")
+notify("Loaded", "Welcome, " .. LocalPlayer.DisplayName, 3)
+" .. LocalPlayer.DisplayName, 3)

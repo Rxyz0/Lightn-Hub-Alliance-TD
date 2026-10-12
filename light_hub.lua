@@ -467,89 +467,126 @@ do
         for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
     end
 
-    -- Adegan unit: Ghost Speaker Man (kepala speaker, tubuh hantu hijau) berdiri di depan
-    -- nisan abu-abu, dan Pumpkin Man (kepala labu, jas oranye) di sebelahnya.
-    function decor.pumpkin(par)
+    -- Ghost Speaker Man: melayang naik-turun super pelan di depan nisan abu-abu.
+    -- Seluruh adegan digeser ke tengah sidebar; hanya hantunya yang bergerak.
+    function decor.ghost(par)
         local box = make("Frame", {
             AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
             Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
         }, par)
-        local function piece(pts, fill, rim)
-            poly(box, pts, rim, 1, 1)
-            poly(box, pts, fill, 0, 1)
-        end
         oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
+        local scene = make("Frame", {
+            Position = UDim2.new(0, 17, 0, 0), Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
+        }, box)
+        local function piece(parent, pts, fill, rim)
+            poly(parent, pts, rim, 1, 1)
+            poly(parent, pts, fill, 0, 1)
+        end
 
         -- tanah cokelat dan nisan
-        oval(box, 0, 73, 80, 16, Color3.fromRGB(58, 30, 16))
-        oval(box, 2, 74, 76, 13, Color3.fromRGB(100, 56, 30))
+        oval(scene, 0, 73, 80, 16, Color3.fromRGB(58, 30, 16))
+        oval(scene, 2, 74, 76, 13, Color3.fromRGB(100, 56, 30))
         local stone = { { 6, 76 }, { 6, 46 }, { 12, 33 }, { 27, 31 }, { 34, 42 }, { 34, 76 } }
-        piece(stone, Color3.fromRGB(70, 68, 76), Color3.fromRGB(26, 26, 30))
-        poly(box, { { 6, 46 }, { 12, 33 }, { 18, 34 }, { 14, 48 }, { 14, 76 }, { 6, 76 } }, Color3.fromRGB(94, 92, 102), 0, 1)
-        poly(box, { { 27, 31 }, { 34, 42 }, { 34, 76 }, { 27, 76 } }, Color3.fromRGB(46, 44, 52), 0, 1)
-        piece({ { 3, 73 }, { 38, 73 }, { 38, 79 }, { 3, 79 } }, Color3.fromRGB(62, 60, 68), Color3.fromRGB(26, 26, 30))
-        piece({ { 0, 78 }, { 42, 78 }, { 42, 84 }, { 0, 84 } }, Color3.fromRGB(46, 44, 52), Color3.fromRGB(26, 26, 30))
+        piece(scene, stone, Color3.fromRGB(70, 68, 76), Color3.fromRGB(26, 26, 30))
+        poly(scene, { { 6, 46 }, { 12, 33 }, { 18, 34 }, { 14, 48 }, { 14, 76 }, { 6, 76 } }, Color3.fromRGB(94, 92, 102), 0, 1)
+        poly(scene, { { 27, 31 }, { 34, 42 }, { 34, 76 }, { 27, 76 } }, Color3.fromRGB(46, 44, 52), 0, 1)
+        piece(scene, { { 3, 73 }, { 38, 73 }, { 38, 79 }, { 3, 79 } }, Color3.fromRGB(62, 60, 68), Color3.fromRGB(26, 26, 30))
+        piece(scene, { { 0, 78 }, { 42, 78 }, { 42, 84 }, { 0, 84 } }, Color3.fromRGB(46, 44, 52), Color3.fromRGB(26, 26, 30))
+        oval(scene, 28, 80, 38, 5, Color3.fromRGB(34, 16, 8), 0.35) -- bayangan hantu
 
-        -- Ghost Speaker Man: melayang, tanpa kaki; bayangan di tanah di bawahnya
-        oval(box, 28, 80, 38, 5, Color3.fromRGB(34, 16, 8), 0.35)
+        -- hantu (satu Frame yang naik-turun)
+        local fl = make("Frame", {
+            Position = UDim2.new(0, 0, 0, 4), Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+        }, scene)
         local GR = Color3.fromRGB(96, 170, 108)
-        -- ekor hantu menyatu dengan badan, ujungnya melengkung ke kanan
-        piece({ { 33, 52 }, { 58, 52 }, { 61, 60 }, { 60, 68 }, { 56, 74 }, { 49, 78 }, { 43, 78 }, { 46, 73 },
+        piece(fl, { { 33, 52 }, { 58, 52 }, { 61, 60 }, { 60, 68 }, { 56, 74 }, { 49, 78 }, { 43, 78 }, { 46, 73 },
             { 41, 68 }, { 36, 62 } }, Color3.fromRGB(176, 238, 182), GR)
-        -- kemeja (badan atas) dengan ujung bawah sobek
-        piece({ { 30, 23 }, { 58, 23 }, { 58, 43 }, { 30, 43 } }, Color3.fromRGB(190, 242, 190), GR)
-        piece({ { 30, 43 }, { 58, 43 }, { 58, 53 }, { 54, 57 }, { 50, 53 }, { 46, 58 }, { 42, 53 }, { 38, 57 },
+        piece(fl, { { 30, 23 }, { 58, 23 }, { 58, 43 }, { 30, 43 } }, Color3.fromRGB(190, 242, 190), GR)
+        piece(fl, { { 30, 43 }, { 58, 43 }, { 58, 53 }, { 54, 57 }, { 50, 53 }, { 46, 58 }, { 42, 53 }, { 38, 57 },
             { 34, 53 }, { 30, 56 } }, Color3.fromRGB(150, 236, 160), GR)
-        limb(box, { { 44, 33 }, { 44, 51 } }, 1, 1, Color3.fromRGB(216, 250, 216))
-        -- lengan blok besar dengan manset hijau bergerigi
-        piece({ { 14, 25 }, { 30, 25 }, { 30, 43 }, { 14, 43 } }, Color3.fromRGB(202, 246, 202), GR)
-        piece({ { 14, 43 }, { 30, 43 }, { 30, 55 }, { 26, 57 }, { 22, 54 }, { 18, 57 }, { 14, 54 } },
+        limb(fl, { { 44, 33 }, { 44, 51 } }, 1, 1, Color3.fromRGB(216, 250, 216))
+        piece(fl, { { 14, 25 }, { 30, 25 }, { 30, 43 }, { 14, 43 } }, Color3.fromRGB(202, 246, 202), GR)
+        piece(fl, { { 14, 43 }, { 30, 43 }, { 30, 55 }, { 26, 57 }, { 22, 54 }, { 18, 57 }, { 14, 54 } },
             Color3.fromRGB(128, 232, 142), GR)
-        piece({ { 58, 25 }, { 74, 25 }, { 74, 41 }, { 58, 41 } }, Color3.fromRGB(202, 246, 202), GR)
-        piece({ { 58, 41 }, { 74, 41 }, { 74, 52 }, { 70, 54 }, { 66, 51 }, { 62, 54 }, { 58, 51 } },
+        piece(fl, { { 58, 25 }, { 74, 25 }, { 74, 41 }, { 58, 41 } }, Color3.fromRGB(202, 246, 202), GR)
+        piece(fl, { { 58, 41 }, { 74, 41 }, { 74, 52 }, { 70, 54 }, { 66, 51 }, { 62, 54 }, { 58, 51 } },
             Color3.fromRGB(128, 232, 142), GR)
-        piece({ { 40, 23 }, { 48, 23 }, { 44, 30 } }, Color3.fromRGB(214, 250, 214), GR)
-        piece({ { 46, 23 }, { 54, 23 }, { 50, 30 } }, Color3.fromRGB(214, 250, 214), GR)
-        -- kepala speaker
-        piece({ { 28, 1 }, { 58, 1 }, { 60, 3 }, { 60, 21 }, { 58, 23 }, { 28, 23 }, { 26, 21 }, { 26, 3 } },
+        piece(fl, { { 40, 23 }, { 48, 23 }, { 44, 30 } }, Color3.fromRGB(214, 250, 214), GR)
+        piece(fl, { { 46, 23 }, { 54, 23 }, { 50, 30 } }, Color3.fromRGB(214, 250, 214), GR)
+        piece(fl, { { 28, 1 }, { 58, 1 }, { 60, 3 }, { 60, 21 }, { 58, 23 }, { 28, 23 }, { 26, 21 }, { 26, 3 } },
             Color3.fromRGB(184, 240, 186), GR)
-        poly(box, { { 28, 2 }, { 58, 2 }, { 59, 6 }, { 27, 6 } }, Color3.fromRGB(214, 252, 214), 0, 1)
-        oval(box, 37, 3, 18, 18, Color3.fromRGB(22, 34, 24))
-        oval(box, 38, 4, 16, 16, Color3.fromRGB(240, 255, 240))
-        oval(box, 41, 7, 10, 10, Color3.fromRGB(34, 140, 66))
+        poly(fl, { { 28, 2 }, { 58, 2 }, { 59, 6 }, { 27, 6 } }, Color3.fromRGB(214, 252, 214), 0, 1)
+        oval(fl, 37, 3, 18, 18, Color3.fromRGB(22, 34, 24))
+        oval(fl, 38, 4, 16, 16, Color3.fromRGB(240, 255, 240))
+        oval(fl, 41, 7, 10, 10, Color3.fromRGB(34, 140, 66))
         for _, sc in ipairs({ { 29, 4 }, { 56, 4 }, { 29, 18 }, { 56, 18 } }) do
-            oval(box, sc[1], sc[2], 3, 3, Color3.fromRGB(28, 44, 30))
+            oval(fl, sc[1], sc[2], 3, 3, Color3.fromRGB(28, 44, 30))
         end
+        local gg = make("CanvasGroup", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
+        }, fl)
+        oval(gg, 43, 9, 6, 6, Color3.fromRGB(150, 255, 160))
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
+            TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { GroupTransparency = 0.4 })
+        -- naik-turun super lambat (5 detik per arah)
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(fl,
+            TweenInfo.new(5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { Position = UDim2.new(0, 0, 0, 0) })
+        return box
+    end
 
-        -- Pumpkin Man: kepala labu, kemeja, jas terbuka dengan lapel, dasi, gesper, celana, sepatu
+    -- Pumpkin Man: kepala labu, kemeja, jas terbuka dengan lapel, dasi, gesper, celana, sepatu.
+    -- Digambar dengan skala S supaya tingginya sama dengan Ghost Speaker Man.
+    function decor.pumpkinMan(par)
+        local box = make("Frame", {
+            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
+        }, par)
+        local S = 1.3
+        local function T(pts)
+            local o = {}
+            for _, q in ipairs(pts) do o[#o + 1] = { 54 + (q[1] - 90) * S, 85 + (q[2] - 85) * S } end
+            return o
+        end
         local PR = Color3.fromRGB(120, 40, 10)
         local JACKET = Color3.fromRGB(240, 128, 28)
+        local function piece(pts, fill, rim)
+            local t = T(pts)
+            poly(box, t, rim, 1, 1)
+            poly(box, t, fill, 0, 1)
+        end
+        local function flat(pts, c) poly(box, T(pts), c, 0, 1) end
+        local function ln(pts, w0, w1, c) limb(box, T(pts), w0 * S, w1 * S, c) end
+
+        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.5) -- cahaya di tanah
+        oval(box, 22, 80, 64, 6, Color3.fromRGB(34, 16, 8), 0.35)    -- bayangan
+
         piece({ { 81, 70 }, { 89, 70 }, { 89, 82 }, { 81, 82 } }, Color3.fromRGB(196, 48, 24), PR)
         piece({ { 91, 70 }, { 99, 70 }, { 99, 82 }, { 91, 82 } }, Color3.fromRGB(196, 48, 24), PR)
         piece({ { 79, 81 }, { 89, 81 }, { 89, 85 }, { 79, 85 } }, Color3.fromRGB(234, 100, 38), PR)
         piece({ { 91, 81 }, { 101, 81 }, { 101, 85 }, { 91, 85 } }, Color3.fromRGB(234, 100, 38), PR)
-        piece({ { 86, 45 }, { 94, 45 }, { 94, 71 }, { 86, 71 } }, Color3.fromRGB(150, 36, 14), PR)        -- kemeja
-        piece({ { 80, 46 }, { 87, 46 }, { 88, 56 }, { 88, 72 }, { 78, 72 }, { 80, 62 } }, JACKET, PR)    -- jas kiri
-        piece({ { 100, 46 }, { 93, 46 }, { 92, 56 }, { 92, 72 }, { 102, 72 }, { 100, 62 } }, JACKET, PR) -- jas kanan
-        poly(box, { { 85, 46 }, { 89, 47 }, { 88, 58 }, { 84, 52 } }, Color3.fromRGB(210, 80, 18), 0, 1) -- lapel
-        poly(box, { { 95, 46 }, { 91, 47 }, { 92, 58 }, { 96, 52 } }, Color3.fromRGB(210, 80, 18), 0, 1)
-        poly(box, { { 89, 46 }, { 91, 46 }, { 92, 49 }, { 88, 49 } }, Color3.fromRGB(252, 208, 66), 0, 1)  -- simpul dasi
-        poly(box, { { 89, 49 }, { 91, 49 }, { 92, 62 }, { 90, 65 }, { 88, 62 } }, Color3.fromRGB(252, 208, 66), 0, 1)
-        limb(box, { { 81, 64 }, { 85, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))                         -- saku
-        limb(box, { { 99, 64 }, { 95, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
-        poly(box, { { 88, 68 }, { 92, 68 }, { 92, 71 }, { 88, 71 } }, Color3.fromRGB(206, 206, 216), 0, 1) -- gesper
+        piece({ { 86, 45 }, { 94, 45 }, { 94, 71 }, { 86, 71 } }, Color3.fromRGB(150, 36, 14), PR)
+        piece({ { 80, 46 }, { 87, 46 }, { 88, 56 }, { 88, 72 }, { 78, 72 }, { 80, 62 } }, JACKET, PR)
+        piece({ { 100, 46 }, { 93, 46 }, { 92, 56 }, { 92, 72 }, { 102, 72 }, { 100, 62 } }, JACKET, PR)
+        flat({ { 85, 46 }, { 89, 47 }, { 88, 58 }, { 84, 52 } }, Color3.fromRGB(210, 80, 18))
+        flat({ { 95, 46 }, { 91, 47 }, { 92, 58 }, { 96, 52 } }, Color3.fromRGB(210, 80, 18))
+        flat({ { 89, 46 }, { 91, 46 }, { 92, 49 }, { 88, 49 } }, Color3.fromRGB(252, 208, 66))
+        flat({ { 89, 49 }, { 91, 49 }, { 92, 62 }, { 90, 65 }, { 88, 62 } }, Color3.fromRGB(252, 208, 66))
+        ln({ { 81, 64 }, { 85, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
+        ln({ { 99, 64 }, { 95, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
+        flat({ { 88, 68 }, { 92, 68 }, { 92, 71 }, { 88, 71 } }, Color3.fromRGB(206, 206, 216))
         piece({ { 72, 48 }, { 80, 48 }, { 80, 60 }, { 72, 60 } }, Color3.fromRGB(246, 142, 40), PR)
         piece({ { 72, 60 }, { 80, 60 }, { 80, 68 }, { 78, 66 }, { 76, 69 }, { 74, 66 }, { 72, 68 } }, Color3.fromRGB(232, 70, 28), PR)
         piece({ { 100, 48 }, { 108, 48 }, { 108, 60 }, { 100, 60 } }, Color3.fromRGB(246, 142, 40), PR)
         piece({ { 100, 60 }, { 108, 60 }, { 108, 68 }, { 106, 66 }, { 104, 69 }, { 102, 66 }, { 100, 68 } }, Color3.fromRGB(232, 70, 28), PR)
-        drawPumpkinBody(box, 90, 36, 11, 10)
 
-        -- lapisan cahaya (berdenyut): wajah labu dan inti speaker, di atas semua bentuk
+        local hx, hy, hrx, hry = 54, 85 + (36 - 85) * S, 11 * S, 10 * S
+        drawPumpkinBody(box, hx, hy, hrx, hry)
         local gg = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
         }, box)
-        drawPumpkinFace(gg, 90, 36, 11, 10)
-        oval(gg, 43, 9, 6, 6, Color3.fromRGB(150, 255, 160))
+        drawPumpkinFace(gg, hx, hy, hrx, hry)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
             { GroupTransparency = 0.4 })
@@ -645,8 +682,8 @@ do
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 112, 14), 2, 1) end
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 214, 60), 0, 1) end
         -- labu di tanah, di bawah pohon (wajah ikut berdenyut)
-        drawPumpkinBody(g, 54, 270, 25, 15)
-        drawPumpkinFace(gg, 54, 270, 25, 15)
+        drawPumpkinBody(g, 90, 275, 16, 10)
+        drawPumpkinFace(gg, 90, 275, 16, 10)
         decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
             TweenInfo.new(1.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
             { GroupTransparency = 0.4 })
@@ -1582,7 +1619,8 @@ do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
     decor.treeBox = decor.tree(root)
-    decor.pumpkinBox = decor.pumpkin(root)
+    decor.ghostBox = decor.ghost(root)
+    decor.pumpkinBox = decor.pumpkinMan(root)
 end
 
 local PageHolder = make("Frame", {
@@ -8097,8 +8135,8 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Tema: dekorasi tampil/sembunyi, warna objek yang sudah ada diganti
--- Tiap script dijalankan, dekorasi sidebar diundi: pohon atau labu
-decor.style = (math.random(2) == 1) and "Tree" or "Pumpkin"
+-- Tiap script dijalankan, dekorasi sidebar diundi: pohon, Ghost Speaker Man, atau Pumpkin Man
+decor.style = ({ "Tree", "Ghost", "Pumpkin" })[math.random(3)]
 
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
@@ -8107,7 +8145,8 @@ function ui.decorRefresh()
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)
     end
     if decor.treeBox then decor.treeBox.Visible = (decor.style == "Tree") end
-    if decor.pumpkinBox then decor.pumpkinBox.Visible = (decor.style ~= "Tree") end
+    if decor.ghostBox then decor.ghostBox.Visible = (decor.style == "Ghost") end
+    if decor.pumpkinBox then decor.pumpkinBox.Visible = (decor.style == "Pumpkin") end
     for _, tw in ipairs(decor.tweens) do
         if on then tw:Play() else tw:Pause() end
     end

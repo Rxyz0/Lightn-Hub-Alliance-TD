@@ -270,7 +270,7 @@ local function tween(obj, t, goal)
     TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
 end
 
--- Dekorasi tema Halloween: jaring laba-laba, labu, kelelawar, laba-laba menggantung.
+-- Dekorasi tema Halloween: jaring laba-laba, pohon mati berwajah, labu, kelelawar besar di gear, laba-laba menggantung.
 -- Semuanya Frame statis di belakang konten dan hanya tampil saat tema Halloween aktif.
 -- Hanya labu (berkedip) dan laba-laba (berayun) yang bergerak, lewat satu tween pelan.
 local decor = { roots = {}, tweens = {}, hideMini = {} }
@@ -368,97 +368,303 @@ do
         return box
     end
 
-    -- Labu kecil statis
-    function decor.mini(par, x, y)
-        oval(par, x, y + 3, 18, 14, Color3.fromRGB(232, 104, 18))
-        make("Frame", {
-            Position = UDim2.new(0, x + 8, 0, y), Size = UDim2.new(0, 2, 0, 4),
-            BackgroundColor3 = Color3.fromRGB(78, 98, 34), BorderSizePixel = 0,
+    -- Isi poligon dengan strip horizontal (tanpa rotasi), jadi bentuknya utuh dan tidak putus-putus.
+    -- pts = { {x, y}, ... } dalam koordinat par; grow = pelebaran tepi (untuk garis tepi/cahaya)
+    local function poly(par, pts, color, grow, step)
+        grow = grow or 0
+        step = step or 1
+        local n = #pts
+        local minY, maxY = math.huge, -math.huge
+        for _, p in ipairs(pts) do
+            if p[2] < minY then minY = p[2] end
+            if p[2] > maxY then maxY = p[2] end
+        end
+        local y = math.floor(minY)
+        while y <= maxY do
+            local sy = y + step / 2
+            local xs = {}
+            for i = 1, n do
+                local a, b = pts[i], pts[i % n + 1]
+                local y1, y2 = a[2], b[2]
+                if (y1 <= sy and y2 > sy) or (y2 <= sy and y1 > sy) then
+                    xs[#xs + 1] = a[1] + (sy - y1) / (y2 - y1) * (b[1] - a[1])
+                end
+            end
+            table.sort(xs)
+            for i = 1, #xs - 1, 2 do
+                local x1, x2 = math.floor(xs[i] - grow), math.ceil(xs[i + 1] + grow)
+                if x2 > x1 then
+                    make("Frame", {
+                        Position = UDim2.new(0, x1, 0, y - grow),
+                        Size = UDim2.new(0, x2 - x1, 0, step + 1 + grow * 2),
+                        BackgroundColor3 = color,
+                        BorderSizePixel = 0,
+                    }, par)
+                end
+            end
+            y = y + step
+        end
+    end
+
+    -- Ranting / anggota badan: rantai kapsul rapat yang menyempit dari w0 ke w1.
+    -- Ujung kapsul bulat dan saling menimpa, jadi sambungannya mulus (tidak patah).
+    local function limb(par, pts, w0, w1, color)
+        local dense = { pts[1] }
+        for i = 1, #pts - 1 do
+            local a, b = pts[i], pts[i + 1]
+            local len = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+            local n = math.max(1, math.ceil(len / 5))
+            for k = 1, n do
+                dense[#dense + 1] = { a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n }
+            end
+        end
+        local total = 0
+        for i = 1, #dense - 1 do
+            total = total + math.sqrt((dense[i + 1][1] - dense[i][1]) ^ 2 + (dense[i + 1][2] - dense[i][2]) ^ 2)
+        end
+        local acc = 0
+        for i = 1, #dense - 1 do
+            local a, b = dense[i], dense[i + 1]
+            local dx, dy = b[1] - a[1], b[2] - a[2]
+            local len = math.sqrt(dx * dx + dy * dy)
+            local w = math.max(1, math.floor(w0 + (w1 - w0) * ((acc + len / 2) / math.max(total, 1)) + 0.5))
+            acc = acc + len
+            local f = make("Frame", {
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0, math.floor((a[1] + b[1]) / 2 + 0.5), 0, math.floor((a[2] + b[2]) / 2 + 0.5)),
+                Size = UDim2.new(0, math.floor(len + w + 0.5), 0, w),
+                Rotation = math.deg(math.atan2(dy, dx)),
+                BackgroundColor3 = color,
+                BorderSizePixel = 0,
+            }, par)
+            make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
+        end
+    end
+
+    -- Pohon mati tinggi dan kurus (tinggi penuh sidebar, di belakang tombol), cabang
+    -- ranting bengkok, wajah menyala seperti di referensi. Bentuknya Frame statis; hanya
+    -- cahaya wajah yang berdenyut pelan.
+    function decor.tree(par)
+        local box = make("Frame", {
+            AnchorPoint = Vector2.new(0, 1),
+            Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(0, 108, 0, 286),
+            BackgroundTransparency = 1,
         }, par)
-        for _, ex in ipairs({ 4, 11 }) do
+        oval(box, 0, 276, 108, 18, Color3.fromRGB(255, 112, 16), 0.45) -- cahaya lava di dasar
+        local g = make("CanvasGroup", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0.08,
+        }, box)
+        local bark = Color3.fromRGB(62, 18, 44)
+        local lit = Color3.fromRGB(104, 34, 68)
+        local dark = Color3.fromRGB(30, 8, 24)
+
+        -- cabang dan ranting (digambar dulu, batang menutup pangkalnya)
+        for _, b in ipairs({
+            { 5, 1.5, { { 60, 170 }, { 74, 156 }, { 86, 152 }, { 96, 138 }, { 103, 120 } } },
+            { 3, 1, { { 86, 152 }, { 94, 160 }, { 104, 156 } } },
+            { 2.5, 1, { { 96, 138 }, { 90, 126 }, { 93, 112 } } },
+            { 5, 1.5, { { 47, 152 }, { 32, 140 }, { 22, 142 }, { 12, 126 }, { 5, 108 } } },
+            { 3, 1, { { 22, 142 }, { 15, 154 }, { 5, 152 } } },
+            { 2.5, 1, { { 12, 126 }, { 18, 114 }, { 14, 102 } } },
+            { 4.5, 1.5, { { 55, 112 }, { 70, 98 }, { 80, 100 }, { 91, 84 }, { 97, 66 } } },
+            { 2.5, 1, { { 80, 100 }, { 86, 110 }, { 98, 108 } } },
+            { 4.5, 1.5, { { 48, 88 }, { 36, 74 }, { 27, 76 }, { 17, 60 }, { 11, 42 } } },
+            { 2.5, 1, { { 27, 76 }, { 21, 88 }, { 9, 88 } } },
+            { 4, 1.5, { { 54, 64 }, { 66, 50 }, { 76, 52 }, { 86, 36 }, { 90, 16 } } },
+            { 2.5, 1, { { 76, 52 }, { 84, 60 }, { 98, 56 } } },
+            { 4, 1.5, { { 50, 44 }, { 40, 30 }, { 32, 32 }, { 24, 16 }, { 21, 0 } } },
+            { 3, 1, { { 51, 14 }, { 44, 4 }, { 40, -2 } } },
+            { 3, 1, { { 52, 24 }, { 62, 10 }, { 68, 0 } } },
+            { 5.5, 1.5, { { 42, 206 }, { 26, 196 }, { 14, 200 }, { 5, 186 } } },
+            { 3, 1, { { 14, 200 }, { 8, 212 }, { 1, 214 } } },
+            { 5.5, 1.5, { { 64, 204 }, { 80, 194 }, { 92, 198 }, { 103, 184 } } },
+            { 3, 1, { { 92, 198 }, { 98, 210 }, { 106, 212 } } },
+            { 7, 2, { { 32, 276 }, { 20, 282 }, { 8, 284 } } },
+            { 7, 2, { { 74, 276 }, { 88, 282 }, { 102, 284 } } },
+        }) do
+            limb(g, b[3], b[1], b[2], bark)
+        end
+
+        -- batang kurus bengkok: tepi kiri dari bawah ke atas, tepi kanan dari atas ke bawah
+        local L = { { 24, 288 }, { 31, 270 }, { 35, 258 }, { 34, 240 }, { 36, 222 }, { 38, 205 }, { 42, 185 },
+            { 43, 160 }, { 45, 130 }, { 46, 100 }, { 47, 70 }, { 48, 40 }, { 49, -4 } }
+        local R = { { 82, 288 }, { 72, 270 }, { 69, 258 }, { 70, 240 }, { 68, 222 }, { 67, 205 }, { 63, 185 },
+            { 61, 160 }, { 58, 130 }, { 56, 100 }, { 55, 70 }, { 53, 40 }, { 52, -4 } }
+        local trunk = {}
+        for _, p in ipairs(L) do trunk[#trunk + 1] = p end
+        for i = #R, 1, -1 do trunk[#trunk + 1] = R[i] end
+        poly(g, trunk, bark, 0, 2)
+
+        -- sisi terang di kiri batang
+        local hw = { 8, 8, 8, 8, 8, 8, 7, 6, 5, 4, 3, 2, 1 }
+        local hl = {}
+        for i, p in ipairs(L) do hl[#hl + 1] = { p[1] + 2, p[2] } end
+        for i = #L, 1, -1 do hl[#hl + 1] = { L[i][1] + 2 + hw[i], L[i][2] } end
+        poly(g, hl, lit, 0, 2)
+
+        -- retakan kulit kayu
+        for _, c in ipairs({
+            { { 40, 284 }, { 43, 270 }, { 41, 262 } }, { { 66, 284 }, { 62, 272 }, { 64, 262 } },
+            { { 47, 182 }, { 50, 168 }, { 48, 150 } }, { { 54, 176 }, { 53, 160 } },
+            { { 50, 122 }, { 52, 100 } }, { { 49, 76 }, { 50, 56 } },
+        }) do
+            limb(g, c, 2, 1, dark)
+        end
+
+        -- alis marah dan bayangan hidung
+        poly(g, { { 38, 210 }, { 51, 217 }, { 51, 213 }, { 38, 205 } }, dark, 0, 1)
+        poly(g, { { 66, 210 }, { 53, 217 }, { 53, 213 }, { 66, 205 } }, dark, 0, 1)
+        poly(g, { { 50, 222 }, { 54, 222 }, { 52, 231 } }, dark, 0, 1)
+
+        -- wajah menyala: mata miring dan mulut menyeringai bergerigi
+        local gg = make("CanvasGroup", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
+        }, box)
+        local shapes = {
+            { { 40, 214 }, { 50, 220 }, { 47, 227 }, { 40, 222 } },
+            { { 64, 214 }, { 54, 220 }, { 57, 227 }, { 64, 222 } },
+            { { 37, 235 }, { 44, 239 }, { 49, 235 }, { 52, 240 }, { 55, 235 }, { 60, 239 }, { 67, 235 },
+                { 65, 245 }, { 58, 252 }, { 46, 252 }, { 39, 245 } },
+        }
+        for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 112, 14), 2, 1) end
+        for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 214, 60), 0, 1) end
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
+            TweenInfo.new(1.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { GroupTransparency = 0.4 })
+        return box
+    end
+
+    -- Kelelawar besar: dua kaki memegang tombol gear, badan, kepala, dan sayap keluar dari
+    -- tepi papan. Gambar statis (tanpa animasi), semua bentuk terisi penuh.
+    -- par = root tanpa clip dengan titik (0,0) di pojok kiri atas papan, cx = pusat gear.
+    function decor.bat(par, cx)
+        local RIM = Color3.fromRGB(150, 62, 14)
+        local MEM = Color3.fromRGB(38, 12, 32)
+        local BODY = Color3.fromRGB(30, 9, 26)
+        local BONE = Color3.fromRGB(96, 36, 66)
+
+        local function wing(sign)
+            local pts = {}
+            for _, p in ipairs({
+                { 5, -8 }, { 22, -20 }, { 48, -12 }, { 38, -6 }, { 40, 1 },
+                { 31, -3 }, { 27, 3 }, { 20, -2 }, { 14, 2 }, { 6, -1 },
+            }) do
+                local lx = p[1] * 1.25
+                local y = p[2] + (sign < 0 and lx * 0.12 or 0) -- sayap kiri sedikit terkulai
+                pts[#pts + 1] = { cx + sign * lx, y }
+            end
+            return pts
+        end
+        local wl, wr = wing(-1), wing(1)
+
+        -- garis tepi oranye (digambar paling bawah)
+        poly(par, wl, RIM, 1, 1)
+        poly(par, wr, RIM, 1, 1)
+        poly(par, { { cx - 6, -14 }, { cx - 5, -24 }, { cx - 1, -17 } }, RIM, 1, 1)
+        poly(par, { { cx + 6, -14 }, { cx + 5, -24 }, { cx + 1, -17 } }, RIM, 1, 1)
+        oval(par, cx - 8, -11, 16, 16, RIM)
+        oval(par, cx - 7, -20, 14, 13, RIM)
+        oval(par, cx - 10, 5, 9, 6, RIM)
+        oval(par, cx + 1, 5, 9, 6, RIM)
+
+        -- selaput sayap, lalu tulang jari yang menyatu dengannya
+        poly(par, wl, MEM, 0, 1)
+        poly(par, wr, MEM, 0, 1)
+        for _, w in ipairs({ wl, wr }) do
+            limb(par, { w[1], w[2] }, 4, 3, BONE)
+            for _, i in ipairs({ 3, 5, 7, 9 }) do
+                limb(par, { w[2], w[i] }, 2, 1, BONE)
+            end
+        end
+
+        -- kaki, telinga, badan, kepala
+        limb(par, { { cx - 3, 2 }, { cx - 6, 7 } }, 3, 2, BODY)
+        limb(par, { { cx + 3, 2 }, { cx + 6, 7 } }, 3, 2, BODY)
+        oval(par, cx - 9, 6, 7, 4, BODY)
+        oval(par, cx + 2, 6, 7, 4, BODY)
+        poly(par, { { cx - 6, -14 }, { cx - 5, -24 }, { cx - 1, -17 } }, BODY, 0, 1)
+        poly(par, { { cx + 6, -14 }, { cx + 5, -24 }, { cx + 1, -17 } }, BODY, 0, 1)
+        oval(par, cx - 7, -10, 14, 14, BODY)
+        oval(par, cx - 4, -7, 8, 9, Color3.fromRGB(58, 22, 46))
+        oval(par, cx - 6, -19, 12, 11, BODY)
+
+        -- mata menyala, taring, dan cakar yang mencengkeram gear
+        for _, ex in ipairs({ -4, 1 }) do
             make("Frame", {
-                Position = UDim2.new(0, x + ex, 0, y + 8), Size = UDim2.new(0, 3, 0, 3),
-                BackgroundColor3 = Color3.fromRGB(255, 214, 70), BorderSizePixel = 0,
+                Position = UDim2.new(0, cx + ex, 0, -15), Size = UDim2.new(0, 3, 0, 2),
+                BackgroundColor3 = Color3.fromRGB(255, 196, 40), BorderSizePixel = 0,
             }, par)
         end
-    end
-
-    -- Pohon seram bermata dan bermulut menyala, dengan lantai lava dan labu kecil
-    function decor.tree(par, pos)
-        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 100, 0, 84), BackgroundTransparency = 1 }, par)
-        local bark, bark2 = Color3.fromRGB(86, 30, 18), Color3.fromRGB(128, 46, 20)
-        local fire = Color3.fromRGB(255, 208, 44)
-        oval(box, 0, 74, 100, 12, Color3.fromRGB(255, 112, 16), 0.3)
-        for _, b in ipairs({
-            { 38, 42, 14, 22, 4 }, { 14, 22, 4, 8, 3 }, { 14, 22, 18, 6, 2 },
-            { 40, 36, 26, 14, 3 }, { 26, 14, 30, 2, 2 },
-            { 50, 34, 50, 10, 4 }, { 50, 20, 42, 6, 2 }, { 50, 18, 58, 4, 2 },
-            { 62, 42, 86, 22, 4 }, { 86, 22, 96, 8, 3 }, { 86, 22, 80, 6, 2 },
-            { 60, 36, 74, 14, 3 }, { 74, 14, 70, 2, 2 },
-        }) do
-            drawLine(box, b[1], b[2], b[3], b[4], bark, 0, b[5])
-        end
-        oval(box, 22, 62, 56, 20, bark)
-        oval(box, 27, 28, 46, 54, bark)
-        oval(box, 34, 34, 12, 34, bark2, 0.4)
-        local glow = {}
-        for _, e in ipairs({ { 35, 44, 22 }, { 54, 44, -22 } }) do
-            local f = oval(box, e[1], e[2], 11, 6, fire)
-            f.Rotation = e[3]
-            glow[#glow + 1] = f
-        end
-        glow[#glow + 1] = oval(box, 35, 56, 30, 10, fire)
-        for _, x in ipairs({ 40, 48, 56 }) do
+        for _, fx in ipairs({ -3, 1 }) do
             make("Frame", {
-                Position = UDim2.new(0, x, 0, 54), Size = UDim2.new(0, 4, 0, 4), Rotation = 45,
-                BackgroundColor3 = bark, BorderSizePixel = 0,
-            }, box)
+                Position = UDim2.new(0, cx + fx, 0, -9), Size = UDim2.new(0, 2, 0, 3),
+                BackgroundColor3 = Color3.fromRGB(246, 236, 220), BorderSizePixel = 0,
+            }, par)
         end
-        pulse(glow, 0, 0.4, 1.9)
-        decor.mini(box, 2, 62)
-        decor.mini(box, 80, 64)
-        return box
+        for _, cxo in ipairs({ -8, -6, -4, 3, 5, 7 }) do
+            local f = make("Frame", {
+                Position = UDim2.new(0, cx + cxo, 0, 8), Size = UDim2.new(0, 2, 0, 6),
+                BackgroundColor3 = Color3.fromRGB(238, 216, 180), BorderSizePixel = 0,
+            }, par)
+            make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f)
+        end
     end
 
-    function decor.bat(par, pos)
-        local box = make("Frame", { Position = pos, Size = UDim2.new(0, 22, 0, 12), BackgroundTransparency = 1 }, par)
-        local c = Color3.fromRGB(30, 17, 10)
-        oval(box, 8, 3, 6, 8, c)
-        for _, w in ipairs({ { 0, -22 }, { 12, 22 } }) do
-            local f = oval(box, w[1], 2, 11, 5, c)
-            f.Rotation = w[2]
-        end
-        make("Frame", { Position = UDim2.new(0, 8, 0, 1), Size = UDim2.new(0, 2, 0, 3), BackgroundColor3 = c, BorderSizePixel = 0 }, box)
-        make("Frame", { Position = UDim2.new(0, 12, 0, 1), Size = UDim2.new(0, 2, 0, 3), BackgroundColor3 = c, BorderSizePixel = 0 }, box)
-    end
-
+    -- Laba-laba menggantung. Dua engsel: seluruh benang berayun dari titik atas header
+    -- (benang lurus dan utuh), badannya berayun sendiri dari ujung benang dengan irama
+    -- lain, jadi geraknya lentur seperti bandul, tidak kaku.
     function decor.spider(par, x)
-        local box = decor.root(par, {
-            AnchorPoint = Vector2.new(0.5, 0),
+        local H = HEADER_H
+        local pivot = decor.root(par, {
+            AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.new(0, x, 0, 0),
-            Size = UDim2.new(0, 20, 0, 31),
+            Size = UDim2.new(0, 30, 0, H * 2),
         })
-        box.ClipsDescendants = false
-        drawLine(box, 10, 0, 10, 17, WEB_COLOR, 0.35)
-        local dark = Color3.fromRGB(56, 34, 18)
-        for _, l in ipairs({
-            { 6, 21, 0, 15 }, { 6, 22, 0, 22 }, { 6, 23, 1, 28 },
-            { 14, 21, 20, 15 }, { 14, 22, 20, 22 }, { 14, 23, 19, 28 },
-        }) do
-            drawLine(box, l[1], l[2], l[3], l[4], dark, 0.1)
+        pivot.ClipsDescendants = false
+        make("Frame", {
+            Position = UDim2.new(0, 14, 0, H), Size = UDim2.new(0, 2, 0, 16),
+            BackgroundColor3 = WEB_COLOR, BackgroundTransparency = 0.1, BorderSizePixel = 0,
+        }, pivot)
+        local hinge = make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0, 15, 0, H + 15),
+            Size = UDim2.new(0, 30, 0, 30),
+            BackgroundTransparency = 1,
+        }, pivot)
+        local body = Color3.fromRGB(44, 22, 18)
+        for _, s in ipairs({ -1, 1 }) do
+            for _, l in ipairs({
+                { { 3, 20 }, { 9, 16 }, { 12, 22 } },
+                { { 4, 22 }, { 11, 20 }, { 13, 27 } },
+                { { 4, 24 }, { 10, 26 }, { 12, 29 } },
+            }) do
+                local pts = {}
+                for _, p in ipairs(l) do pts[#pts + 1] = { 15 + s * p[1], p[2] } end
+                limb(hinge, pts, 2, 1, body)
+            end
         end
-        oval(box, 5, 17, 10, 10, Color3.fromRGB(44, 26, 14))
-        for _, ex in ipairs({ 7, 11 }) do
+        oval(hinge, 9, 17, 12, 12, Color3.fromRGB(150, 62, 14))
+        oval(hinge, 10, 18, 10, 10, body)
+        oval(hinge, 12, 15, 6, 6, body)
+        make("Frame", {
+            Position = UDim2.new(0, 14, 0, 22), Size = UDim2.new(0, 2, 0, 4),
+            BackgroundColor3 = Color3.fromRGB(255, 120, 20), BorderSizePixel = 0,
+        }, hinge)
+        for _, ex in ipairs({ 12, 16 }) do
             make("Frame", {
-                Position = UDim2.new(0, ex, 0, 20), Size = UDim2.new(0, 2, 0, 2),
+                Position = UDim2.new(0, ex, 0, 17), Size = UDim2.new(0, 2, 0, 2),
                 BackgroundColor3 = Color3.fromRGB(255, 70, 40), BorderSizePixel = 0,
-            }, box)
+            }, hinge)
         end
-        box.Rotation = -8
-        decor.tweens[#decor.tweens + 1] = TweenService:Create(box,
-            TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = 8 })
-        decor.hideMini[box] = true
-        return box
+        pivot.Rotation = -10
+        hinge.Rotation = 7
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(pivot,
+            TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = 10 })
+        decor.tweens[#decor.tweens + 1] = TweenService:Create(hinge,
+            TweenInfo.new(3.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = -7 })
+        decor.hideMini[pivot] = true
+        return pivot
     end
 end
 
@@ -973,6 +1179,19 @@ do
         AutoButtonColor = false,
         BorderSizePixel = 0,
     }, Header)
+    -- Piringan oranye di belakang gear (hanya tema Halloween)
+    local GEAR_ORANGE = Color3.fromRGB(255, 140, 24)
+    local plate = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 26, 0, 26),
+        BackgroundColor3 = Color3.fromRGB(46, 16, 4),
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+        Visible = false,
+    }, btn)
+    make("UICorner", { CornerRadius = UDim.new(1, 0) }, plate)
+    make("UIStroke", { Color = GEAR_ORANGE, Thickness = 1.5 }, plate)
     local icon = make("Frame", {
         Size = UDim2.new(0, 15, 0, 15),
         AnchorPoint = Vector2.new(0.5, 0.5),
@@ -991,10 +1210,28 @@ do
         if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
         return f
     end
-    for _, rot in ipairs({ 0, 45, 90, 135 }) do part(15, 3, rot, C.white) end -- 8 gigi
-    part(9, 9, 0, C.white, true)                                           -- badan
-    part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)                           -- lubang tengah
+    local gparts = {}
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do gparts[#gparts + 1] = part(15, 3, rot, C.white) end -- 8 gigi
+    gparts[#gparts + 1] = part(9, 9, 0, C.white, true)                                           -- badan
+    local hole = part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)                                 -- lubang tengah
+    local gscale = make("UIScale", { Scale = 1 }, icon)
+    -- Tema Halloween: gear oranye (ukuran tetap), dengan piringan gelap bergaris oranye
+    function ui.gearTheme(on)
+        for _, p in ipairs(gparts) do p.BackgroundColor3 = on and GEAR_ORANGE or Color3.fromRGB(255, 255, 255) end
+        hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4) or Color3.fromRGB(14, 14, 16)
+        gscale.Scale = 1
+        plate.Visible = on
+    end
     ui.gearBtn, ui.gear = btn, icon
+
+    -- Kelelawar besar yang memegang gear dengan kakinya. Ada di ScreenGui (bukan di MainFrame)
+    -- supaya sayap dan kepalanya bisa keluar dari papan; posisinya mengikuti MainFrame.
+    local batRoot = decor.root(ScreenGui, { Position = MainFrame.Position, Size = UDim2.new(0, 0, 0, 0), ZIndex = 3 })
+    batRoot.ClipsDescendants = false
+    decor.bat(batRoot, 19)
+    table.insert(conns, MainFrame:GetPropertyChangedSignal("Position"):Connect(function()
+        batRoot.Position = MainFrame.Position
+    end))
 end
 
 local function applyTimerVisibility()
@@ -1219,10 +1456,8 @@ make("Frame", {
 do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
-    decor.treeBox = decor.tree(root, UDim2.new(0, 3, 1, -88))
+    decor.treeBox = decor.tree(root)
     decor.pumpkinBox = decor.pumpkin(root, UDim2.new(0, 10, 1, -50))
-    decor.bat(root, UDim2.new(0, 72, 1, -64))
-    decor.bat(root, UDim2.new(0, 86, 1, -38))
 end
 
 local PageHolder = make("Frame", {
@@ -7742,6 +7977,7 @@ decor.style = (math.random(2) == 1) and "Tree" or "Pumpkin"
 
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
+    if ui.gearTheme then ui.gearTheme(on) end
     for _, r in ipairs(decor.roots) do
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)
     end

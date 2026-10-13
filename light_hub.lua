@@ -1,5 +1,5 @@
 -- =================================================================
--- LIGHTN HUB v4.3
+-- LIGHTN HUB v4.4
 -- Tab: Main | Items (Gacha, Inventory) | Macro (Macro, Sharing) | Endless | Rewards
 -- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
@@ -15,7 +15,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
-local VERSION = "4.3"
+local VERSION = "4.4"
 
 -- Jadwal update Halloween (detik epoch, UTC): 12 Okt 2026 23:00 WIB = 16:00 UTC.
 -- Mulai saat itu tema Halloween aktif otomatis dan pilihan Theme muncul di Settings.
@@ -36,7 +36,7 @@ local HEADER_H, SIDEBAR_W = 34, 108
 
 -- Place ID dari log SPY: lobby dan match
 local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
--- Auto Skip mengirim SkipWaveVote(wave + offset) dan (wave + offset + 1)
+-- Auto Skip mengirim SkipWaveVote(WaveState.CurrentWave + offset)
 local SKIP_WAVE_OFFSET = 0
 
 -- Warna: abu-abu dan hitam saja
@@ -189,6 +189,7 @@ local CRATE_OPTIONS = {
     { label = "Scientist Crate", value = "ScientistCrate" },
     { label = "10m Crate", value = "10MCrate" },
     { label = "Fish Crate", value = "FishCrate" },
+    { label = "Spooky Crate", value = "Spooky Crate" },
 }
 -- Lucky Block bukan crate: remote OpenLuckyBlock, event LuckyBlockOpening
 -- Tingkat I dan III terlihat di log; II diasumsikan dari pola nama
@@ -1091,9 +1092,7 @@ local function loadSettings()
     -- Buang nilai lama yang sudah tidak ada di pilihan sekarang
     if not inOptions(SUMMON_OPTIONS, flags.summonAmount) then flags.summonAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.crateAmount) then flags.crateAmount = 1 end
-    if flags.crateType ~= "" and not inOptions(CRATE_OPTIONS, flags.crateType) then flags.crateType = "" end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.luckyAmount) then flags.luckyAmount = 1 end
-    if flags.luckyType ~= "" and not inOptions(LUCKY_OPTIONS, flags.luckyType) then flags.luckyType = "" end
     if flags.potionType ~= "" and not inOptions(POTION_OPTIONS, flags.potionType) then flags.potionType = "" end
     if not inOptions(SPEED_OPTIONS, flags.speedValue) then flags.speedValue = 1.5 end
     if flags.modeValue ~= "" and not inOptions(MODE_OPTIONS, flags.modeValue) then flags.modeValue = "" end
@@ -2423,7 +2422,9 @@ local function createSelect(par, props, cfg)
     local function refresh()
         local text
         if cfg.getOptions then
-            if current and current ~= "" then text = tostring(current) end
+            if current and current ~= "" then
+                text = cfg.labelOf and cfg.labelOf(current) or tostring(current)
+            end
         else
             for _, o in ipairs(options) do
                 if o.value == current then text = o.label break end
@@ -3670,8 +3671,9 @@ do
                 fSkip.setNote("")
                 return 0.3
             end
-            if pressButton(btn) then
+            if os.clock() - (skipState.lastAct or 0) >= 2 and pressButton(btn) then
                 skipState.pressed = true
+                skipState.lastAct = os.clock()
                 fSkip.setNote("")
                 return 0.3
             end
@@ -3679,7 +3681,16 @@ do
             skipState.pressed = false
         end
 
-        local w = waveNow.cur
+        local wsA = ReplicatedStorage:FindFirstChild("WaveState")
+        local w = wsA and wsA:GetAttribute("CurrentWave")
+        if type(w) ~= "number" then w = waveNow.cur end
+        -- ReplicatedStorage.WaveState.CanSkipWave = true berarti skip sudah boleh dipilih
+        local ws = ReplicatedStorage:FindFirstChild("WaveState")
+        local can = ws ~= nil and ws:GetAttribute("CanSkipWave") == true
+        if w and now - (skipState.lastAct or 0) < 5 then
+            fSkip.setNote("Skipped wave " .. w, C.text)
+            return 0.15
+        end
         if w then
             if w ~= skipState.lastWave then
                 skipState.lastWave = w
@@ -3689,20 +3700,15 @@ do
             end
             if skipState.fires >= 2 or now - skipState.lastFire < 5 then
                 fSkip.setNote("Skipped wave " .. w, C.text)
-                return 0.3
+                return 0.15
             end
-            -- Beri waktu singkat supaya tombol skip sempat muncul; kalau tidak muncul, kirim langsung
-            if now - skipState.waveAt < 0.7 then return 0.15 end
+            -- Kalau game belum menandai skip boleh, beri waktu singkat supaya tombol sempat muncul
+            if not can and now - skipState.waveAt < 0.7 then return 0.15 end
             skipState.fires = skipState.fires + 1
             skipState.lastFire = now
-            for _, n in ipairs({ w + SKIP_WAVE_OFFSET, w + SKIP_WAVE_OFFSET + 1 }) do
-                if n >= 1 then
-                    pcall(function() ev:FireServer(n) end)
-                    task.wait(0.1)
-                end
-            end
+            if w + SKIP_WAVE_OFFSET >= 1 then pcall(function() ev:FireServer(w + SKIP_WAVE_OFFSET) end) end
             fSkip.setNote("Skipped wave " .. w, C.text)
-            return 0.3
+            return 0.15
         end
 
         if now - skipState.lastFire >= 6 then
@@ -3720,9 +3726,11 @@ do
         local b = skipState.btn
         if not (b and b.Parent) then return end
         if isShown(b) then
-            if not skipState.pressed and os.clock() >= (skipState.nextTry or 0) then
+            if not skipState.pressed and os.clock() >= (skipState.nextTry or 0)
+                and os.clock() - (skipState.lastAct or 0) >= 2 then
                 if pressButton(b) then
                     skipState.pressed = true
+                    skipState.lastAct = os.clock()
                 else
                     skipState.nextTry = os.clock() + 0.5
                 end
@@ -3731,6 +3739,30 @@ do
             skipState.pressed = false
         end
     end))
+    -- Jalur tercepat: begitu game menyalakan CanSkipWave, skip langsung dikirim dari event atributnya
+    -- (tanpa polling). Nomor wave dibaca dari atribut WaveState kalau ada, kalau tidak dari pembaca wave.
+    function skipState.fireNow()
+        local now = os.clock()
+        if now - (skipState.lastAct or 0) < 2 then return end
+        local ev = RE("SkipWaveVote")
+        if not ev then return end
+        -- Dari spy: SkipWaveVote(n) memakai n = WaveState.CurrentWave (sekali saja per wave)
+        local ws = ReplicatedStorage:FindFirstChild("WaveState")
+        local w = ws and ws:GetAttribute("CurrentWave")
+        if type(w) ~= "number" then w = nil end
+        w = w or waveNow.cur
+        if not w then return end -- nomor wave belum diketahui: jalur cadangan di loop yang menangani
+        skipState.lastAct, skipState.lastWave, skipState.fires, skipState.lastFire = now, w, 2, now
+        if w + SKIP_WAVE_OFFSET >= 1 then pcall(function() ev:FireServer(w + SKIP_WAVE_OFFSET) end) end
+        fSkip.setNote("Skipped wave " .. w, C.text)
+    end
+    task.spawn(function()
+        local ws = ReplicatedStorage:WaitForChild("WaveState", 60)
+        if not ws then return end
+        table.insert(conns, ws:GetAttributeChangedSignal("CanSkipWave"):Connect(function()
+            if flags.autoSkip and ws:GetAttribute("CanSkipWave") == true then skipState.fireNow() end
+        end))
+    end)
     -- Tombol baru yang dibuat game memicu pencarian ulang segera
     task.spawn(function()
         local pg = LocalPlayer:WaitForChild("PlayerGui", 30)
@@ -3839,6 +3871,7 @@ end
 -- saat stok / koin / tiket tidak cukup.
 -- =================================================================
 local counts, summonPrices, tickets = nil, nil, nil
+local countsFull, crateDefs = false, {} -- countsFull: data lengkap dari server (yang tidak tercantum = 0)
 local boost = { inv = {}, rem = {}, at = nil }
 local BOOST_FIELD = {
     Money = "MoneyTimeRemaining", XP = "XPTimeRemaining",
@@ -3866,9 +3899,25 @@ end
 -- Data crate: event bisa berisi sebagian item saja, jadi digabung ke data yang sudah ada
 local function mergeCounts(t)
     if type(t) ~= "table" then return end
-    if type(t.Crates) == "table" then t = t.Crates end
+    if type(t.Crates) == "table" then
+        for _, d in ipairs(t.Crates) do
+            if type(d) == "table" and type(d.Id) == "string" and type(d.DisplayName) == "string" then
+                crateDefs[d.Id] = d.DisplayName
+            end
+        end
+    end
+    if type(t.Inventory) == "table" then
+        -- Data lengkap: gantikan seluruhnya supaya item yang sudah habis ikut hilang
+        local fresh = {}
+        for k, v in pairs(t.Inventory) do fresh[k] = v end
+        counts, countsFull = fresh, true
+        return
+    end
+    if type(t.Crates) == "table" and type(t.Crates[1]) ~= "table" then t = t.Crates end
     counts = counts or {}
-    for k, v in pairs(t) do counts[k] = v end
+    for k, v in pairs(t) do
+        if type(v) ~= "table" then counts[k] = v end
+    end
 end
 
 -- Cari jumlah item di data (kunci bisa string/angka, atau bersarang dalam tabel lain)
@@ -3898,9 +3947,14 @@ local function refreshCounts()
     if ok and type(res) == "table" then mergeCounts(res) end
 end
 
-bindEvent("CratesUpdated", mergeCounts)
+bindEvent("CratesUpdated", function(t)
+    mergeCounts(t)
+    countsAt = 0
+    task.delay(0.6, refreshCounts) -- ambil data lengkap supaya item yang habis ikut terbarui
+end)
 bindEvent("SummonStateUpdated", function(t)
     if type(t) == "table" and type(t.Prices) == "table" then summonPrices = t.Prices end
+    if type(t) == "table" and type(t.Has25Summon) == "boolean" then EP.has25 = t.Has25Summon end
 end)
 bindEvent("BoostStateUpdated", onBoost)
 -- UpdateCurrency dikirim sebagai (nama, jumlah), mis. "Tickets", 68
@@ -3915,10 +3969,21 @@ task.spawn(function()
     if ok then onBoost(res) end
     local okS, resS = invoke("GetSummonState")
     if okS and type(resS) == "table" and type(resS.Prices) == "table" then summonPrices = resS.Prices end
+    if okS and type(resS) == "table" and type(resS.Has25Summon) == "boolean" then EP.has25 = resS.Has25Summon end
     countsAt = os.clock()
     local ok2, res2 = invoke("GetCrateState")
     if ok2 and type(res2) == "table" then mergeCounts(res2) end
 end)
+
+-- Jumlah tiket diambil dari GetData.Currency.Tickets (event UpdateCurrency bisa tertinggal)
+local ticketsAt = 0
+local function refreshTickets()
+    if os.clock() - ticketsAt < 5 then return end
+    ticketsAt = os.clock()
+    local ok, res = invoke("GetData")
+    local c = ok and type(res) == "table" and res.Currency or nil
+    if type(c) == "table" and type(c.Tickets) == "number" then tickets = c.Tickets end
+end
 
 local boostAt = 0
 local function refreshBoost()
@@ -3957,6 +4022,7 @@ do
             return 1
         end
         local amount = flags.summonAmount
+        if amount == 25 and EP.has25 == false then amount = 10 end
         local price = summonPrices and (summonPrices[amount] or summonPrices[tostring(amount)])
         local coins = getStatN("Coins")
         if type(price) == "number" and coins and coins < price then
@@ -3986,8 +4052,27 @@ do
             fSpin.setNote("")
             return 0.4
         end
-        -- Dari log: 1 spin memakai 1 Ticket dan animasinya sekitar 7 detik
-        -- Data tiket bisa tertinggal; tetap dicoba, biar server yang menjawab
+        -- Format asli GetSpinWheelState: { Ready, Tickets, FreeSpins, Cost, InventoryFull }
+        local okS, st = invoke("GetSpinWheelState")
+        if okS and type(st) == "table" then
+            if type(st.Tickets) == "number" then tickets = st.Tickets end
+            local free = type(st.FreeSpins) == "number" and st.FreeSpins or 0
+            local cost = type(st.Cost) == "number" and st.Cost or 1
+            if st.InventoryFull == true then
+                fSpin.setNote("Inventory full", C.warn)
+                return 4
+            end
+            if free <= 0 and tickets ~= nil and tickets < cost then
+                fSpin.setNote("Not enough tickets", C.warn)
+                return 4
+            end
+            if st.Ready == false then
+                fSpin.setNote("")
+                return 1
+            end
+        elseif tickets == nil then
+            refreshTickets()
+        end
         local noTickets = tickets ~= nil and tickets <= 0
         local ok, res = invoke("SpinWheel")
         if accepted(ok, res) then
@@ -4010,6 +4095,7 @@ do
     local noDataSince = nil
     local function stockCheck(id, want, noun)
         local have = findCount(counts, id, 0)
+        if have == nil and countsFull then have = 0 end
         if have == nil then
             task.spawn(refreshCounts)
             if counts == nil then
@@ -4028,6 +4114,48 @@ do
         return want
     end
 
+    -- Daftar yang dimiliki pemain: hanya item berjumlah lebih dari 0 dari GetCrateState.Inventory.
+    -- Nama tampilan diambil dari definisi crate di data yang sama, jadi crate baru ikut muncul sendiri.
+    -- `covered` = data lengkap sudah dimuat; kalau belum, daftar tidak dianggap kosong.
+    local function amountOf(v)
+        if type(v) == "table" then v = v.Amount or v.Count or v.Quantity or v.amount or v.count end
+        return type(v) == "number" and v or nil
+    end
+    local function labelFor(kind, id)
+        if crateDefs[id] then return crateDefs[id] end
+        local known = (kind == "crate") and CRATE_OPTIONS or LUCKY_OPTIONS
+        for _, o in ipairs(known) do
+            if o.value == id then return o.label end
+        end
+        return (string.gsub(tostring(id), "(%l)(%u)", "%1 %2"))
+    end
+    local function ownedItems(kind)
+        local out = {}
+        if not countsFull or type(counts) ~= "table" then return out, false end
+        for id, v in pairs(counts) do
+            local n = amountOf(v)
+            if type(id) == "string" and n and n > 0 and not string.find(id, "^Voucher") then
+                local isLucky = string.find(string.lower(id), "luckyblock", 1, true) ~= nil
+                if isLucky == (kind == "lucky") then
+                    out[#out + 1] = { label = labelFor(kind, id), value = id, n = n }
+                end
+            end
+        end
+        table.sort(out, function(x, y) return x.label < y.label end)
+        return out, true
+    end
+    -- Dipakai dropdown: daftar yang dimiliki; kalau datanya belum jelas, pakai daftar tetap
+    local function optionsFor(kind)
+        task.spawn(refreshCounts)
+        local list, covered = ownedItems(kind)
+        if not covered then return (kind == "crate") and CRATE_OPTIONS or LUCKY_OPTIONS end
+        local opts = {}
+        for _, it in ipairs(list) do
+            opts[#opts + 1] = { label = it.label .. "   x" .. it.n, value = it.value }
+        end
+        return opts
+    end
+
     -- Auto Open Crate (jumlah + jenis)
     local fCrate = visualFeature(page, "Auto Open Crate", "autoCrate", 28, function(body)
         createSegmented(body, {
@@ -4039,7 +4167,9 @@ do
             Size = UDim2.new(1, -104, 1, 0),
             Position = UDim2.new(0, 104, 0, 0),
         }, {
-            options = CRATE_OPTIONS,
+            getOptions = function() return optionsFor("crate") end,
+            labelOf = function(id) return labelFor("crate", id) end,
+            emptyMsg = "No crates yet",
             initial = flags.crateType,
             placeholder = "Select a crate",
             onChange = function(v) setFlag("crateType", v) end,
@@ -4096,7 +4226,9 @@ do
             Size = UDim2.new(1, -104, 1, 0),
             Position = UDim2.new(0, 104, 0, 0),
         }, {
-            options = LUCKY_OPTIONS,
+            getOptions = function() return optionsFor("lucky") end,
+            labelOf = function(id) return labelFor("lucky", id) end,
+            emptyMsg = "No lucky blocks yet",
             initial = flags.luckyType,
             placeholder = "Select a block",
             onChange = function(v) setFlag("luckyType", v) end,
@@ -4140,6 +4272,25 @@ do
             end
         end
         return 1.5
+    end)
+
+    -- Kartu crate / lucky block hilang kalau pemain tidak punya satu pun (event sudah dihapus),
+    -- dan muncul lagi begitu punya. Saat disembunyikan, fiturnya dimatikan.
+    runLoop(function()
+        task.spawn(refreshCounts)
+        for _, k in ipairs({ { "crate", fCrate, "autoCrate" }, { "lucky", fLucky, "autoLucky" } }) do
+            local list, covered = ownedItems(k[1])
+            local hide = covered and #list == 0
+            if k[2].card.Visible == hide then
+                k[2].card.Visible = not hide
+                if hide and flags[k[3]] then
+                    setFlag(k[3], false)
+                    k[2].set(false)
+                    k[2].setNote("")
+                end
+            end
+        end
+        return 3
     end)
 
     -- Auto Use Potion: potion bisa di-stack, dipakai terus sampai stok habis

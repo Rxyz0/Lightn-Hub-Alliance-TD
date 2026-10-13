@@ -3512,11 +3512,13 @@ do
 
     local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
 
-    local function findSkipButton()
+    -- anyState = true: tombol yang sedang tersembunyi juga diambil, supaya bisa disimpan
+    -- dan langsung ditekan begitu tampil.
+    local function findSkipButton(anyState)
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         if not pg then return nil end
         for _, d in ipairs(pg:GetDescendants()) do
-            if d:IsA("GuiButton") and isShown(d) then
+            if d:IsA("GuiButton") and (anyState or isShown(d)) then
                 local txt = d:IsA("TextButton") and d.Text or ""
                 if txt == "" then
                     local tl = d:FindFirstChildWhichIsA("TextLabel", true)
@@ -3554,11 +3556,13 @@ do
         return fired
     end
 
-    local skipState = { pressed = false, lastWave = nil, lastFire = 0, fires = 0, blind = 0 }
+    -- Tombol Skip disimpan setelah ketemu, jadi pengecekan tiap putaran murah. Pencarian
+    -- penuh di PlayerGui (mahal) hanya dilakukan paling cepat tiap 0.5 detik.
+    local skipState = { pressed = false, lastWave = nil, waveAt = 0, lastFire = 0, fires = 0, blind = 0, btn = nil, scanAt = 0 }
     runLoop(function()
         if not flags.autoSkip then
             fSkip.setNote("")
-            skipState.pressed, skipState.lastWave = false, nil
+            skipState.pressed, skipState.lastWave, skipState.btn = false, nil, nil
             skipState.fires, skipState.blind = 0, 0
             return 0.5
         end
@@ -3568,44 +3572,54 @@ do
             return 1.5
         end
 
-        local btn = findSkipButton()
-        if btn then
+        local now = os.clock()
+        local btn = skipState.btn
+        if btn and not btn.Parent then btn = nil end
+        if not btn and now - skipState.scanAt >= 0.5 then
+            skipState.scanAt = now
+            btn = findSkipButton(true)
+        end
+        skipState.btn = btn
+
+        -- Penekanan utama dilakukan oleh pengecek per frame di bawah; di sini cuma cadangan
+        if btn and isShown(btn) then
             if skipState.pressed then
                 fSkip.setNote("")
-                return 1
+                return 0.3
             end
             if pressButton(btn) then
                 skipState.pressed = true
                 fSkip.setNote("")
-                return 1
+                return 0.3
             end
         else
             skipState.pressed = false
         end
 
-        local now = os.clock()
         local w = waveNow.cur
         if w then
             if w ~= skipState.lastWave then
                 skipState.lastWave = w
                 skipState.fires = 0
                 skipState.lastFire = 0
+                skipState.waveAt = now
             end
             if skipState.fires >= 2 or now - skipState.lastFire < 5 then
                 fSkip.setNote("Skipped wave " .. w, C.text)
-                return 1
+                return 0.3
             end
+            -- Beri waktu singkat supaya tombol skip sempat muncul; kalau tidak muncul, kirim langsung
+            if now - skipState.waveAt < 0.7 then return 0.15 end
             skipState.fires = skipState.fires + 1
             skipState.lastFire = now
-            task.wait(1.2) -- beri waktu tombol skip muncul
             for _, n in ipairs({ w + SKIP_WAVE_OFFSET, w + SKIP_WAVE_OFFSET + 1 }) do
                 if n >= 1 then
                     pcall(function() ev:FireServer(n) end)
-                    task.wait(0.15)
+                    task.wait(0.1)
                 end
             end
             fSkip.setNote("Skipped wave " .. w, C.text)
-            return 1
+            return 0.3
         end
 
         if now - skipState.lastFire >= 6 then
@@ -3615,6 +3629,32 @@ do
         end
         fSkip.setNote("")
         return 1
+    end)
+
+    -- Tombol Skip ditekan di frame yang sama saat ia tampil (tetap secepat itu di game speed x3).
+    table.insert(conns, RunService.Heartbeat:Connect(function()
+        if not flags.autoSkip then return end
+        local b = skipState.btn
+        if not (b and b.Parent) then return end
+        if isShown(b) then
+            if not skipState.pressed and os.clock() >= (skipState.nextTry or 0) then
+                if pressButton(b) then
+                    skipState.pressed = true
+                else
+                    skipState.nextTry = os.clock() + 0.5
+                end
+            end
+        else
+            skipState.pressed = false
+        end
+    end))
+    -- Tombol baru yang dibuat game memicu pencarian ulang segera
+    task.spawn(function()
+        local pg = LocalPlayer:WaitForChild("PlayerGui", 30)
+        if not pg then return end
+        table.insert(conns, pg.DescendantAdded:Connect(function(d)
+            if flags.autoSkip and not skipState.btn and d:IsA("GuiButton") then skipState.scanAt = 0 end
+        end))
     end)
 
     -- ---------------- Auto Replay / Auto Lobby (layar akhir match) ----------------

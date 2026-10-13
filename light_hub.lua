@@ -1,6 +1,6 @@
 -- =================================================================
 -- LIGHTN HUB v4.3
--- Tab: Main | Items (Gacha, Inventory) | Fishing | Macro (Macro, Sharing) | Endless | Rewards
+-- Tab: Main | Items (Gacha, Inventory) | Macro (Macro, Sharing) | Endless | Rewards
 -- Settings (Settings, Profile) dibuka lewat ikon gear di header
 -- =================================================================
 
@@ -18,9 +18,9 @@ local LocalPlayer = Players.LocalPlayer
 local VERSION = "4.3"
 
 -- Jadwal update Halloween (detik epoch, UTC): 12 Okt 2026 23:00 WIB = 16:00 UTC.
--- Mulai saat itu tema Halloween aktif otomatis, pilihan Theme muncul di Settings,
--- dan fitur Fishing disembunyikan. Waktu dibaca dari server Roblox, jadi sama untuk
--- semua zona waktu (WIB, WITA, WIT) dan tidak terpengaruh jam perangkat.
+-- Mulai saat itu tema Halloween aktif otomatis dan pilihan Theme muncul di Settings.
+-- Waktu dibaca dari server Roblox, jadi sama untuk semua zona waktu (WIB, WITA, WIT)
+-- dan tidak terpengaruh jam perangkat.
 local EVENT = { start = 1791820800, live = false }
 function EVENT.now()
     local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
@@ -2780,7 +2780,6 @@ local nav = {
     groups = {
         { name = "Main", pages = { { "Main", "Main" } } },
         { name = "Items", pages = { { "Gacha", "Gacha" }, { "Inventory", "Inventory" } } },
-        { name = "Fishing", pages = { { "Fishing", "Fishing" } } },
         { name = "Macro", pages = { { "Macro", "Macro" }, { "Share", "Sharing" } } },
         { name = "Endless", pages = { { "Endless", "Endless" } } },
         { name = "Rewards", pages = { { "AFK", "Rewards" } } },
@@ -2927,7 +2926,7 @@ for _, grp in ipairs(nav.groups) do
     for _, pg in ipairs(grp.pages) do addPage(pg[1], grp) end
 end
 for _, pg in ipairs(nav.settings.pages) do addPage(pg[1], nav.settings) end
-for _, grp in ipairs({ nav.groups[2], nav.groups[4], nav.settings }) do
+for _, grp in ipairs({ nav.groups[2], nav.groups[3], nav.settings }) do
     for _, pg in ipairs(grp.pages) do addTopButton(pg) end
 end
 
@@ -3011,37 +3010,6 @@ for i, grp in ipairs(nav.groups) do
     grp.item = item
     -- Buka halaman terakhir yang dipakai di grup ini
     item.MouseButton1Click:Connect(function() selectTab(grp.last or grp.pages[1][1]) end)
-end
-
--- Susun ulang sidebar: grup yang disembunyikan dilewati, sisanya naik mengisi tempatnya
-function nav.relayout()
-    local y = 8
-    for _, grp in ipairs(nav.groups) do
-        grp.item.Visible = not grp.hidden
-        if not grp.hidden then
-            grp.y = y
-            grp.item.Position = UDim2.new(0, 0, 0, y)
-            y = y + 32
-        end
-    end
-    local g = nav.cur and nav.byPage[nav.cur]
-    if g and g.hidden then
-        nav.lastMain = "Main"
-        selectTab("Main")
-    elseif g then
-        selectTab(nav.cur)
-    end
-    local lm = nav.byPage[nav.lastMain]
-    if lm and lm.hidden then nav.lastMain = "Main" end
-end
-
--- =================================================================
--- Remote fishing: ReplicatedStorage.Fishing.Remotes.<nama>
--- =================================================================
-local function fishRemote(name)
-    local root = ReplicatedStorage:FindFirstChild("Fishing")
-    local remotes = root and root:FindFirstChild("Remotes")
-    return remotes and remotes:FindFirstChild(name)
 end
 
 -- =================================================================
@@ -4262,563 +4230,6 @@ do
 end
 
 -- =================================================================
--- Inventory: Fish (lihat jumlah per ikan + jual)
--- Data dari GetData.Fishing.Fish (jumlah) dan FishLocksRaw (ikan terkunci tidak dijual).
--- Jual: FishingFunction("SellFish", { Fish, Amount, Weight })
--- =================================================================
-do
-    local page = tabs["Inventory"].page
-    local FISH_WEIGHT = 1.22
-
-    local cache = nil            -- { list = { {n, c}... }, total = n }
-    local cacheAt, busy = -100, false
-
-    local function lockedCount(raw)
-        if type(raw) ~= "string" then return 0 end
-        local n = 0
-        for tok in string.gmatch(raw, "[^,%[%]%s]+") do
-            if tok == "true" or tok == "1" then n = n + 1 end
-        end
-        return n
-    end
-
-    local function refresh(force)
-        if busy then return end
-        if not force and os.clock() - cacheAt < 8 then return end
-        busy = true
-        cacheAt = os.clock()
-        task.spawn(function()
-            local ok, res = invoke("GetData")
-            local fd = ok and type(res) == "table" and res.Fishing or nil
-            if type(fd) == "table" and type(fd.Fish) == "table" then
-                local locks = type(fd.FishLocksRaw) == "table" and fd.FishLocksRaw or {}
-                local list, total = {}, 0
-                for name, c in pairs(fd.Fish) do
-                    if type(c) == "number" then
-                        local free = math.floor(c) - lockedCount(locks[name])
-                        if free > 0 then
-                            list[#list + 1] = { n = name, c = free }
-                            total = total + free
-                        end
-                    end
-                end
-                table.sort(list, function(a, b)
-                    if a.c ~= b.c then return a.c > b.c end
-                    return a.n < b.n
-                end)
-                cache = { list = list, total = total }
-            end
-            busy = false
-        end)
-    end
-
-    local card = createFeature(page, "Fish", { noToggle = true, bodyHeight = 64 })
-    card.card.LayoutOrder = -1   -- di bawah kartu Units
-    ui.fishCard = card.card
-    local selected, statusUntil, selling = nil, 0, false
-
-    local function say(t, color)
-        statusUntil = os.clock() + 4
-        card.setNote(t, color)
-    end
-
-    createSelect(card.body, {
-        Size = UDim2.new(1, 0, 0, 28),
-    }, {
-        placeholder = "Select a fish",
-        emptyMsg = "No fish yet",
-        getOptions = function()
-            refresh(false)
-            local opts = {}
-            for _, f in ipairs(cache and cache.list or {}) do
-                opts[#opts + 1] = { label = f.n .. "   x" .. f.c, value = f.n }
-            end
-            return opts
-        end,
-        onChange = function(v) selected = v end,
-    })
-
-    local amountBox = createInput(card.body, {
-        Size = UDim2.new(0, 90, 0, 28),
-        Position = UDim2.new(0, 0, 0, 36),
-        TextXAlignment = Enum.TextXAlignment.Center,
-    }, "Amount")
-
-    local function sellFish()
-        if selling then return end
-        if not selected then
-            say("Select a fish", C.warn)
-            return
-        end
-        local amount = tonumber(amountBox.Text)
-        if not amount or amount < 1 then
-            say("Enter an amount", C.warn)
-            return
-        end
-        local have = 0
-        for _, f in ipairs(cache and cache.list or {}) do
-            if f.n == selected then have = f.c end
-        end
-        if have <= 0 then
-            say("Out of stock", C.warn)
-            return
-        end
-        amount = math.min(math.floor(amount), have)
-        local fn = fishRemote("FishingFunction")
-        if not fn then
-            say("Fish selling unavailable", C.warn)
-            return
-        end
-        selling = true
-        task.spawn(function()
-            local ok, res = pcall(function()
-                return fn:InvokeServer("SellFish", { Fish = selected, Amount = amount, Weight = FISH_WEIGHT })
-            end)
-            if accepted(ok, res) then
-                say("Sold " .. amount .. " " .. selected, C.text)
-            else
-                say("Sale failed", C.warn)
-            end
-            refresh(true)
-            selling = false
-        end)
-    end
-
-    createButton(card.body, {
-        Size = UDim2.new(1, -98, 0, 28),
-        Position = UDim2.new(0, 98, 0, 36),
-    }, "Sell", sellFish)
-
-    runLoop(function()
-        refresh(false)
-        if os.clock() > statusUntil then
-            if cache then
-                card.setNote(#cache.list .. " types · " .. cache.total .. " fish", C.muted)
-            else
-                card.setNote("")
-            end
-        end
-        return 3
-    end)
-end
-
--- =================================================================
--- Fishing: Auto Fishing + Craft Fishing Island
---   Urutan: Cast{Position} -> LuckHold/LuckRelease{ClickTime}
---   -> Hit{Index 1..10, ClickTime} (sekitar 1 detik per Hit)
--- =================================================================
-do
-    local page = tabs["Fishing"].page
-    local FISHING_ENABLED = true  -- false = tab Fishing dikunci
-    if not FISHING_ENABLED then
-        local area = make("Frame", {
-            Size = UDim2.new(1, 0, 0, 230),
-            BackgroundTransparency = 1,
-        }, page)
-        make("TextLabel", {
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 1,
-            Text = "Disable",
-            TextColor3 = C.hi,
-            TextSize = 34,
-            Font = Enum.Font.GothamBold,
-        }, area)
-    else
-    local GuiService = game:GetService("GuiService")
-    local FISH_FILE = "LightHub_Fish.json"
-
-    -- Jeda antar langkah (detik). Ubah di sini kalau game menolak / terlalu lambat.
-    local TIMING = {
-        reactMin = 0.55,     -- jeda minimal setelah target muncul sebelum Hit (detik)
-        reactSpread = 0.2,   -- tambahan acak supaya tidak kaku
-        holdMin = 1.5,       -- lama tahan luck paling singkat (detik)
-        holdMax = 2.0,       -- lama tahan luck paling lama (detik)
-        endWait = 3,         -- jeda setelah ikan tertangkap sebelum lempar lagi
-    }
-
-    -- ---------------- Spot lemparan (disimpan di file kalau executor mendukung) ----------------
-    local spot = nil
-    if canFile then
-        pcall(function()
-            if isfile(FISH_FILE) then
-                local d = HttpService:JSONDecode(readfile(FISH_FILE))
-                if type(d) == "table" and type(d.x) == "number" and type(d.y) == "number" and type(d.z) == "number" then
-                    spot = Vector3.new(d.x, d.y, d.z)
-                end
-            end
-        end)
-    end
-    local function saveSpot()
-        if canFile and spot then
-            pcall(function()
-                writefile(FISH_FILE, HttpService:JSONEncode({ x = spot.X, y = spot.Y, z = spot.Z }))
-            end)
-        end
-    end
-
-    -- ---------------- Auto Fishing ----------------
-    local fishing = false
-    local feat
-    feat = createFeature(page, "Auto Fishing", {
-        bodyHeight = 62,
-        onToggle = function(v)
-            fishing = v
-            if not v then feat.setNote("", C.muted) end
-        end,
-    })
-    ui.fishStop = function()
-        fishing = false
-        feat.set(false)
-        feat.setNote("", C.muted)
-    end
-
-    local spotLabel = make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 22),
-        Position = UDim2.new(0, 0, 0, 36),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = C.muted,
-        TextSize = 10,
-        Font = Enum.Font.RobotoMono,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-    }, feat.body)
-    local function setSpotText()
-        spotLabel.Text = spot
-            and string.format("Spot  %d, %d, %d", math.floor(spot.X + 0.5), math.floor(spot.Y + 0.5), math.floor(spot.Z + 0.5))
-            or "No spot set"
-    end
-    setSpotText()
-
-    local picking = false
-    createButton(feat.body, {
-        Size = UDim2.new(0, 96, 0, 28),
-        Position = UDim2.new(0, 0, 0, 2),
-    }, "Set spot", function()
-        picking = true
-        notify("Set Spot", "Tap the water where you want to cast", 5)
-    end)
-
-    table.insert(conns, UserInputService.InputBegan:Connect(function(input, processed)
-        if not picking or processed then return end
-        local t = input.UserInputType
-        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
-        picking = false
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-        local pos2
-        if t == Enum.UserInputType.Touch then
-            local inset = GuiService:GetGuiInset()
-            pos2 = Vector2.new(input.Position.X, input.Position.Y) + inset
-        else
-            pos2 = UserInputService:GetMouseLocation()
-        end
-        local ray = cam:ViewportPointToRay(pos2.X, pos2.Y)
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { LocalPlayer.Character }
-        params.IgnoreWater = false
-        local hit = workspace:Raycast(ray.Origin, ray.Direction * 1500, params)
-        if hit then
-            spot = hit.Position
-            saveSpot()
-            setSpotText()
-        else
-            notify("Set Spot", "Missed that tap, try again", 3)
-        end
-    end))
-
-    local function alive() return fishing and ScreenGui.Parent ~= nil end
-    local function nap(t)
-        local untilT = os.clock() + t
-        while os.clock() < untilT do
-            if not alive() then return false end
-            task.wait(0.1)
-        end
-        return alive()
-    end
-
-    -- ---------------- Event dari server ----------------
-    -- Urutan di game:
-    --   Cast -> CastStarted{Luck={Speed,...}} -> LuckHold -> LuckHeld -> LuckRelease
-    --   -> LuckLocked{Luck,Fill} -> Target{Index,Total,StartTime} -> Hit{Index,ClickTime}
-    --   -> StageHit -> Target berikutnya ... -> Catch{Fish,Xp,Weight}
-    -- Fill bar luck = gelombang segitiga dari (lama tahan x Speed): penuh tepat di
-    -- 1/Speed detik. Luck = 0.5 + 1.5 x Fill (maksimal x2.0).
-    -- Target: tiap target dibalas satu Hit setelah target muncul (StartTime).
-    local queue = {}
-    local cueEvent = fishRemote("FishingEvent")
-    if cueEvent and cueEvent:IsA("RemoteEvent") then
-        table.insert(conns, cueEvent.OnClientEvent:Connect(function(...)
-            local p = table.pack(...)
-            queue[#queue + 1] = { name = type(p[1]) == "string" and p[1] or "", data = p[2] }
-            if #queue > 60 then table.remove(queue, 1) end
-        end))
-    end
-
-    local function waitEvent(match, timeout)
-        local untilT = os.clock() + timeout
-        while true do
-            for i = 1, #queue do
-                if match(queue[i]) then return table.remove(queue, i) end
-            end
-            if os.clock() >= untilT or not alive() then return nil end
-            task.wait(0.03)
-        end
-    end
-
-    local function holdWait(t)
-        local untilT = os.clock() + t
-        while os.clock() < untilT do
-            if not alive() then return false end
-            task.wait()
-        end
-        return true
-    end
-
-    -- Lama tahan luck: acak antara holdMin dan holdMax. Dari semua kemungkinan di
-    -- rentang itu, dipilih yang bar luck-nya paling penuh (gelombang segitiga dari
-    -- lama tahan x Speed) lalu diacak lagi di antara yang hampir sama bagusnya.
-    local function pickHold(speed)
-        local lo, hi = TIMING.holdMin, TIMING.holdMax
-        if not speed or speed <= 0 then return lo + math.random() * (hi - lo) end
-        local cands, best = {}, -1
-        for i = 0, 10 do
-            local h = lo + (hi - lo) * i / 10
-            local fill = 1 - math.abs(((h * speed) % 2) - 1)
-            cands[#cands + 1] = { h = h, f = fill }
-            if fill > best then best = fill end
-        end
-        local pool = {}
-        for _, c in ipairs(cands) do
-            if c.f >= best - 0.08 then pool[#pool + 1] = c.h end
-        end
-        return pool[math.random(#pool)] + (math.random() - 0.5) * 0.04
-    end
-
-    local function cycle(ev)
-        for i = #queue, 1, -1 do queue[i] = nil end
-
-        -- Lempar: kalau server tidak membalas CastStarted, coba lagi (maks 4x) dengan
-        -- posisi sedikit digeser
-        local started = nil
-        for attempt = 1, 4 do
-            local pos = spot + Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
-            feat.setNote("")
-            ev:FireServer("Cast", { Position = pos })
-            started = waitEvent(function(e) return e.name == "CastStarted" end, 4)
-            if started or not alive() then break end
-            if not nap(3) then return end
-        end
-        if not alive() then return end
-        if not started then
-            feat.setNote("", C.muted)
-            nap(10)
-            return
-        end
-
-        -- Luck: tahan 1.5 - 2 detik dengan variasi
-        local luck = type(started.data) == "table" and started.data.Luck or nil
-        local speed = type(luck) == "table" and tonumber(luck.Speed) or nil
-        local hold = pickHold(speed)
-        if not holdWait(0.3 + math.random() * 0.5) then return end
-        local t0 = workspace:GetServerTimeNow()
-        ev:FireServer("LuckHold", { ClickTime = t0 })
-        if not holdWait(hold) then return end
-        ev:FireServer("LuckRelease", { ClickTime = t0 + hold })
-
-        local locked = waitEvent(function(e) return e.name == "LuckLocked" end, 3)
-        if locked and type(locked.data) == "table" and tonumber(locked.data.Luck) then
-            feat.setNote(string.format("Luck x%.2f", locked.data.Luck), C.text)
-        end
-
-        -- Tarik ikan: tiap Target dibalas satu Hit setelah target itu muncul
-        local function isStep(e) return e.name == "Target" or e.name == "Catch" end
-        feat.setNote("Waiting for bite", C.text)
-        local step = waitEvent(isStep, 45)
-        local caught = nil
-        while step and alive() do
-            if step.name == "Catch" then
-                caught = step
-                break
-            end
-            local d = step.data
-            if type(d) == "table" and tonumber(d.Index) then
-                local start = tonumber(d.StartTime) or workspace:GetServerTimeNow()
-                local fireAt = start + TIMING.reactMin + math.random() * TIMING.reactSpread
-                while alive() and workspace:GetServerTimeNow() < fireAt do task.wait() end
-                if not alive() then return end
-                feat.setNote("Reeling " .. d.Index .. "/" .. tostring(d.Total or "?"), C.text)
-                ev:FireServer("Hit", { Index = d.Index, ClickTime = workspace:GetServerTimeNow() })
-            end
-            step = waitEvent(isStep, 6)
-        end
-        if not alive() then return end
-        if caught then
-            local info = type(caught.data) == "table" and caught.data.Fish or nil
-            feat.setNote(info and ("Caught " .. tostring(info)) or "Caught", C.text)
-        else
-            feat.setNote("Got away", C.warn)
-        end
-        nap(TIMING.endWait)
-    end
-
-    task.spawn(function()
-        while ScreenGui.Parent do
-            if fishing then
-                local ev = fishRemote("FishingEvent")
-                if LocalPlayer:GetAttribute("InFishingZone") == false then
-                    feat.setNote("Go to a fishing zone", C.warn)
-                    task.wait(1)
-                elseif not spot then
-                    feat.setNote("Set a spot first", C.warn)
-                    task.wait(1)
-                elseif not ev then
-                    feat.setNote("", C.muted)
-                    task.wait(2)
-                else
-                    local ok, err = pcall(cycle, ev)
-                    if not ok then
-                        warn("[Light] fishing: " .. tostring(err))
-                        task.wait(1)
-                    end
-                end
-            else
-                task.wait(0.5)
-            end
-        end
-    end)
-
-    -- ---------------- Craft Fishing Island ----------------
-    local CRAFT_ENABLED = false  -- craft dimatikan sementara
-    if not CRAFT_ENABLED then
-        local craftOff = createFeature(page, "Craft Fishing Island", {})
-        craftOff.setLocked(true)
-    else
-    local RECIPES = {
-        { id = 1, name = "Poseidon Cameraman" },
-        { id = 2, name = "Fish Crate" },
-    }
-
-    -- Coba baca bahan resep dari ModuleScript resep milik game (kalau ada)
-    local function recipeText(id)
-        local root = ReplicatedStorage:FindFirstChild("Fishing")
-        if not root then return nil end
-        for _, m in ipairs(root:GetDescendants()) do
-            if m:IsA("ModuleScript") and string.find(string.lower(m.Name), "recipe", 1, true) then
-                local ok, data = pcall(require, m)
-                if ok and type(data) == "table" then
-                    local rec = data[id]
-                    if rec == nil and type(data.Recipes) == "table" then rec = data.Recipes[id] end
-                    if type(rec) == "table" then
-                        local parts = {}
-                        local function walk(t, depth)
-                            for k, v in pairs(t) do
-                                if #parts >= 6 then return end
-                                if type(v) == "number" and type(k) == "string" then
-                                    parts[#parts + 1] = k .. " x" .. v
-                                elseif type(v) == "table" and depth < 2 then
-                                    walk(v, depth + 1)
-                                end
-                            end
-                        end
-                        walk(rec, 0)
-                        if #parts > 0 then return table.concat(parts, ", ") end
-                    end
-                end
-            end
-        end
-        return nil
-    end
-
-    local craftCard = createCard(page, 34 + #RECIPES * 46 + 8)
-    make("TextLabel", {
-        Size = UDim2.new(1, -24, 0, 34),
-        Position = UDim2.new(0, 12, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "Craft Fishing Island",
-        TextColor3 = C.text,
-        TextSize = 12,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, craftCard)
-
-    local crafting = false
-    for i, r in ipairs(RECIPES) do
-        local y = 34 + (i - 1) * 46
-        make("TextLabel", {
-            Size = UDim2.new(1, -160, 0, 18),
-            Position = UDim2.new(0, 12, 0, y + 4),
-            BackgroundTransparency = 1,
-            Text = r.name,
-            TextColor3 = C.hi,
-            TextSize = 12,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, craftCard)
-        local need = make("TextLabel", {
-            Size = UDim2.new(1, -160, 0, 14),
-            Position = UDim2.new(0, 12, 0, y + 23),
-            BackgroundTransparency = 1,
-            Text = "Recipe " .. r.id,
-            TextColor3 = C.muted,
-            TextSize = 10,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-        }, craftCard)
-        task.spawn(function()
-            local t = recipeText(r.id)
-            if t then need.Text = t end
-        end)
-
-        local qty = createInput(craftCard, {
-            Size = UDim2.new(0, 48, 0, 28),
-            Position = UDim2.new(1, -136, 0, y + 8),
-            Text = "1",
-            TextXAlignment = Enum.TextXAlignment.Center,
-            Font = Enum.Font.RobotoMono,
-        }, "1")
-        createButton(craftCard, {
-            Size = UDim2.new(0, 70, 0, 28),
-            Position = UDim2.new(1, -82, 0, y + 8),
-        }, "Craft", function()
-            if crafting then return end
-            local fn = fishRemote("FishingFunction")
-            if not fn then
-                notify("Craft", "Fishing isn't available right now", 3)
-                return
-            end
-            local n = math.clamp(math.floor(tonumber(qty.Text) or 1), 1, 99)
-            crafting = true
-            task.spawn(function()
-                local done = 0
-                for _ = 1, n do
-                    if not ScreenGui.Parent then break end
-                    local ok, res = pcall(function()
-                        return fn:InvokeServer("Craft", { Recipe = r.id })
-                    end)
-                    if not accepted(ok, res) then break end
-                    done = done + 1
-                    if done < n then task.wait(0.3) end
-                end
-                if done == n then
-                elseif done > 0 then
-                    notify("Craft stopped", done .. "/" .. n .. " " .. r.name .. ", probably missing materials", 3)
-                else
-                    notify("Craft failed", r.name .. ": missing materials or request refused", 3)
-                end
-                crafting = false
-            end)
-        end)
-    end
-
-    end
-    end
-end
-
--- =================================================================
 -- Endless: Auto Upgrade (remote dicari saat match berjalan)
 -- =================================================================
 do
@@ -5431,6 +4842,12 @@ do
     EP.findUttm, EP.pushMacro = findUttm, pushMacro
     EP.isBusy = function() return uttmBusy end
     EP.readUnits = readUnits
+    EP.droneOn = isDroneOn
+    -- Pastikan drone UTTM ada di keadaan yang diminta (true = aktif). Mengembalikan true kalau berhasil.
+    EP.setDrone = function(tw, want)
+        if isDroneOn(tw) == want then return true end
+        return toggleDrone(tw, want)
+    end
 end
 
 -- =================================================================
@@ -6359,6 +5776,7 @@ end
 -- =================================================================
 -- Macro: rekam dan putar ulang strategi
 --   PlaceTower(nama, CFrame)   UpgradeTower(tower)   SellTower(tower)
+--   CinemaRelocate("Drones", UTTM)   ChangeTargetMode(tower)
 -- Rekaman ditulis ke file LightHub_Macro_<nama>.json (daftar nama di
 -- LightHub_Macro_Index.json). Tower dikenali lewat nama + posisi.
 -- =================================================================
@@ -6450,6 +5868,11 @@ do
                 if not isNums(a.cf, 12) then return false end
             elseif a.t == "up" or a.t == "sell" then
                 if not isNums(a.p, 3) then return false end
+            elseif a.t == "drone" then
+                if a.on ~= nil and type(a.on) ~= "boolean" then return false end
+            elseif a.t == "target" then
+                if not isNums(a.p, 3) then return false end
+                if a.m ~= nil and type(a.m) ~= "string" and type(a.m) ~= "number" then return false end
             else
                 return false
             end
@@ -6507,8 +5930,8 @@ do
         return true
     end
 
-    -- Place dan upgrade UTTM ikut direkam. Hanya jual UTTM yang dibuang (UTTM tidak
-    -- bisa dijual). Ability dan teleport UTTM tidak lewat remote yang direkam.
+    -- Place, upgrade, mode drone, dan ganti target UTTM ikut direkam. Hanya jual UTTM yang
+    -- dibuang (UTTM tidak bisa dijual). Ability Spin dan teleport UTTM tidak direkam.
     local function stripUttm(m)
         local keep, removed = {}, 0
         for _, a in ipairs(m.actions) do
@@ -6568,7 +5991,7 @@ do
         if not rec then return end
         local acts = {}
         for _, a in ipairs(rec.actions) do
-            acts[#acts + 1] = { t = a.t, n = a.n, w = a.w, cf = a.cf, p = a.p }
+            acts[#acts + 1] = { t = a.t, n = a.n, w = a.w, cf = a.cf, p = a.p, on = a.on, m = a.m }
         end
         saveMacro(rec.name, { v = 1, name = rec.name, actions = acts })
     end
@@ -6581,7 +6004,17 @@ do
         notify("Macro saved", "'" .. rec.name .. "': " .. #rec.actions .. " actions", 4)
     end
 
-    -- Dipanggil (deferred) saat game memanggil Place/Upgrade/SellTower.
+    -- Mode target tower dibaca dari atribut yang namanya memuat "target" (kalau ada)
+    function mstate.modeOf(tw)
+        for name, v in pairs(tw:GetAttributes()) do
+            if (type(v) == "string" or type(v) == "number") and string.find(string.lower(name), "target", 1, true) then
+                return v
+            end
+        end
+        return nil
+    end
+
+    -- Dipanggil (deferred) saat game memanggil Place/Upgrade/SellTower, mode drone, dan ganti target.
     -- Aksi baru dicatat kalau hasilnya benar-benar terlihat di game.
     local function onCall(nm, a1, a2)
         local rec = mstate.rec
@@ -6603,6 +6036,33 @@ do
                 end
             end
             if not ok then return end
+        elseif nm == "Drones" then
+            -- CinemaRelocate("Drones", tower): nyala/mati mode drone. Yang disimpan keadaan akhirnya.
+            local tw = a2
+            if typeof(tw) ~= "Instance" or not EP.droneOn then return end
+            local before = EP.droneOn(tw)
+            local now = before
+            for _ = 1, 8 do
+                task.wait(0.25)
+                now = EP.droneOn(tw)
+                if now ~= before then break end
+            end
+            if now == before then now = not before end
+            act = { t = "drone", n = tw.Name, on = now, w = w }
+        elseif nm == "ChangeTargetMode" then
+            if typeof(a1) ~= "Instance" then return end
+            local okp, pos = pcall(function() return a1:GetPivot().Position end)
+            if not okp then return end
+            local before = mstate.modeOf(a1)
+            local mode = before
+            for _ = 1, 8 do
+                task.wait(0.25)
+                if not a1.Parent then return end
+                mode = mstate.modeOf(a1)
+                if mode ~= before then break end
+            end
+            if mode == before then mode = nil end -- game tidak menyimpan mode di atribut
+            act = { t = "target", n = a1.Name, p = { pos.X, pos.Y, pos.Z }, m = mode, w = w }
         else
             if typeof(a1) ~= "Instance" then return end
             if a1.Name == UTTM_NAME and nm == "SellTower" then return end -- UTTM tidak bisa dijual
@@ -6647,8 +6107,11 @@ do
 
     -- Hook dipasang sekali per server, membaca handler dari mstate
     local function installHook()
-        if mstate.hooked then return true end
         if not (hookmetamethod and newcclosure and getnamecallmethod) then return false end
+        if mstate.hooked and mstate.hookV2 then return true end
+        -- Kalau hook versi lama masih terpasang di server ini, hook baru hanya menangani
+        -- mode drone dan ganti target supaya aksi lama tidak tercatat dua kali.
+        local full = not mstate.hooked
         local ok = pcall(function()
             local orig
             orig = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -6656,13 +6119,15 @@ do
                 if method == "InvokeServer" and (mstate.rec or placeHook.active)
                     and typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
                     local nm = self.Name
-                    if nm == "PlaceTower" or nm == "UpgradeTower" or nm == "SellTower" then
+                    local extra = (nm == "ChangeTargetMode") or (nm == "CinemaRelocate" and (...) == "Drones")
+                    if extra or (full and (nm == "PlaceTower" or nm == "UpgradeTower" or nm == "SellTower")) then
                         local a1, a2 = ...
                         if not (checkcaller and checkcaller()) then
+                            local key = (nm == "CinemaRelocate") and "Drones" or nm
                             local h = mstate.handler
-                            if mstate.rec and h then task.defer(h, nm, a1, a2) end
+                            if mstate.rec and h then task.defer(h, key, a1, a2) end
                             local ph = placeHook.handler
-                            if placeHook.active and ph then task.defer(ph, nm, a1, a2) end
+                            if not extra and placeHook.active and ph then task.defer(ph, nm, a1, a2) end
                         end
                     end
                 end
@@ -6670,7 +6135,8 @@ do
                 return orig(self, ...)
             end))
         end)
-        mstate.hooked = ok
+        mstate.hooked = mstate.hooked or ok
+        mstate.hookV2 = ok
         return ok
     end
 
@@ -7019,6 +6485,35 @@ do
                 if not done then
                     fPlay.setNote("Not enough cash (" .. play.idx .. "/" .. #acts .. ")", C.warn)
                 end
+            end
+        elseif a.t == "drone" then
+            local tw = EP.findUttm and EP.findUttm()
+            if not tw then
+                fPlay.setNote("Waiting for " .. a.n, C.muted)
+            elseif not EP.setDrone then
+                done = true
+            else
+                local want = a.on
+                if want == nil then want = not EP.droneOn(tw) end
+                done = EP.setDrone(tw, want) == true
+                task.wait(0.3)
+            end
+        elseif a.t == "target" then
+            local tw = findTower(a.n, a.p[1], a.p[3], 4)
+            if not tw then
+                fPlay.setNote("Waiting for " .. a.n, C.muted)
+            else
+                if a.m ~= nil and mstate.modeOf(tw) ~= nil then
+                    for _ = 1, 8 do
+                        if mstate.modeOf(tw) == a.m then break end
+                        invoke("ChangeTargetMode", tw)
+                        task.wait(0.35)
+                    end
+                else
+                    invoke("ChangeTargetMode", tw)
+                    task.wait(0.3)
+                end
+                done = true
             end
         else
             local tw = findTower(a.n, a.p[1], a.p[3], 4)
@@ -8436,10 +7931,6 @@ function ui.syncEvent()
     EVENT.applied = EVENT.live
     local live = EVENT.live
     if ui.themeCard then ui.themeCard.Visible = live end
-    if ui.fishCard then ui.fishCard.Visible = not live end
-    nav.groups[3].hidden = live -- Fishing
-    if live and ui.fishStop then ui.fishStop() end
-    nav.relayout()
     if live then
         if not settings.eventTheme then
             settings.eventTheme = true

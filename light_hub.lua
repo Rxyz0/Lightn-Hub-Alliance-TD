@@ -7363,6 +7363,22 @@ do
                 end
             end
 
+            -- Di match: opsi game VFX, indikator darah, dan SFX dimatikan (sekali tiap Anti Lag
+            -- dinyalakan; dicoba ulang kalau server belum menjawab). Tidak dikembalikan saat dimatikan.
+            if game.PlaceId == MATCH_PLACE then
+                task.spawn(function()
+                    for _, opt in ipairs({ "VFX", "HealthIndicator", "SFX" }) do
+                        for _ = 1, 3 do
+                            if my ~= token or not active then return end
+                            local ok = invoke("SetOption", opt, false)
+                            if ok then break end
+                            task.wait(1)
+                        end
+                        task.wait(0.2)
+                    end
+                end)
+            end
+
             if conn then conn:Disconnect() end
             conn = workspace.DescendantAdded:Connect(function(inst)
                 if active then pcall(handle, inst) end

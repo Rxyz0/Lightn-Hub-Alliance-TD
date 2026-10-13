@@ -1272,6 +1272,89 @@ local MainFrame = make("Frame", {
 }, ScreenGui)
 make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, MainFrame)
 
+-- Layar pembuka: hanya di lobby. Di match tidak dibuat sama sekali, jadi tidak ada delay.
+-- Cincin oranye berputar mengelilingi ikon game; setelah hub siap, layar ini memudar
+-- sambil jendela hub membesar ke tempatnya.
+if game.PlaceId == LOBBY_PLACE then
+    local ORANGE, GOLD, DEEP = Color3.fromRGB(255, 140, 24), Color3.fromRGB(255, 214, 80), Color3.fromRGB(210, 78, 10)
+    MainFrame.Visible = false
+    local scale = make("UIScale", { Scale = 1 }, MainFrame)
+    local root = make("CanvasGroup", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+        GroupTransparency = 1, ZIndex = 60,
+    }, ScreenGui)
+    make("Frame", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(8, 5, 3),
+        BackgroundTransparency = 0.4, BorderSizePixel = 0,
+    }, root)
+    local function circle(size, y, parent)
+        local f = make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, y),
+            Size = UDim2.new(0, size, 0, size), BackgroundTransparency = 1, BorderSizePixel = 0,
+        }, parent or root)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+        return f
+    end
+    local glow = circle(150, -16)
+    glow.BackgroundColor3, glow.BackgroundTransparency = ORANGE, 0.9
+    local function ring(size, thick, c1, c2)
+        local f = circle(size, -16)
+        make("UIStroke", { Color = c1, Thickness = thick }, f)
+        make("UIGradient", {
+            Color = ColorSequence.new(c1, c2),
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.15),
+                NumberSequenceKeypoint.new(0.51, 1), NumberSequenceKeypoint.new(1, 1),
+            }),
+        }, f.UIStroke)
+        return f
+    end
+    local ring1 = ring(124, 4, ORANGE, GOLD)
+    local ring2 = ring(104, 2, DEEP, ORANGE)
+    local icon = make("ImageLabel", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16),
+        Size = UDim2.new(0, 80, 0, 80), BackgroundColor3 = Color3.fromRGB(26, 14, 8),
+        BorderSizePixel = 0, ScaleType = Enum.ScaleType.Crop,
+        Image = "rbxthumb://type=GameIcon&id=" .. tostring(game.GameId) .. "&w=150&h=150",
+    }, root)
+    make("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
+    local label = make("TextLabel", {
+        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 58),
+        Size = UDim2.new(0, 220, 0, 22), BackgroundTransparency = 1,
+        Text = "Load the Hub", TextColor3 = GOLD, TextSize = 15, Font = Enum.Font.GothamBold,
+    }, root)
+
+    local t0
+    local spin
+    spin = RunService.Heartbeat:Connect(function(dt)
+        t0 = t0 or os.clock()
+        ring1.Rotation = (ring1.Rotation + dt * 300) % 360
+        ring2.Rotation = (ring2.Rotation - dt * 210) % 360
+        local k = math.sin((os.clock() - t0) * 3)
+        glow.BackgroundTransparency = 0.88 + 0.06 * k
+        label.TextTransparency = 0.12 + 0.12 * (1 - k) / 2
+    end)
+    table.insert(conns, spin)
+
+    task.spawn(function()
+        tween(root, 0.25, { GroupTransparency = 0 })
+        local waited = 0
+        -- tampil minimal 1.8 detik sejak frame pertama, dan menunggu hub selesai dibuat (maks 8 detik)
+        while waited < 8 and not (EVENT.hubReady and t0 and os.clock() - t0 >= 1.8) do
+            task.wait(0.05)
+            waited = waited + 0.05
+        end
+        scale.Scale = 0.92
+        MainFrame.Visible = true
+        TweenService:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        tween(root, 0.4, { GroupTransparency = 1 })
+        task.wait(0.45)
+        spin:Disconnect()
+        root:Destroy()
+        scale:Destroy()
+    end)
+end
+
 -- Latar bergerak pelan seperti tinta abu-abu/putih diaduk di air:
 -- dua lapisan gradient berputar dan bergeser dengan arah/kecepatan berbeda.
 local function fluidLayer(colors, alphas)
@@ -7993,3 +8076,4 @@ runLoop(function()
 end)
 
 selectTab("Main")
+EVENT.hubReady = true

@@ -891,7 +891,7 @@ do
         -- cahaya tipis di sekitar mulut dan mata (lapisan transparan seragam, tidak berdenyut)
         local gl = make("CanvasGroup", {
             Position = UDim2.new(0, -4, 0, -20), Size = UDim2.new(0, 50, 0, 62),
-            BackgroundTransparency = 1, GroupTransparency = 0.62,
+            BackgroundTransparency = 1, GroupTransparency = 0.78,
         }, par)
         local gofs = make("Frame", { Position = UDim2.new(0, 4, 0, 20), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, gl)
         poly(gofs, mouth, C(255, 196, 50), 2, 1)
@@ -1696,7 +1696,9 @@ do
         AutoButtonColor = false,
         BorderSizePixel = 0,
     }, Header)
-    local GEAR_ORANGE = Color3.fromRGB(255, 140, 24)
+    -- Oranye tua khusus gear: lebih gelap dari oranye tertua di GUI (205,78,10), supaya terpisah
+    -- dari labu, tengkorak, dan kelelawar yang berwarna oranye terang
+    local GEAR_ORANGE = Color3.fromRGB(168, 60, 8)
     local icon = make("Frame", {
         Size = UDim2.new(0, 15, 0, 15),
         AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1763,9 +1765,12 @@ do
         }, ov)
         if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
     end
-    for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, GEAR_ORANGE) end
-    ovPart(9, 9, 0, GEAR_ORANGE, true)
-    ovPart(4, 4, 0, Color3.fromRGB(34, 12, 4), true)
+    -- Di mode labu lubang tengah gear kuning, seperti tembus ke mulut; di mode lain gelap.
+    local gearCol, holeCol = GEAR_ORANGE, Color3.fromRGB(34, 12, 4)
+    if decor.gearBuddy == "Pumpkin" then holeCol = Color3.fromRGB(236, 196, 24) end
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, gearCol) end
+    ovPart(9, 9, 0, gearCol, true)
+    ovPart(4, 4, 0, holeCol, true)
     table.insert(conns, icon:GetPropertyChangedSignal("Rotation"):Connect(function()
         ov.Rotation = icon.Rotation
     end))
@@ -8266,7 +8271,7 @@ CloseBtn.MouseButton1Click:Connect(function()
         notify("Close", "Press X again within 3 seconds to close the script", 3)
         task.delay(3, function()
             closeArmed = false
-            for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.text end
+            for _, b in ipairs(CloseBars) do b.BackgroundColor3 = ui.closeNormal or C.text end
         end)
         return
     end
@@ -8281,6 +8286,15 @@ decor.style = "Tree"
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
     -- Labu di gear sedikit menutupi huruf pertama judul, jadi judul digeser ke kanan
+    -- Tombol - (krem tulang) dan X (merah-oranye tua); di tema Default kembali ke warna biasa
+    local minCol = on and Color3.fromRGB(226, 214, 188) or C.text
+    ui.closeNormal = on and Color3.fromRGB(196, 52, 16) or C.text
+    MinLine.BackgroundColor3 = minCol
+    local mst = MinBox:FindFirstChildOfClass("UIStroke")
+    if mst then mst.Color = minCol end
+    if not closeArmed then
+        for _, b in ipairs(CloseBars) do b.BackgroundColor3 = ui.closeNormal end
+    end
     local oldDX = ui.titleDX or 0
     ui.titleDX = (on and decor.gearBuddy == "Pumpkin") and 6 or 0
     TitleRow.Position = UDim2.new(0, 34 + ui.titleDX, 0, 0)
@@ -8341,6 +8355,11 @@ do
         if ui.gearBtn then
             for _, d in ipairs(ui.gearBtn:GetDescendants()) do skip[d] = true end
         end
+        -- Tombol - dan X diwarnai sendiri oleh ui.decorRefresh
+        skip[MinLine] = true
+        skip[MinBox] = true
+        for _, d in ipairs(MinBox:GetDescendants()) do skip[d] = true end
+        for _, b in ipairs(CloseBars) do skip[b] = true end
         local map = to and toHalloween or fromHalloween
     if not to then
         for _, m in ipairs(movers) do m.g.Offset = Vector2.new(0, 0) end

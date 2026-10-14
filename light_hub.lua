@@ -17,16 +17,8 @@ local LocalPlayer = Players.LocalPlayer
 
 local VERSION = "4.4"
 
--- Jadwal update Halloween (detik epoch, UTC): 12 Okt 2026 23:00 WIB = 16:00 UTC.
--- Mulai saat itu tema Halloween aktif otomatis dan pilihan Theme muncul di Settings.
--- Waktu dibaca dari server Roblox, jadi sama untuk semua zona waktu (WIB, WITA, WIT)
--- dan tidak terpengaruh jam perangkat.
-local EVENT = { start = 1791820800, live = false }
-function EVENT.now()
-    local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
-    if ok and type(t) == "number" and t > 1.6e9 then return t end
-    return os.time()
-end
+-- Status layar loading (diisi saat hub dibuat)
+local EVENT = {}
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
 local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json" }
@@ -210,7 +202,6 @@ local POTION_OPTIONS = {
 -- =================================================================
 local settings = {
     theme = "Default",
-    eventTheme = false,
     antiAfk = true,
     showTimer = true,
     cheapestFirst = true,
@@ -478,136 +469,6 @@ do
         local shapes = { P(eye), P(eye, true), P(mouth) }
         for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 130, 20), 1, 1) end
         for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
-    end
-
-    -- Ghost Speaker Man: melayang naik-turun super pelan di depan nisan abu-abu.
-    -- Seluruh adegan digeser ke tengah sidebar; hanya hantunya yang bergerak.
-    function decor.ghost(par)
-        local box = make("Frame", {
-            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
-            Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
-        }, par)
-        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya di tanah
-        local scene = make("Frame", {
-            Position = UDim2.new(0, 17, 0, 0), Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
-        }, box)
-        local function piece(parent, pts, fill, rim)
-            poly(parent, pts, rim, 1, 1)
-            poly(parent, pts, fill, 0, 1)
-        end
-
-        -- tanah cokelat dan nisan
-        oval(scene, 0, 73, 80, 16, Color3.fromRGB(58, 30, 16))
-        oval(scene, 2, 74, 76, 13, Color3.fromRGB(100, 56, 30))
-        local stone = { { 6, 76 }, { 6, 46 }, { 12, 33 }, { 27, 31 }, { 34, 42 }, { 34, 76 } }
-        piece(scene, stone, Color3.fromRGB(70, 68, 76), Color3.fromRGB(26, 26, 30))
-        poly(scene, { { 6, 46 }, { 12, 33 }, { 18, 34 }, { 14, 48 }, { 14, 76 }, { 6, 76 } }, Color3.fromRGB(94, 92, 102), 0, 1)
-        poly(scene, { { 27, 31 }, { 34, 42 }, { 34, 76 }, { 27, 76 } }, Color3.fromRGB(46, 44, 52), 0, 1)
-        piece(scene, { { 3, 73 }, { 38, 73 }, { 38, 79 }, { 3, 79 } }, Color3.fromRGB(62, 60, 68), Color3.fromRGB(26, 26, 30))
-        piece(scene, { { 0, 78 }, { 42, 78 }, { 42, 84 }, { 0, 84 } }, Color3.fromRGB(46, 44, 52), Color3.fromRGB(26, 26, 30))
-        oval(scene, 28, 80, 38, 5, Color3.fromRGB(34, 16, 8), 0.35) -- bayangan hantu
-
-        -- hantu (satu Frame yang naik-turun)
-        local fl = make("Frame", {
-            Position = UDim2.new(0, 0, 0, 4), Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-        }, scene)
-        local GR = Color3.fromRGB(96, 170, 108)
-        piece(fl, { { 33, 52 }, { 58, 52 }, { 61, 60 }, { 60, 68 }, { 56, 74 }, { 49, 78 }, { 43, 78 }, { 46, 73 },
-            { 41, 68 }, { 36, 62 } }, Color3.fromRGB(176, 238, 182), GR)
-        piece(fl, { { 30, 23 }, { 58, 23 }, { 58, 43 }, { 30, 43 } }, Color3.fromRGB(190, 242, 190), GR)
-        piece(fl, { { 30, 43 }, { 58, 43 }, { 58, 53 }, { 54, 57 }, { 50, 53 }, { 46, 58 }, { 42, 53 }, { 38, 57 },
-            { 34, 53 }, { 30, 56 } }, Color3.fromRGB(150, 236, 160), GR)
-        limb(fl, { { 44, 33 }, { 44, 51 } }, 1, 1, Color3.fromRGB(216, 250, 216))
-        -- lengan kiri (sisi penonton): blok lebar; bawah hijau rata, atas pucat bergerigi di tengah lengan
-        piece(fl, { { 14, 40 }, { 30, 40 }, { 30, 56 }, { 14, 56 } }, Color3.fromRGB(128, 232, 142), GR)
-        piece(fl, { { 14, 26 }, { 30, 26 }, { 30, 43 }, { 27, 47 }, { 24, 43 }, { 21, 48 }, { 18, 43 }, { 15, 46 }, { 14, 44 } },
-            Color3.fromRGB(202, 246, 202), GR)
-        -- lengan kanan (sisi penonton): lebih sempit, sedikit lebih tinggi, menempel di sisi badan
-        piece(fl, { { 58, 36 }, { 69, 36 }, { 69, 51 }, { 58, 51 } }, Color3.fromRGB(128, 232, 142), GR)
-        piece(fl, { { 58, 22 }, { 69, 22 }, { 69, 39 }, { 66, 43 }, { 63, 39 }, { 60, 44 }, { 58, 40 } },
-            Color3.fromRGB(202, 246, 202), GR)
-        piece(fl, { { 40, 23 }, { 48, 23 }, { 44, 30 } }, Color3.fromRGB(214, 250, 214), GR)
-        piece(fl, { { 46, 23 }, { 54, 23 }, { 50, 30 } }, Color3.fromRGB(214, 250, 214), GR)
-        piece(fl, { { 28, 1 }, { 58, 1 }, { 60, 3 }, { 60, 21 }, { 58, 23 }, { 28, 23 }, { 26, 21 }, { 26, 3 } },
-            Color3.fromRGB(184, 240, 186), GR)
-        poly(fl, { { 28, 2 }, { 58, 2 }, { 59, 6 }, { 27, 6 } }, Color3.fromRGB(214, 252, 214), 0, 1)
-        oval(fl, 37, 3, 18, 18, Color3.fromRGB(22, 34, 24))
-        oval(fl, 38, 4, 16, 16, Color3.fromRGB(240, 255, 240))
-        oval(fl, 41, 7, 10, 10, Color3.fromRGB(34, 140, 66))
-        for _, sc in ipairs({ { 29, 4 }, { 56, 4 }, { 29, 18 }, { 56, 18 } }) do
-            oval(fl, sc[1], sc[2], 3, 3, Color3.fromRGB(28, 44, 30))
-        end
-        local gg = make("CanvasGroup", {
-            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
-        }, fl)
-        oval(gg, 43, 9, 6, 6, Color3.fromRGB(150, 255, 160))
-        decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
-            TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { GroupTransparency = 0.1 })
-        -- naik-turun super lambat (5 detik per arah)
-        decor.tweens[#decor.tweens + 1] = TweenService:Create(fl,
-            TweenInfo.new(5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { Position = UDim2.new(0, 0, 0, 0) })
-        return box
-    end
-
-    -- Pumpkin Man: kepala labu, kemeja, jas terbuka dengan lapel, dasi, gesper, celana, sepatu.
-    -- Digambar dengan skala S supaya tingginya sama dengan Ghost Speaker Man.
-    function decor.pumpkinMan(par)
-        local box = make("Frame", {
-            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
-            Size = UDim2.new(0, 108, 0, 86), BackgroundTransparency = 1,
-        }, par)
-        local S = 1.5
-        local function T(pts)
-            local o = {}
-            for _, q in ipairs(pts) do o[#o + 1] = { 54 + (q[1] - 90) * S, 85 + (q[2] - 85) * S } end
-            return o
-        end
-        local PR = Color3.fromRGB(120, 40, 10)
-        local JACKET = Color3.fromRGB(240, 128, 28)
-        local function piece(pts, fill, rim)
-            local t = T(pts)
-            poly(box, t, rim, 1, 1)
-            poly(box, t, fill, 0, 1)
-        end
-        local function flat(pts, c) poly(box, T(pts), c, 0, 1) end
-        local function ln(pts, w0, w1, c) limb(box, T(pts), w0 * S, w1 * S, c) end
-
-        oval(box, 0, 78, 108, 14, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya di tanah
-        oval(box, 22, 80, 64, 6, Color3.fromRGB(34, 16, 8), 0.35)    -- bayangan
-
-        piece({ { 81, 70 }, { 89, 70 }, { 89, 82 }, { 81, 82 } }, Color3.fromRGB(196, 48, 24), PR)
-        piece({ { 91, 70 }, { 99, 70 }, { 99, 82 }, { 91, 82 } }, Color3.fromRGB(196, 48, 24), PR)
-        piece({ { 79, 81 }, { 89, 81 }, { 89, 85 }, { 79, 85 } }, Color3.fromRGB(234, 100, 38), PR)
-        piece({ { 91, 81 }, { 101, 81 }, { 101, 85 }, { 91, 85 } }, Color3.fromRGB(234, 100, 38), PR)
-        piece({ { 86, 45 }, { 94, 45 }, { 94, 71 }, { 86, 71 } }, Color3.fromRGB(150, 36, 14), PR)
-        piece({ { 80, 46 }, { 87, 46 }, { 88, 56 }, { 88, 72 }, { 78, 72 }, { 80, 62 } }, JACKET, PR)
-        piece({ { 100, 46 }, { 93, 46 }, { 92, 56 }, { 92, 72 }, { 102, 72 }, { 100, 62 } }, JACKET, PR)
-        flat({ { 85, 46 }, { 89, 47 }, { 88, 58 }, { 84, 52 } }, Color3.fromRGB(210, 80, 18))
-        flat({ { 95, 46 }, { 91, 47 }, { 92, 58 }, { 96, 52 } }, Color3.fromRGB(210, 80, 18))
-        flat({ { 89, 46 }, { 91, 46 }, { 92, 49 }, { 88, 49 } }, Color3.fromRGB(252, 208, 66))
-        flat({ { 89, 49 }, { 91, 49 }, { 92, 62 }, { 90, 65 }, { 88, 62 } }, Color3.fromRGB(252, 208, 66))
-        ln({ { 81, 64 }, { 85, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
-        ln({ { 99, 64 }, { 95, 65 } }, 1, 1, Color3.fromRGB(190, 70, 16))
-        flat({ { 88, 68 }, { 92, 68 }, { 92, 71 }, { 88, 71 } }, Color3.fromRGB(206, 206, 216))
-        -- lengan: bagian bawah merah (ujung rata), bagian atas oranye "meleleh" bergerigi di tengah lengan
-        piece({ { 72, 56 }, { 80, 56 }, { 80, 69 }, { 72, 69 } }, Color3.fromRGB(232, 70, 28), PR)
-        piece({ { 72, 48 }, { 80, 48 }, { 80, 61 }, { 78, 64 }, { 76, 60 }, { 74, 65 }, { 72, 62 } }, Color3.fromRGB(246, 142, 40), PR)
-        piece({ { 100, 56 }, { 108, 56 }, { 108, 69 }, { 100, 69 } }, Color3.fromRGB(232, 70, 28), PR)
-        piece({ { 100, 48 }, { 108, 48 }, { 108, 62 }, { 106, 65 }, { 104, 60 }, { 102, 64 }, { 100, 61 } }, Color3.fromRGB(246, 142, 40), PR)
-
-        local hrx, hry = 11.5, 11
-        local hx, hy = 54, 85 + (46 - 85) * S - hry + 0.8 -- kepala duduk tepat di atas bahu
-        drawPumpkinBody(box, hx, hy, hrx, hry)
-        local gg = make("CanvasGroup", {
-            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
-        }, box)
-        drawPumpkinFace(gg, hx, hy, hrx, hry)
-        decor.tweens[#decor.tweens + 1] = TweenService:Create(gg,
-            TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            { GroupTransparency = 0.1 })
-        return box
     end
 
     -- Burung gagak bertengger di cabang kanan pohon. Siluet gelap polos (tanpa cahaya);
@@ -928,6 +789,78 @@ do
         end
     end
 
+    -- Tengkorak yang mengintip dari balik gear. Titik (0,0) = pusat gear; kepala berada di
+    -- atas gear dan dimiringkan oleh grup induknya. Semua bentuk padat (tanpa garis tipis).
+    function decor.skull(par)
+        local BONE = Color3.fromRGB(226, 214, 188)
+        local SHADE = Color3.fromRGB(185, 169, 138)
+        local INK = Color3.fromRGB(42, 28, 38)
+        -- rahang (di belakang gear)
+        local jaw = { { -6.5, -15.5 }, { 6.5, -15.5 }, { 5, -9 }, { 2.5, -6.5 }, { -2.5, -6.5 }, { -5, -9 } }
+        poly(par, jaw, INK, 1, 1)
+        poly(par, jaw, SHADE, 0, 1)
+        -- tempurung kepala + sisi kanan yang lebih gelap
+        local skullShape = ell(0, -23, 11.2, 10.2)
+        poly(par, skullShape, INK, 1, 1)
+        poly(par, skullShape, BONE, 0, 1)
+        poly(par, { { 7, -31 }, { 10, -27 }, { 10.5, -21 }, { 9, -16 }, { 6, -14.5 }, { 3.5, -16 },
+            { 6, -20 }, { 7, -26 }, { 4, -32 } }, SHADE, 0, 1)
+        -- retakan
+        limb(par, { { 5, -32 }, { 3, -28 }, { 5, -26 }, { 3.5, -23 } }, 1, 1, INK)
+        -- rongga mata + titik oranye redup (tanpa cahaya)
+        poly(par, ell(-4.2, -23, 3.2, 3.6), INK, 0, 1)
+        poly(par, ell(4.2, -23, 3.2, 3.6), INK, 0, 1)
+        for _, ex in ipairs({ -6, 3 }) do
+            make("Frame", {
+                Position = UDim2.new(0, ex, 0, -24), Size = UDim2.new(0, 2, 0, 2),
+                BackgroundColor3 = Color3.fromRGB(217, 130, 42), BorderSizePixel = 0,
+            }, par)
+        end
+        -- hidung dan gigi (blok kecil, sela gigi 1 px)
+        poly(par, { { 0, -18.8 }, { -1.6, -15.6 }, { -0.4, -16 }, { 0, -15.2 }, { 0.4, -16 }, { 1.6, -15.6 } }, INK, 0, 1)
+        local teeth = { { -5.4, -13.6 }, { 5.4, -13.6 }, { 5.4, -10 }, { -5.4, -10 } }
+        poly(par, teeth, INK, 1, 1)
+        poly(par, teeth, BONE, 0, 1)
+        for i = 1, 5 do
+            make("Frame", {
+                Position = UDim2.new(0, math.floor(-5.4 + i * 1.8), 0, -14), Size = UDim2.new(0, 1, 0, 4),
+                BackgroundColor3 = INK, BorderSizePixel = 0,
+            }, par)
+        end
+    end
+
+    -- Lengan dan jari tulang yang memegang gear. par = batRoot (titik 0,0 = pojok kiri atas papan).
+    -- phase "arms": lengan (digambar di bawah gear); "fingers": telapak dan jari (di atas gear).
+    function decor.skullHands(par, phase)
+        local BONE = Color3.fromRGB(226, 214, 188)
+        local INK = Color3.fromRGB(42, 28, 38)
+        if phase == "arms" then
+            for _, a in ipairs({ { { -18, 3 }, { 9, 11.5 } }, { { 40, -10 }, { 30, 10 } } }) do
+                limb(par, a, 4, 4, INK)
+            end
+            for _, a in ipairs({ { { -18, 3 }, { 9, 11.5 } }, { { 40, -10 }, { 30, 10 } } }) do
+                limb(par, a, 2, 2, BONE)
+            end
+            for _, e in ipairs({ { -18, 3 }, { 40, -10 } }) do
+                oval(par, e[1] - 3, e[2] - 3, 6, 6, INK)
+                oval(par, e[1] - 2, e[2] - 2, 4, 4, BONE)
+            end
+        else
+            local hands = {
+                { { 10, 11 }, { { 14.2, 8.6 }, { 15.6, 10.4 }, { 16, 12.6 }, { 15.4, 14.6 } } },
+                { { 29.5, 10.5 }, { { 24.4, 8.4 }, { 23, 10.2 }, { 22.6, 12.4 }, { 23.2, 14.4 } } },
+            }
+            for _, h in ipairs(hands) do
+                oval(par, h[1][1] - 4, h[1][2] - 3.5, 8, 7, INK)
+                for _, t in ipairs(h[2]) do limb(par, { h[1], t }, 3, 3, INK) end
+            end
+            for _, h in ipairs(hands) do
+                oval(par, h[1][1] - 3, h[1][2] - 2.5, 6, 5, BONE)
+                for _, t in ipairs(h[2]) do limb(par, { h[1], t }, 2, 2, BONE) end
+            end
+        end
+    end
+
     -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);
     -- badannya punya engsel sendiri di ujung benang supaya geraknya lentur.
     function decor.spider(par, x)
@@ -1086,7 +1019,6 @@ local function saveSettings()
     local data = {
         antiAfk = settings.antiAfk,
         theme = settings.theme,
-        eventTheme = settings.eventTheme,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
         upgradeDelay = settings.upgradeDelay,
@@ -1138,7 +1070,6 @@ local function loadSettings()
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
     if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
-    if type(data.eventTheme) == "boolean" then settings.eventTheme = data.eventTheme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
@@ -1344,85 +1275,150 @@ local MainFrame = make("Frame", {
 make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, MainFrame)
 
 -- Layar pembuka: hanya di lobby. Di match tidak dibuat sama sekali, jadi tidak ada delay.
--- Cincin oranye berputar mengelilingi ikon game; setelah hub siap, layar ini memudar
--- sambil jendela hub membesar ke tempatnya.
+-- Ikon game dalam bingkai kotak; garis di sekeliling bingkai terisi searah jarum jam.
+-- Setelah penuh dan hub siap, layar memudar lalu hub muncul bertahap:
+-- papan + header, tombol sidebar, lalu isi halaman. Tanpa efek memantul.
+-- Warna mengikuti tema yang dipilih.
 if game.PlaceId == LOBBY_PLACE then
-    local ORANGE, GOLD, DEEP = Color3.fromRGB(255, 140, 24), Color3.fromRGB(255, 214, 80), Color3.fromRGB(210, 78, 10)
+    local hw = settings.theme == "Halloween"
+    local ACC = hw and Color3.fromRGB(255, 140, 24) or Color3.fromRGB(226, 226, 230)
+    local TXT = hw and Color3.fromRGB(255, 214, 80) or Color3.fromRGB(236, 236, 240)
+    local TRACK = hw and Color3.fromRGB(130, 64, 14) or Color3.fromRGB(92, 92, 98)
+    local DIM = hw and Color3.fromRGB(8, 5, 3) or Color3.fromRGB(6, 6, 7)
     MainFrame.Visible = false
-    local scale = make("UIScale", { Scale = 1 }, MainFrame)
+
     local root = make("CanvasGroup", {
         Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
         GroupTransparency = 1, ZIndex = 60,
     }, ScreenGui)
     make("Frame", {
-        Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(8, 5, 3),
+        Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = DIM,
         BackgroundTransparency = 0.4, BorderSizePixel = 0,
     }, root)
-    local function circle(size, y, parent)
-        local f = make("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, y),
-            Size = UDim2.new(0, size, 0, size), BackgroundTransparency = 1, BorderSizePixel = 0,
-        }, parent or root)
-        make("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
-        return f
+
+    local SIDE, GAP, TH = 96, 9, 3
+    local L = SIDE + GAP * 2
+    local cy = -14
+    local glow = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, cy),
+        Size = UDim2.new(0, L + 16, 0, L + 16), BackgroundColor3 = ACC,
+        BackgroundTransparency = 0.92, BorderSizePixel = 0,
+    }, root)
+    local box = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, cy),
+        Size = UDim2.new(0, L, 0, L), BackgroundTransparency = 1, BorderSizePixel = 0,
+    }, root)
+    make("UIStroke", { Color = TRACK, Thickness = 2, Transparency = 0.3 }, box)
+    local bars = {
+        make("Frame", { Size = UDim2.new(0, 0, 0, TH), BackgroundColor3 = ACC, BorderSizePixel = 0 }, box),
+        make("Frame", {
+            AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0),
+            Size = UDim2.new(0, TH, 0, 0), BackgroundColor3 = ACC, BorderSizePixel = 0,
+        }, box),
+        make("Frame", {
+            AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0),
+            Size = UDim2.new(0, 0, 0, TH), BackgroundColor3 = ACC, BorderSizePixel = 0,
+        }, box),
+        make("Frame", {
+            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+            Size = UDim2.new(0, TH, 0, 0), BackgroundColor3 = ACC, BorderSizePixel = 0,
+        }, box),
+    }
+    -- p 0..1: tiap sisi mengisi seperempat (atas, kanan, bawah, kiri)
+    local function setProg(p)
+        for i = 1, 4 do
+            local f = math.clamp(p * 4 - (i - 1), 0, 1)
+            if i % 2 == 1 then
+                bars[i].Size = UDim2.new(f, 0, 0, TH)
+            else
+                bars[i].Size = UDim2.new(0, TH, f, 0)
+            end
+        end
     end
-    local glow = circle(150, -16)
-    glow.BackgroundColor3, glow.BackgroundTransparency = ORANGE, 0.9
-    local function ring(size, thick, c1, c2)
-        local f = circle(size, -16)
-        make("UIStroke", { Color = c1, Thickness = thick }, f)
-        make("UIGradient", {
-            Color = ColorSequence.new(c1, c2),
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.15),
-                NumberSequenceKeypoint.new(0.51, 1), NumberSequenceKeypoint.new(1, 1),
-            }),
-        }, f.UIStroke)
-        return f
-    end
-    local ring1 = ring(124, 4, ORANGE, GOLD)
-    local ring2 = ring(104, 2, DEEP, ORANGE)
+
     local icon = make("ImageLabel", {
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16),
-        Size = UDim2.new(0, 80, 0, 80), BackgroundColor3 = Color3.fromRGB(26, 14, 8),
-        BorderSizePixel = 0, ScaleType = Enum.ScaleType.Crop,
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, cy),
+        Size = UDim2.new(0, SIDE, 0, SIDE), BackgroundColor3 = Color3.fromRGB(22, 22, 26),
+        BorderSizePixel = 0, ScaleType = Enum.ScaleType.Fit,
         Image = "rbxthumb://type=GameIcon&id=" .. tostring(game.GameId) .. "&w=150&h=150",
     }, root)
-    make("UICorner", { CornerRadius = UDim.new(1, 0) }, icon)
-    local label = make("TextLabel", {
-        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 58),
-        Size = UDim2.new(0, 220, 0, 22), BackgroundTransparency = 1,
-        Text = "Load the Hub", TextColor3 = GOLD, TextSize = 15, Font = Enum.Font.GothamBold,
+    -- Huruf cadangan kalau ikon game belum/tidak bisa dimuat
+    local letter = make("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "L",
+        TextColor3 = TXT, TextSize = 40, Font = Enum.Font.GothamBold,
+    }, icon)
+    make("TextLabel", {
+        AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, cy + L / 2 + 14),
+        Size = UDim2.new(0, 300, 0, 22), BackgroundTransparency = 1,
+        Text = "Loading LIGHTN HUB v" .. VERSION, TextColor3 = TXT, TextSize = 14, Font = Enum.Font.GothamBold,
     }, root)
 
-    local t0
+    -- Garis terisi minimal 1,4 detik; berhenti di 90% sampai ikon dan hub siap
+    local t0, prog, finished = nil, 0, false
     local spin
     spin = RunService.Heartbeat:Connect(function(dt)
         t0 = t0 or os.clock()
-        ring1.Rotation = (ring1.Rotation + dt * 300) % 360
-        ring2.Rotation = (ring2.Rotation - dt * 210) % 360
-        local k = math.sin((os.clock() - t0) * 3)
-        glow.BackgroundTransparency = 0.88 + 0.06 * k
-        label.TextTransparency = 0.12 + 0.12 * (1 - k) / 2
+        local el = os.clock() - t0
+        local iconOk = icon.IsLoaded or el > 1.5
+        letter.TextTransparency = icon.IsLoaded and 1 or 0
+        local target = (EVENT.hubReady and iconOk) and 1 or 0.9
+        prog = math.min(target, prog + dt / 1.4)
+        setProg(prog)
+        glow.BackgroundTransparency = 0.9 + 0.05 * math.sin(el * 3)
+        if prog >= 1 then finished = true end
     end)
     table.insert(conns, spin)
 
     task.spawn(function()
         tween(root, 0.25, { GroupTransparency = 0 })
         local waited = 0
-        -- tampil minimal 1.8 detik sejak frame pertama, dan menunggu hub selesai dibuat (maks 8 detik)
-        while waited < 8 and not (EVENT.hubReady and t0 and os.clock() - t0 >= 1.8) do
+        while waited < 8 and not finished do
             task.wait(0.05)
             waited = waited + 0.05
         end
-        scale.Scale = 0.92
+        task.wait(0.15)
+
+        -- Persiapan: sidebar dan isi halaman ditutup tirai dulu, label sidebar disembunyikan
+        local P = EVENT.parts or {}
+        local function veil(par)
+            if not par then return nil end
+            return make("Frame", {
+                Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(10, 10, 11),
+                BorderSizePixel = 0, ZIndex = 100,
+            }, par)
+        end
+        local sv, pv = veil(P.sidebar), veil(P.page)
+        local nv = P.nav
+        if nv then
+            for _, g in ipairs(nv.groups) do
+                if g.label then g.label.TextTransparency = 1 end
+            end
+        end
+        local pagePos = P.page and P.page.Position
+        if pagePos then P.page.Position = pagePos + UDim2.new(0, 0, 0, 10) end
+
+        -- 1) papan + header muncul saat layar loading memudar
         MainFrame.Visible = true
-        TweenService:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-        tween(root, 0.4, { GroupTransparency = 1 })
-        task.wait(0.45)
+        tween(root, 0.35, { GroupTransparency = 1 })
+        task.wait(0.25)
+        -- 2) tombol sidebar satu per satu
+        if sv then tween(sv, 0.3, { BackgroundTransparency = 1 }) end
+        if nv then
+            for i, g in ipairs(nv.groups) do
+                if g.label then
+                    task.delay(0.06 * (i - 1), function() tween(g.label, 0.25, { TextTransparency = 0 }) end)
+                end
+            end
+        end
+        task.wait(0.35)
+        -- 3) isi halaman naik pelan ke tempatnya
+        if pv then tween(pv, 0.35, { BackgroundTransparency = 1 }) end
+        if pagePos then tween(P.page, 0.35, { Position = pagePos }) end
+        task.wait(0.4)
+        if sv then sv:Destroy() end
+        if pv then pv:Destroy() end
         spin:Disconnect()
         root:Destroy()
-        scale:Destroy()
     end)
 end
 
@@ -1695,14 +1691,22 @@ do
     batRoot.ClipsDescendants = false
     -- Kelelawar dimiringkan ke kiri dengan pusat putar di tengah gear; badannya setengah
     -- di belakang gear, kakinya tertutup penuh oleh ikon gear.
+    -- Penghuni gear diundi tiap script dijalankan: kelelawar atau tengkorak
+    decor.gearBuddy = (math.random(2) == 1) and "Bat" or "Skull"
+    local isBat = decor.gearBuddy == "Bat"
     local tilt = make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
-        Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = -22,
+        Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = isBat and -22 or -20,
     }, batRoot)
     local shift = make("Frame", {
-        Position = UDim2.new(0, 1, 0, -1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+        Position = UDim2.new(0, 1, 0, isBat and -1 or 1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
     }, tilt)
-    decor.bat(shift, 0)
+    if isBat then
+        decor.bat(shift, 0)
+    else
+        decor.skull(shift)
+        decor.skullHands(batRoot, "arms")
+    end
     -- Gear oranye digambar lagi di atas kelelawar (ikut berputar dengan gear asli)
     local ov = make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
@@ -1719,6 +1723,7 @@ do
     for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, GEAR_ORANGE) end
     ovPart(9, 9, 0, GEAR_ORANGE, true)
     ovPart(4, 4, 0, Color3.fromRGB(34, 12, 4), true)
+    if not isBat then decor.skullHands(batRoot, "fingers") end
     table.insert(conns, icon:GetPropertyChangedSignal("Rotation"):Connect(function()
         ov.Rotation = icon.Rotation
     end))
@@ -1950,8 +1955,6 @@ do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
     decor.treeBox = decor.tree(root)
-    decor.ghostBox = decor.ghost(root)
-    decor.pumpkinBox = decor.pumpkinMan(root)
     decor.leafLayer = decor.particles(root)
     decor.fog(root)
 end
@@ -1961,6 +1964,7 @@ local PageHolder = make("Frame", {
     Position = UDim2.new(0, SIDEBAR_W, 0, 0),
     BackgroundTransparency = 1,
 }, Body)
+EVENT.parts = { sidebar = Sidebar, page = PageHolder } -- dipakai layar loading
 
 -- Drag lewat header (mouse & sentuh)
 local drag = { on = false }
@@ -7403,7 +7407,6 @@ do
 
     local themeCard = createFeature(page, "Theme", { noToggle = true, bodyHeight = 28 })
     themeCard.card.LayoutOrder = -3
-    ui.themeCard = themeCard.card
     ui.themeSeg = createSegmented(themeCard.body, {
         Size = UDim2.new(1, 0, 1, 0),
     }, {
@@ -7425,7 +7428,7 @@ do
 
     -- Satu tombol untuk semua animasi: crate, lucky block, summon, spin
     local fSkipAnim
-    fSkipAnim = createFeature(page, "Skip Gacha Animation", {
+    fSkipAnim = createFeature(tabs["Gacha"].page, "Skip Gacha Animation", {
         initial = settings.skipAnim,
         onToggle = function(v)
             settings.skipAnim = v
@@ -8230,8 +8233,8 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Tema: dekorasi tampil/sembunyi, warna objek yang sudah ada diganti
--- Tiap script dijalankan, dekorasi sidebar diundi: pohon, Ghost Speaker Man, atau Pumpkin Man
-decor.style = ({ "Tree", "Ghost", "Pumpkin" })[math.random(3)]
+-- Dekorasi sidebar: hanya pohon berwajah dengan gagak dan labu
+decor.style = "Tree"
 
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
@@ -8240,9 +8243,7 @@ function ui.decorRefresh()
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)
     end
     if decor.treeBox then decor.treeBox.Visible = (decor.style == "Tree") end
-    if decor.ghostBox then decor.ghostBox.Visible = (decor.style == "Ghost") end
     if decor.leafLayer then decor.leafLayer.Visible = (decor.style == "Tree") end
-    if decor.pumpkinBox then decor.pumpkinBox.Visible = (decor.style == "Pumpkin") end
     for _, tw in ipairs(decor.tweens) do
         if on then tw:Play() else tw:Pause() end
     end
@@ -8314,33 +8315,9 @@ do
 
 end
 
--- Sinkron dengan jadwal update: sebelum waktunya tampilan tetap seperti biasa
-function ui.syncEvent()
-    if not EVENT.live and EVENT.now() >= EVENT.start then EVENT.live = true end
-    if EVENT.live == EVENT.applied then return end
-    EVENT.applied = EVENT.live
-    local live = EVENT.live
-    if ui.themeCard then ui.themeCard.Visible = live end
-    if live then
-        if not settings.eventTheme then
-            settings.eventTheme = true
-            ui.applyTheme("Halloween")
-            if ui.themeSeg then ui.themeSeg.set("Halloween") end
-            saveSettings()
-        elseif settings.theme == "Halloween" then
-            ui.applyTheme("Halloween")
-        end
-    else
-        settings.theme = "Default"
-        if ui.themeSeg then ui.themeSeg.set("Default") end
-    end
-end
-ui.syncEvent()
-runLoop(function()
-    if EVENT.live then return 600 end
-    ui.syncEvent()
-    return 20
-end)
+-- Terapkan tema tersimpan saat hub dibuka
+if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
 
 selectTab("Main")
+EVENT.parts.nav = nav
 EVENT.hubReady = true

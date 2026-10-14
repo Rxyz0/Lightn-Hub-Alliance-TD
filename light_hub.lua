@@ -902,13 +902,6 @@ do
         poly(par, eyeL, C(214, 190, 4), 0, 1)
         poly(par, eyeR, C(214, 190, 4), 0, 1)
 
-        -- lingkaran gelap tipis di belakang gear (supaya gear oranye terbaca di atas kuning)
-        local disc = make("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
-            Size = UDim2.new(0, 18, 0, 18), BackgroundColor3 = C(110, 40, 4),
-            BackgroundTransparency = 0.4, BorderSizePixel = 0,
-        }, par)
-        make("UICorner", { CornerRadius = UDim.new(1, 0) }, disc)
     end
 
     -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);
@@ -8183,7 +8176,7 @@ local function layoutMini()
     local function tw(text, size)
         return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     end
-    local x = 34 + tw(TitleLabel.Text, 12)
+    local x = 34 + (ui.titleDX or 0) + tw(TitleLabel.Text, 12)
     local waveW = math.max(44, tw("00/00", 14) + 4)
     MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
     MiniWave.Size = UDim2.new(0, waveW, 1, -1)
@@ -8287,6 +8280,11 @@ decor.style = "Tree"
 
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
+    -- Labu di gear sedikit menutupi huruf pertama judul, jadi judul digeser ke kanan
+    local oldDX = ui.titleDX or 0
+    ui.titleDX = (on and decor.gearBuddy == "Pumpkin") and 6 or 0
+    TitleRow.Position = UDim2.new(0, 34 + ui.titleDX, 0, 0)
+    if ui.minimized and oldDX ~= ui.titleDX and ui.relayoutMini then ui.relayoutMini() end
     if ui.gearTheme then ui.gearTheme(on) end
     for _, r in ipairs(decor.roots) do
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)

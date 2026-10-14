@@ -848,66 +848,67 @@ do
     end
 
     -- Labu tinggi yang membuka mulut lebar, gear berada di tengah mulutnya seperti mau dimakan.
-    -- par = batRoot; mulut berpusat di (19,17) = pusat gear. Mulut dan mata punya cahaya tipis
-    -- yang konstan (tidak berdenyut).
+    -- Bentuk dijiplak dari foto referensi (badan tong low-poly, mata telur yang tidak sama,
+    -- mulut miring dengan dua taring bawah). Koordinat bentuk memakai piksel foto lalu
+    -- dipetakan ke papan: pusat mulut foto (404,720) jatuh di pusat gear (19,17).
     function decor.gearPumpkin(par)
-        local function C(r, g, b) return Color3.fromRGB(r, g, b) end
-        local function grad(top, bot, y0, y1)
-            return function(y) return top:Lerp(bot, math.max(0, math.min(1, (y - y0) / (y1 - y0)))) end
-        end
-        local function rot(pts, cx, cy, deg)
-            local a = math.rad(deg)
+        local K = 0.052
+        local function map(pts)
             local o = {}
-            for _, q in ipairs(pts) do
-                local dx, dy = q[1] - cx, q[2] - cy
-                o[#o + 1] = { cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a) }
-            end
+            for _, q in ipairs(pts) do o[#o + 1] = { 19 + (q[1] - 404) * K, 17 + (q[2] - 720) * K } end
             return o
         end
-        local RIM = C(104, 38, 10)
-        local lobes = { ell(10, 12.5, 9.5, 21), ell(28, 12.5, 9.5, 21), ell(19, 12, 10.5, 22.5) }
-        for _, l in ipairs(lobes) do poly(par, l, RIM, 1, 1) end
-        local side = grad(C(236, 116, 30), C(196, 54, 20), -9, 33)
-        poly(par, lobes[1], side, 0, 1)
-        poly(par, lobes[2], side, 0, 1)
-        poly(par, lobes[3], grad(C(255, 152, 46), C(226, 72, 24), -10, 34), 0, 1)
-        limb(par, { { 13.2, -8 }, { 12.2, 12 }, { 13.4, 31 } }, 1, 1, C(150, 56, 14))
-        limb(par, { { 24.8, -8 }, { 25.8, 12 }, { 24.6, 31 } }, 1, 1, C(150, 56, 14))
-        poly(par, ell(12.5, -3, 2.4, 1.6), C(255, 172, 84), 0, 1)
-        limb(par, { { 19, -9 }, { 20, -13 }, { 23, -15.5 } }, 4, 3, C(110, 58, 24)) -- tangkai
+        local function C(r, g, b) return Color3.fromRGB(r, g, b) end
+        local TOP, MID, BOT = C(224, 124, 8), C(212, 66, 4), C(200, 26, 3)
+        local function bodyColor(y)
+            local t = math.max(0, math.min(1, (y + 12) / 48))
+            if t < 0.55 then return TOP:Lerp(MID, t / 0.55) end
+            return MID:Lerp(BOT, (t - 0.55) / 0.45)
+        end
+        local function mouthColor(y)
+            return C(212, 188, 2):Lerp(C(207, 158, 1), math.max(0, math.min(1, (y - 6) / 22)))
+        end
 
-        local mouth = { { 6, 10 }, { 32, 10 }, { 31, 18 }, { 29, 24.5 }, { 25, 27.5 }, { 13, 27.5 }, { 9, 24.5 }, { 7, 18 } }
-        local eyeL = rot(ell(11.5, 3, 2.3, 3.6), 11.5, 3, -22)
-        local eyeR = rot(ell(26.5, 3, 2.3, 3.6), 26.5, 3, 22)
+        local body = map({ { 105, 235 }, { 150, 200 }, { 300, 170 }, { 470, 168 }, { 610, 200 }, { 745, 372 },
+            { 748, 470 }, { 700, 810 }, { 685, 960 }, { 650, 1030 }, { 420, 1090 }, { 155, 1030 }, { 120, 950 },
+            { 95, 780 }, { 62, 540 }, { 70, 360 } })
+        local stem = map({ { 350, 165 }, { 432, 165 }, { 430, 110 }, { 455, 75 }, { 445, 48 }, { 425, 40 }, { 385, 90 } })
+        poly(par, stem, C(40, 8, 3), 1, 1)
+        poly(par, stem, C(60, 14, 5), 0, 1)
+        poly(par, body, C(110, 22, 4), 1, 1)
+        poly(par, body, bodyColor, 0, 1)
+        -- bahu kanan atas lebih terang
+        poly(par, map({ { 440, 172 }, { 610, 202 }, { 742, 372 }, { 700, 345 }, { 580, 270 } }), C(232, 142, 22), 0, 1)
 
-        -- cahaya tipis di sekitar mulut dan mata (lapisan transparan seragam)
+        local mouth = map({ { 168, 458 }, { 208, 502 }, { 300, 497 }, { 375, 494 }, { 535, 582 }, { 576, 568 },
+            { 640, 530 }, { 626, 640 }, { 610, 740 }, { 560, 862 }, { 525, 908 }, { 418, 870 }, { 390, 940 },
+            { 342, 940 }, { 335, 862 }, { 252, 880 }, { 268, 942 }, { 230, 940 }, { 205, 740 }, { 168, 545 } })
+        local eyeL = map({ { 328, 255 }, { 360, 262 }, { 366, 295 }, { 362, 372 }, { 330, 392 }, { 290, 380 },
+            { 277, 345 }, { 292, 298 } })
+        local eyeR = map({ { 482, 286 }, { 505, 300 }, { 535, 345 }, { 547, 375 }, { 525, 420 }, { 487, 436 },
+            { 455, 425 }, { 440, 385 }, { 443, 330 }, { 460, 298 } })
+
+        -- cahaya tipis di sekitar mulut dan mata (lapisan transparan seragam, tidak berdenyut)
         local gl = make("CanvasGroup", {
-            Position = UDim2.new(0, -4, 0, -4), Size = UDim2.new(0, 50, 0, 44),
+            Position = UDim2.new(0, -4, 0, -20), Size = UDim2.new(0, 50, 0, 62),
             BackgroundTransparency = 1, GroupTransparency = 0.62,
         }, par)
-        local gofs = make("Frame", { Position = UDim2.new(0, 4, 0, 4), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, gl)
-        poly(gofs, mouth, C(255, 190, 60), 2, 1)
-        poly(gofs, eyeL, C(255, 190, 60), 2, 1)
-        poly(gofs, eyeR, C(255, 190, 60), 2, 1)
+        local gofs = make("Frame", { Position = UDim2.new(0, 4, 0, 20), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, gl)
+        poly(gofs, mouth, C(255, 196, 50), 2, 1)
+        poly(gofs, eyeL, C(255, 196, 50), 2, 1)
+        poly(gofs, eyeR, C(255, 196, 50), 2, 1)
 
-        -- mulut: tepi kuning menyala, rongga gelap di dalam, taring di sudut
-        poly(par, mouth, RIM, 1, 1)
-        poly(par, mouth, C(250, 196, 44), 0, 1)
-        poly(par, { { 8.5, 12.5 }, { 29.5, 12.5 }, { 28.5, 18 }, { 26.5, 23.5 }, { 23.5, 25.5 }, { 14.5, 25.5 },
-            { 11.5, 23.5 }, { 9.5, 18 } }, C(66, 22, 8), 0, 1)
-        for _, t in ipairs({
-            { { 7, 10 }, { 12, 10 }, { 11, 14.5 }, { 8, 13.5 } },
-            { { 31, 10 }, { 26, 10 }, { 27, 14.5 }, { 30, 13.5 } },
-            { { 10, 27.5 }, { 14, 27.5 }, { 13, 23.5 }, { 11, 24 } },
-            { { 28, 27.5 }, { 24, 27.5 }, { 25, 23.5 }, { 27, 24 } },
-        }) do
-            poly(par, t, C(238, 112, 26), 0, 1)
-        end
-        -- mata kuning miring
-        poly(par, eyeL, C(170, 70, 10), 1, 1)
-        poly(par, eyeR, C(170, 70, 10), 1, 1)
-        poly(par, eyeL, C(255, 212, 60), 0, 1)
-        poly(par, eyeR, C(255, 212, 60), 0, 1)
+        poly(par, mouth, mouthColor, 0, 1)
+        poly(par, eyeL, C(214, 190, 4), 0, 1)
+        poly(par, eyeR, C(214, 190, 4), 0, 1)
+
+        -- lingkaran gelap tipis di belakang gear (supaya gear oranye terbaca di atas kuning)
+        local disc = make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
+            Size = UDim2.new(0, 18, 0, 18), BackgroundColor3 = C(110, 40, 4),
+            BackgroundTransparency = 0.4, BorderSizePixel = 0,
+        }, par)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, disc)
     end
 
     -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);

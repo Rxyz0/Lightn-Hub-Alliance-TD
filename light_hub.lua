@@ -1015,6 +1015,72 @@ end
 -- =================================================================
 local canFile = (writefile and readfile and isfile) and true or false
 
+-- Penyimpanan: semua file ada di folder LightHub/ (Settings, Macros, Data).
+-- Kalau executor tidak punya makefolder/isfolder, dipakai nama file datar seperti dulu.
+-- Pengaturan disimpan per akun (UserId); file macro dipakai bersama.
+local FS = { root = "LightHub", dir = false }
+do
+    if canFile and makefolder and isfolder then
+        pcall(function()
+            for _, p in ipairs({ FS.root, FS.root .. "/Settings", FS.root .. "/Macros", FS.root .. "/Data" }) do
+                if not isfolder(p) then makefolder(p) end
+            end
+        end)
+        local ok, r = pcall(function()
+            return isfolder(FS.root .. "/Settings") and isfolder(FS.root .. "/Macros") and isfolder(FS.root .. "/Data")
+        end)
+        FS.dir = (ok and r == true) or false
+        if FS.dir and delfile then -- uji tulis sekali; gagal berarti pakai file datar
+            local t = FS.root .. "/Data/.probe"
+            local okw = pcall(writefile, t, "1")
+            if okw and isfile(t) then pcall(delfile, t) else FS.dir = false end
+        end
+    end
+    function FS.settings()
+        local uid = tostring(LocalPlayer and LocalPlayer.UserId or 0)
+        return FS.dir and (FS.root .. "/Settings/" .. uid .. ".json") or ("LightHub_Settings_" .. uid .. ".json")
+    end
+    function FS.macro(name)
+        return FS.dir and (FS.root .. "/Macros/" .. name .. ".json") or ("LightHub_Macro_" .. name .. ".json")
+    end
+    function FS.index()
+        return FS.dir and (FS.root .. "/Macros/_index.json") or "LightHub_Macro_Index.json"
+    end
+    function FS.data(n)
+        return FS.dir and (FS.root .. "/Data/" .. n .. ".json") or ("LightHub_" .. n .. ".json")
+    end
+    -- Salin file lama ke lokasi baru sekali saja (file lama tidak dihapus)
+    local function copyOnce(from, to)
+        if from == to then return end
+        pcall(function()
+            if isfile(from) and not isfile(to) then writefile(to, readfile(from)) end
+        end)
+    end
+    if FS.dir then
+        copyOnce("LightHub_Macro_Index.json", FS.index())
+        copyOnce("LightHub_Spots.json", FS.data("Spots"))
+        copyOnce("LightHub_History.json", FS.data("History"))
+        local names = {}
+        pcall(function()
+            if isfile("LightHub_Macro_Index.json") then
+                local list = HttpService:JSONDecode(readfile("LightHub_Macro_Index.json"))
+                if type(list) == "table" then
+                    for _, n in ipairs(list) do if type(n) == "string" then names[n] = true end end
+                end
+            end
+        end)
+        pcall(function()
+            if listfiles then
+                for _, path in ipairs(listfiles("")) do
+                    local n = string.match(path, "LightHub_Macro_(.+)%.json$")
+                    if n and string.lower(n) ~= "index" then names[n] = true end
+                end
+            end
+        end)
+        for n in pairs(names) do copyOnce("LightHub_Macro_" .. n .. ".json", FS.macro(n)) end
+    end
+end
+
 local function saveSettings()
     if not canFile then return end
     local data = {
@@ -1030,7 +1096,7 @@ local function saveSettings()
         flags = flags,
     }
     pcall(function()
-        writefile(FILE_NAME, HttpService:JSONEncode(data))
+        writefile(FS.settings(), HttpService:JSONEncode(data))
     end)
 end
 
@@ -1040,6 +1106,12 @@ local function setFlag(key, value)
 end
 
 local function readSaved()
+    -- File per akun lebih dulu; kalau belum ada, ambil dari file lama (sekali, untuk migrasi)
+    local mine = FS.settings()
+    local okm, rawm = pcall(function()
+        if isfile(mine) then return readfile(mine) end
+    end)
+    if okm and rawm then return rawm end
     for _, name in ipairs(SAVE_FILES) do
         local ok, raw = pcall(function()
             if isfile(name) then return readfile(name) end
@@ -1096,7 +1168,7 @@ local function loadSettings()
     if flags.potionType ~= "" and not inOptions(POTION_OPTIONS, flags.potionType) then flags.potionType = "" end
     if not inOptions(SPEED_OPTIONS, flags.speedValue) then flags.speedValue = 1.5 end
     if flags.modeValue ~= "" and not inOptions(MODE_OPTIONS, flags.modeValue) then flags.modeValue = "" end
-    if flags.macroSelected ~= "" and not (isfile and isfile("LightHub_Macro_" .. flags.macroSelected .. ".json")) then
+    if flags.macroSelected ~= "" and not (isfile and isfile(FS.macro(flags.macroSelected))) then
         flags.macroSelected = ""
     end
     do -- migrasi nama map lama yang tersimpan di setting
@@ -3127,7 +3199,7 @@ do
     statLabels.upgrades = cells[4].value
 
     -- ---------------- Win / Lose: 15 match terakhir ----------------
-    local HISTORY_FILE = "LightHub_History.json"
+    local HISTORY_FILE = FS.data("History")
     local HISTORY_MAX = 15
     local history = {}  -- terbaru di depan: { win, wave = "12/20", time = "00:42:10" }
     if canFile then
@@ -4011,10 +4083,12 @@ do
     end)
 
     local summonFails = 0
+    local summonBrokeNotified = false
     runLoop(function()
         if not flags.autoSummon then
             fSummon.setNote("")
             summonFails = 0
+            summonBrokeNotified = false
             return 0.4
         end
         if EP.animBusy() then
@@ -4027,8 +4101,13 @@ do
         local coins = getStatN("Coins")
         if type(price) == "number" and coins and coins < price then
             fSummon.setNote("Not enough coins", C.warn)
+            if not summonBrokeNotified then
+                summonBrokeNotified = true
+                notify("Auto Summon", "Not enough coins. Waiting for more", 5)
+            end
             return 1.5
         end
+        summonBrokeNotified = false
         local ok, res = invoke("SummonUnits", amount)
         if accepted(ok, res) then
             summonFails = 0
@@ -4046,10 +4125,12 @@ do
 
     -- Auto Spin
     local fSpin = visualFeature(page, "Auto Spin", "autoSpin", 0)
+    local spinFullNotified = false
 
     runLoop(function()
         if not flags.autoSpin then
             fSpin.setNote("")
+            spinFullNotified = false
             return 0.4
         end
         -- Format asli GetSpinWheelState: { Ready, Tickets, FreeSpins, Cost, InventoryFull }
@@ -4060,8 +4141,13 @@ do
             local cost = type(st.Cost) == "number" and st.Cost or 1
             if st.InventoryFull == true then
                 fSpin.setNote("Inventory full", C.warn)
+                if not spinFullNotified then
+                    spinFullNotified = true
+                    notify("Auto Spin", "Inventory full. Free up space to continue", 5)
+                end
                 return 4
             end
+            spinFullNotified = false
             if free <= 0 and tickets ~= nil and tickets < cost then
                 fSpin.setNote("Not enough tickets", C.warn)
                 return 4
@@ -4634,7 +4720,7 @@ end
 --   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
 --   Unit Mower: rekam penempatan, lalu jual + pasang ulang serentak di posisi rekaman
 -- =================================================================
-local SPOTS_FILE = "LightHub_Spots.json"
+local SPOTS_FILE = FS.data("Spots")
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
 do
@@ -6057,7 +6143,7 @@ end
 do
     local page = tabs["Macro"].page
     local inMatch = (game.PlaceId == MATCH_PLACE)
-    local MACRO_INDEX = "LightHub_Macro_Index.json"
+    local MACRO_INDEX = FS.index()
 
     local mstate = env.LightHubMacroState
     if not mstate then
@@ -6067,7 +6153,7 @@ do
 
     -- ---------------- File ----------------
     local function macroFile(name)
-        return "LightHub_Macro_" .. name .. ".json"
+        return FS.macro(name)
     end
 
     local function cleanName(s)
@@ -6078,7 +6164,7 @@ do
     end
 
     local function badName(name)
-        return name == "" or string.lower(name) == "index"
+        return name == "" or string.lower(name) == "index" or string.lower(name) == "_index"
     end
 
     local function readIndex()
@@ -6107,8 +6193,14 @@ do
         for _, n in ipairs(readIndex()) do add(n) end
         if listfiles then
             pcall(function()
-                for _, path in ipairs(listfiles("")) do
-                    add(string.match(path, "LightHub_Macro_(.+)%.json$"))
+                if FS.dir then
+                    for _, path in ipairs(listfiles(FS.root .. "/Macros")) do
+                        add(string.match(path, "([^/\\]+)%.json$"))
+                    end
+                else
+                    for _, path in ipairs(listfiles("")) do
+                        add(string.match(path, "LightHub_Macro_(.+)%.json$"))
+                    end
                 end
             end)
         end
@@ -6520,6 +6612,7 @@ do
                     fPlay.set(false)
                 end
                 if not inMatch then
+                    notify("Macro", "Recording starts when the match begins", 3)
                 end
             else
                 setFlag("macroRecord", false)
@@ -6682,10 +6775,16 @@ do
                 fRec.setNote("Recording not supported", C.warn)
                 return 3
             end
+            local prev = loadMacro(sel)
             mstate.rec = { name = sel, job = game.JobId, actions = {} }
             mstate.handler = onCall
             saveCurrentRec()
             rec = mstate.rec
+            if prev and #prev.actions > 0 then
+                notify("Macro", "Recording started: '" .. sel .. "'. The old recording was replaced", 5)
+            else
+                notify("Macro", "Recording started: '" .. sel .. "'", 3)
+            end
         end
         fRec.setNote("Recording (" .. #rec.actions .. " actions)", C.text)
         return 0.5
@@ -6721,6 +6820,7 @@ do
                 fPlay.setNote("Macro load failed", C.warn)
                 return 2
             end
+            notify("Macro", "Playback started: '" .. sel .. "'", 3)
         end
 
         local acts = play.macro.actions

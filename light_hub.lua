@@ -375,7 +375,7 @@ do
                     make("Frame", {
                         Position = UDim2.new(0, x1, 0, y - grow),
                         Size = UDim2.new(0, x2 - x1, 0, step + 1 + grow * 2),
-                        BackgroundColor3 = color,
+                        BackgroundColor3 = (type(color) == "function") and color(y) or color,
                         BorderSizePixel = 0,
                     }, par)
                 end
@@ -789,76 +789,125 @@ do
         end
     end
 
-    -- Tengkorak yang mengintip dari balik gear. Titik (0,0) = pusat gear; kepala berada di
-    -- atas gear dan dimiringkan oleh grup induknya. Semua bentuk padat (tanpa garis tipis).
-    function decor.skull(par)
+    -- Tengkorak mengintip dari balik tepi atas papan (pose A). par = batRoot (titik 0,0 = pojok
+    -- kiri atas papan). Kepala di belakang papan: hanya bagian di atas tepi yang terlihat
+    -- (dipotong frame pemotong). Lengan ada di balik papan, jadi yang terlihat hanya buku jari
+    -- di tepi dan jari yang melengkung ke depan papan.
+    function decor.skullPeek(par)
         local BONE = Color3.fromRGB(226, 214, 188)
         local SHADE = Color3.fromRGB(185, 169, 138)
         local INK = Color3.fromRGB(42, 28, 38)
-        -- rahang (di belakang gear)
-        local jaw = { { -6.5, -15.5 }, { 6.5, -15.5 }, { 5, -9 }, { 2.5, -6.5 }, { -2.5, -6.5 }, { -5, -9 } }
-        poly(par, jaw, INK, 1, 1)
-        poly(par, jaw, SHADE, 0, 1)
-        -- tempurung kepala + sisi kanan yang lebih gelap
-        local skullShape = ell(0, -23, 11.2, 10.2)
-        poly(par, skullShape, INK, 1, 1)
-        poly(par, skullShape, BONE, 0, 1)
-        poly(par, { { 7, -31 }, { 10, -27 }, { 10.5, -21 }, { 9, -16 }, { 6, -14.5 }, { 3.5, -16 },
-            { 6, -20 }, { 7, -26 }, { 4, -32 } }, SHADE, 0, 1)
-        -- retakan
-        limb(par, { { 5, -32 }, { 3, -28 }, { 5, -26 }, { 3.5, -23 } }, 1, 1, INK)
-        -- rongga mata + titik oranye redup (tanpa cahaya)
-        poly(par, ell(-4.2, -23, 3.2, 3.6), INK, 0, 1)
-        poly(par, ell(4.2, -23, 3.2, 3.6), INK, 0, 1)
-        for _, ex in ipairs({ -6, 3 }) do
+        local clip = make("Frame", {
+            Position = UDim2.new(0, -60, 0, -60), Size = UDim2.new(0, 220, 0, 60),
+            BackgroundTransparency = 1, ClipsDescendants = true,
+        }, par)
+        local off = make("Frame", {
+            Position = UDim2.new(0, 60, 0, 60), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+        }, clip)
+        local tilt = make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, -2),
+            Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = -12,
+        }, off)
+        local sk = make("Frame", {
+            Position = UDim2.new(0, 1, 0, 1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+        }, tilt)
+        local head = ell(0, 0, 11.2, 10.2)
+        poly(sk, head, INK, 1, 1)
+        poly(sk, head, BONE, 0, 1)
+        poly(sk, { { 7, -8 }, { 10, -4 }, { 11, 0 }, { 10, 4 }, { 6, 9 }, { 3, 7 }, { 6, 3 }, { 7, -3 }, { 4, -9 } },
+            SHADE, 0, 1)
+        limb(sk, { { 5, -9 }, { 3, -5 }, { 5, -3 }, { 3.5, 0 } }, 1, 1, INK)
+        poly(sk, ell(-4.2, -1, 3.2, 3.6), INK, 0, 1)
+        poly(sk, ell(4.2, -1, 3.2, 3.6), INK, 0, 1)
+        for _, ex in ipairs({ -5, 3 }) do
             make("Frame", {
-                Position = UDim2.new(0, ex, 0, -24), Size = UDim2.new(0, 2, 0, 2),
+                Position = UDim2.new(0, ex, 0, 0), Size = UDim2.new(0, 2, 0, 2),
                 BackgroundColor3 = Color3.fromRGB(217, 130, 42), BorderSizePixel = 0,
-            }, par)
+            }, sk)
         end
-        -- hidung dan gigi (blok kecil, sela gigi 1 px)
-        poly(par, { { 0, -18.8 }, { -1.6, -15.6 }, { -0.4, -16 }, { 0, -15.2 }, { 0.4, -16 }, { 1.6, -15.6 } }, INK, 0, 1)
-        local teeth = { { -5.4, -13.6 }, { 5.4, -13.6 }, { 5.4, -10 }, { -5.4, -10 } }
-        poly(par, teeth, INK, 1, 1)
-        poly(par, teeth, BONE, 0, 1)
-        for i = 1, 5 do
-            make("Frame", {
-                Position = UDim2.new(0, math.floor(-5.4 + i * 1.8), 0, -14), Size = UDim2.new(0, 1, 0, 4),
-                BackgroundColor3 = INK, BorderSizePixel = 0,
-            }, par)
+        -- bayangan tepi papan jatuh di kepala
+        make("Frame", {
+            Position = UDim2.new(0, 3, 0, -2), Size = UDim2.new(0, 32, 0, 2),
+            BackgroundColor3 = Color3.fromRGB(23, 23, 27), BackgroundTransparency = 0.55, BorderSizePixel = 0,
+        }, off)
+        -- dua tangan tulang bertumpu di tepi atas papan
+        local hands = { { 3.5, 1 }, { 34.5, -1 } }
+        local xs, len = { -3.9, -1.3, 1.3, 3.9 }, { 5.5, 7, 7, 5.5 }
+        local function finger(cx, d, i)
+            local x = cx + xs[i]
+            return { { x, -2.6 }, { x, 0.6 }, { x + d * 0.3, 2 }, { x + d * 0.6, len[i] } }
+        end
+        for _, h in ipairs(hands) do
+            oval(par, h[1] - 6.5, -5.6, 13, 5.4, INK)
+            for i = 1, 4 do limb(par, finger(h[1], h[2], i), 3, 3, INK) end
+        end
+        for _, h in ipairs(hands) do
+            oval(par, h[1] - 5.5, -4.6, 11, 3.4, BONE)
+            for i = 1, 4 do limb(par, finger(h[1], h[2], i), 2, 2, BONE) end
         end
     end
 
-    -- Lengan dan jari tulang yang memegang gear. par = batRoot (titik 0,0 = pojok kiri atas papan).
-    -- phase "arms": lengan (digambar di bawah gear); "fingers": telapak dan jari (di atas gear).
-    function decor.skullHands(par, phase)
-        local BONE = Color3.fromRGB(226, 214, 188)
-        local INK = Color3.fromRGB(42, 28, 38)
-        if phase == "arms" then
-            for _, a in ipairs({ { { -18, 3 }, { 9, 11.5 } }, { { 40, -10 }, { 30, 10 } } }) do
-                limb(par, a, 4, 4, INK)
-            end
-            for _, a in ipairs({ { { -18, 3 }, { 9, 11.5 } }, { { 40, -10 }, { 30, 10 } } }) do
-                limb(par, a, 2, 2, BONE)
-            end
-            for _, e in ipairs({ { -18, 3 }, { 40, -10 } }) do
-                oval(par, e[1] - 3, e[2] - 3, 6, 6, INK)
-                oval(par, e[1] - 2, e[2] - 2, 4, 4, BONE)
-            end
-        else
-            local hands = {
-                { { 10, 11 }, { { 14.2, 8.6 }, { 15.6, 10.4 }, { 16, 12.6 }, { 15.4, 14.6 } } },
-                { { 29.5, 10.5 }, { { 24.4, 8.4 }, { 23, 10.2 }, { 22.6, 12.4 }, { 23.2, 14.4 } } },
-            }
-            for _, h in ipairs(hands) do
-                oval(par, h[1][1] - 4, h[1][2] - 3.5, 8, 7, INK)
-                for _, t in ipairs(h[2]) do limb(par, { h[1], t }, 3, 3, INK) end
-            end
-            for _, h in ipairs(hands) do
-                oval(par, h[1][1] - 3, h[1][2] - 2.5, 6, 5, BONE)
-                for _, t in ipairs(h[2]) do limb(par, { h[1], t }, 2, 2, BONE) end
-            end
+    -- Labu tinggi yang membuka mulut lebar, gear berada di tengah mulutnya seperti mau dimakan.
+    -- par = batRoot; mulut berpusat di (19,17) = pusat gear. Mulut dan mata punya cahaya tipis
+    -- yang konstan (tidak berdenyut).
+    function decor.gearPumpkin(par)
+        local function C(r, g, b) return Color3.fromRGB(r, g, b) end
+        local function grad(top, bot, y0, y1)
+            return function(y) return top:Lerp(bot, math.max(0, math.min(1, (y - y0) / (y1 - y0)))) end
         end
+        local function rot(pts, cx, cy, deg)
+            local a = math.rad(deg)
+            local o = {}
+            for _, q in ipairs(pts) do
+                local dx, dy = q[1] - cx, q[2] - cy
+                o[#o + 1] = { cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a) }
+            end
+            return o
+        end
+        local RIM = C(104, 38, 10)
+        local lobes = { ell(10, 12.5, 9.5, 21), ell(28, 12.5, 9.5, 21), ell(19, 12, 10.5, 22.5) }
+        for _, l in ipairs(lobes) do poly(par, l, RIM, 1, 1) end
+        local side = grad(C(236, 116, 30), C(196, 54, 20), -9, 33)
+        poly(par, lobes[1], side, 0, 1)
+        poly(par, lobes[2], side, 0, 1)
+        poly(par, lobes[3], grad(C(255, 152, 46), C(226, 72, 24), -10, 34), 0, 1)
+        limb(par, { { 13.2, -8 }, { 12.2, 12 }, { 13.4, 31 } }, 1, 1, C(150, 56, 14))
+        limb(par, { { 24.8, -8 }, { 25.8, 12 }, { 24.6, 31 } }, 1, 1, C(150, 56, 14))
+        poly(par, ell(12.5, -3, 2.4, 1.6), C(255, 172, 84), 0, 1)
+        limb(par, { { 19, -9 }, { 20, -13 }, { 23, -15.5 } }, 4, 3, C(110, 58, 24)) -- tangkai
+
+        local mouth = { { 6, 10 }, { 32, 10 }, { 31, 18 }, { 29, 24.5 }, { 25, 27.5 }, { 13, 27.5 }, { 9, 24.5 }, { 7, 18 } }
+        local eyeL = rot(ell(11.5, 3, 2.3, 3.6), 11.5, 3, -22)
+        local eyeR = rot(ell(26.5, 3, 2.3, 3.6), 26.5, 3, 22)
+
+        -- cahaya tipis di sekitar mulut dan mata (lapisan transparan seragam)
+        local gl = make("CanvasGroup", {
+            Position = UDim2.new(0, -4, 0, -4), Size = UDim2.new(0, 50, 0, 44),
+            BackgroundTransparency = 1, GroupTransparency = 0.62,
+        }, par)
+        local gofs = make("Frame", { Position = UDim2.new(0, 4, 0, 4), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, gl)
+        poly(gofs, mouth, C(255, 190, 60), 2, 1)
+        poly(gofs, eyeL, C(255, 190, 60), 2, 1)
+        poly(gofs, eyeR, C(255, 190, 60), 2, 1)
+
+        -- mulut: tepi kuning menyala, rongga gelap di dalam, taring di sudut
+        poly(par, mouth, RIM, 1, 1)
+        poly(par, mouth, C(250, 196, 44), 0, 1)
+        poly(par, { { 8.5, 12.5 }, { 29.5, 12.5 }, { 28.5, 18 }, { 26.5, 23.5 }, { 23.5, 25.5 }, { 14.5, 25.5 },
+            { 11.5, 23.5 }, { 9.5, 18 } }, C(66, 22, 8), 0, 1)
+        for _, t in ipairs({
+            { { 7, 10 }, { 12, 10 }, { 11, 14.5 }, { 8, 13.5 } },
+            { { 31, 10 }, { 26, 10 }, { 27, 14.5 }, { 30, 13.5 } },
+            { { 10, 27.5 }, { 14, 27.5 }, { 13, 23.5 }, { 11, 24 } },
+            { { 28, 27.5 }, { 24, 27.5 }, { 25, 23.5 }, { 27, 24 } },
+        }) do
+            poly(par, t, C(238, 112, 26), 0, 1)
+        end
+        -- mata kuning miring
+        poly(par, eyeL, C(170, 70, 10), 1, 1)
+        poly(par, eyeR, C(170, 70, 10), 1, 1)
+        poly(par, eyeL, C(255, 212, 60), 0, 1)
+        poly(par, eyeR, C(255, 212, 60), 0, 1)
     end
 
     -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);
@@ -1691,21 +1740,21 @@ do
     batRoot.ClipsDescendants = false
     -- Kelelawar dimiringkan ke kiri dengan pusat putar di tengah gear; badannya setengah
     -- di belakang gear, kakinya tertutup penuh oleh ikon gear.
-    -- Penghuni gear diundi tiap script dijalankan: kelelawar atau tengkorak
-    decor.gearBuddy = (math.random(2) == 1) and "Bat" or "Skull"
-    local isBat = decor.gearBuddy == "Bat"
-    local tilt = make("Frame", {
-        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
-        Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = isBat and -22 or -20,
-    }, batRoot)
-    local shift = make("Frame", {
-        Position = UDim2.new(0, 1, 0, isBat and -1 or 1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
-    }, tilt)
-    if isBat then
+    -- Penghuni gear diundi tiap script dijalankan: kelelawar, tengkorak mengintip, atau labu
+    decor.gearBuddy = ({ "Bat", "Skull", "Pumpkin" })[math.random(3)]
+    if decor.gearBuddy == "Bat" then
+        local tilt = make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
+            Size = UDim2.new(0, 2, 0, 2), BackgroundTransparency = 1, Rotation = -22,
+        }, batRoot)
+        local shift = make("Frame", {
+            Position = UDim2.new(0, 1, 0, -1), Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+        }, tilt)
         decor.bat(shift, 0)
+    elseif decor.gearBuddy == "Skull" then
+        decor.skullPeek(batRoot)
     else
-        decor.skull(shift)
-        decor.skullHands(batRoot, "arms")
+        decor.gearPumpkin(batRoot)
     end
     -- Gear oranye digambar lagi di atas kelelawar (ikut berputar dengan gear asli)
     local ov = make("Frame", {
@@ -1723,7 +1772,6 @@ do
     for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, GEAR_ORANGE) end
     ovPart(9, 9, 0, GEAR_ORANGE, true)
     ovPart(4, 4, 0, Color3.fromRGB(34, 12, 4), true)
-    if not isBat then decor.skullHands(batRoot, "fingers") end
     table.insert(conns, icon:GetPropertyChangedSignal("Rotation"):Connect(function()
         ov.Rotation = icon.Rotation
     end))

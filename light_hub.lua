@@ -1,9 +1,3 @@
--- =================================================================
--- LIGHTN HUB v4.4
--- Tab: Main | Items (Gacha, Inventory) | Macro (Macro, Sharing) | Endless | Rewards
--- Settings (Settings, Profile) dibuka lewat ikon gear di header
--- =================================================================
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
@@ -17,7 +11,6 @@ local LocalPlayer = Players.LocalPlayer
 
 local VERSION = "4.4"
 
--- Status layar loading (diisi saat hub dibuat)
 local EVENT = {}
 local GUI_NAME = "LightHub"
 local FILE_NAME = "LightHub_Settings.json"
@@ -26,12 +19,10 @@ local SAVE_FILES = { FILE_NAME, "LightnHub_Settings.json", "RexHub_Settings.json
 local WIN_W, WIN_H = 480, 320
 local HEADER_H, SIDEBAR_W = 34, 108
 
--- Place ID dari log SPY: lobby dan match
 local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
--- Auto Skip mengirim SkipWaveVote(WaveState.CurrentWave + offset)
+
 local SKIP_WAVE_OFFSET = 0
 
--- Warna: abu-abu dan hitam saja
 local C = {
     white = Color3.fromRGB(255, 255, 255),
     text = Color3.fromRGB(232, 232, 234),
@@ -45,9 +36,6 @@ local C = {
     warn = Color3.fromRGB(255, 184, 64),
 }
 
--- Tema: Default (abu-abu) atau Halloween (hitam keunguan + oranye labu).
--- Warna abu-abu dipetakan ke palet tema; warna berwarna (streak, UTTM, peringatan) tidak diubah.
--- C.hi = teks terang, C.accent = isian aktif (toggle, penanda, tombol nyala).
 local DEF = {}
 for k, v in pairs(C) do DEF[k] = v end
 C.hi = C.white
@@ -79,7 +67,7 @@ do
     local function colorKey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
     end
-    -- kind: "bg" isian polos, "base" isian yang diwarnai gradient, "txt" teks, "gen" garis/gradient
+
     function toHalloween(kind, c)
         local r, g, b = c.R * 255, c.G * 255, c.B * 255
         if math.max(r, g, b) - math.min(r, g, b) > 9 then return c end
@@ -93,7 +81,7 @@ do
         elseif kind == "txt" then
             out = (l >= 215) and BONE or darkRamp(l)
         elseif l >= 150 then
-            -- gradient terang: oranye tua ke kuning-oranye cahaya
+
             local k = (l - 150) / 105
             out = rgb(205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k)
         else
@@ -105,7 +93,7 @@ do
     function fromHalloween(kind, c)
         return theme.rev[kind .. colorKey(c)] or c
     end
-    -- Untuk warna yang dibuat saat program berjalan
+
     function T(c, kind)
         if theme.name ~= "Halloween" then return c end
         return toHalloween(kind or "gen", c)
@@ -124,19 +112,13 @@ do
     end
 end
 
--- =================================================================
--- Pilihan dropdown / segmen
--- value Crate & Potion = ID asli dari game (dari log remote)
--- =================================================================
 local DELAY_OPTIONS = {
     { label = "1s", value = 1 },
     { label = "0.5s", value = 0.5 },
     { label = "0.2s", value = 0.2 },
     { label = "0.1s", value = 0.1 },
 }
--- Nama map di game TIDAK konsisten: "Endless" & "ToiletBunker" tanpa spasi,
--- tapi "Camera Lab" pakai spasi (dari log asli). Karena itu nama asli dicari
--- otomatis saat join (lihat resolveMapNames di bagian Auto Play).
+
 local MAP_OPTIONS = {
     { label = "City", value = "City" },
     { label = "Canyon Bridge", value = "CanyonBridge" },
@@ -164,7 +146,7 @@ local MODE_OPTIONS = {
     { label = "Insane", value = "Insane" },
     { label = "Crazy", value = "Crazy" },
 }
--- Summon 1 / 10 / 25 (25 ditambah di update terbaru game)
+
 local SUMMON_OPTIONS = {
     { label = "1", value = 1 },
     { label = "10", value = 10 },
@@ -175,31 +157,13 @@ local CRATE_AMOUNT_OPTIONS = {
     { label = "3", value = 3 },
     { label = "6", value = 6 },
 }
-local CRATE_OPTIONS = {
-    { label = "Party Crate", value = "PartyCrate" },
-    { label = "Free Scientist Crate", value = "Free" },
-    { label = "Scientist Crate", value = "ScientistCrate" },
-    { label = "10m Crate", value = "10MCrate" },
-    { label = "Fish Crate", value = "FishCrate" },
-    { label = "Spooky Crate", value = "Spooky Crate" },
-}
--- Lucky Block bukan crate: remote OpenLuckyBlock, event LuckyBlockOpening
--- Tingkat I dan III terlihat di log; II diasumsikan dari pola nama
+
 local LUCKY_OPTIONS = {
     { label = "Lucky Block I", value = "LuckyBlockI" },
     { label = "Lucky Block II", value = "LuckyBlockII" },
     { label = "Lucky Block III", value = "LuckyBlockIII" },
 }
-local POTION_OPTIONS = {
-    { label = "Luck Potion", value = "Luck" },
-    { label = "Coin Potion", value = "Money" },
-    { label = "XP Potion", value = "XP" },
-    { label = "Summon Discount", value = "SummonDiscount" },
-}
 
--- =================================================================
--- State
--- =================================================================
 local settings = {
     theme = "Default",
     antiAfk = true,
@@ -228,9 +192,9 @@ local FLAG_DEFAULTS = {
     antiLag = false,
     autoSeason = false,
 }
--- Fitur yang menghabiskan koin/item: selalu mati saat script dijalankan
+
 local SPEND_KEYS = { "autoSummon", "autoSpin", "autoCrate", "autoLucky", "autoPotion" }
--- Nama lama (v2.5) -> ID game
+
 local MIGRATE = {
     ["Party Crate"] = "PartyCrate", ["Free Scientist Crate"] = "Free",
     ["Scientist Crate"] = "ScientistCrate", ["10m Crate"] = "10MCrate",
@@ -243,9 +207,6 @@ for k, v in pairs(FLAG_DEFAULTS) do flags[k] = v end
 local run = { claim = false, upgrade = false }
 local conns = {}
 
--- =================================================================
--- Helpers
--- =================================================================
 local function notify(sub, txt, dur)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -274,9 +235,6 @@ local function tween(obj, t, goal)
     TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal):Play()
 end
 
--- Dekorasi tema Halloween: jaring laba-laba, pohon mati berwajah, labu, kelelawar besar di gear, laba-laba menggantung.
--- Semuanya Frame statis di belakang konten dan hanya tampil saat tema Halloween aktif.
--- Hanya labu (berkedip) dan laba-laba (berayun) yang bergerak, lewat satu tween pelan.
 local decor = { roots = {}, tweens = {}, hideMini = {}, steppers = {} }
 do
     local WEB_COLOR = Color3.fromRGB(232, 196, 140)
@@ -304,7 +262,6 @@ do
         }, par)
     end
 
-    -- Jaring seperempat lingkaran dari titik (cx, cy), sudut a0..a1 (derajat, 0 = kanan, 90 = bawah)
     function decor.web(par, cx, cy, R, a0, a1, spokes, rings, alpha)
         local function pt(r, a)
             local rad = math.rad(a)
@@ -346,8 +303,6 @@ do
         end
     end
 
-    -- Isi poligon dengan strip horizontal (tanpa rotasi), jadi bentuknya utuh dan tidak putus-putus.
-    -- pts = { {x, y}, ... } dalam koordinat par; grow = pelebaran tepi (untuk garis tepi/cahaya)
     local function poly(par, pts, color, grow, step)
         grow = grow or 0
         step = step or 1
@@ -384,8 +339,6 @@ do
         end
     end
 
-    -- Ranting / anggota badan: rantai kapsul rapat yang menyempit dari w0 ke w1.
-    -- Ujung kapsul bulat dan saling menimpa, jadi sambungannya mulus (tidak patah).
     local function limb(par, pts, w0, w1, color)
         local dense = { pts[1] }
         for i = 1, #pts - 1 do
@@ -428,9 +381,6 @@ do
         return pts
     end
 
-    -- Labu jack-o'-lantern seperti di referensi: tiga cuping, tangkai hijau, mata kuning
-    -- miring marah, dan mulut bergerigi. Badan dan wajah digambar terpisah supaya wajah
-    -- bisa masuk lapisan cahaya (berdenyut).
     local function drawPumpkinBody(body, cx, cy, rx, ry)
         local RIM = Color3.fromRGB(150, 56, 10)
         local SIDE = Color3.fromRGB(190, 72, 12)
@@ -471,17 +421,15 @@ do
         for _, sh in ipairs(shapes) do poly(glow, sh, Color3.fromRGB(255, 218, 70), 0, 1) end
     end
 
-    -- Burung gagak bertengger di cabang kanan pohon. Siluet gelap polos (tanpa cahaya);
-    -- sesekali kepalanya menoleh ke arah lain.
     function decor.crow(par)
         local BLK = Color3.fromRGB(18, 9, 20)
         local SHEEN = Color3.fromRGB(46, 28, 52)
         local BEAK = Color3.fromRGB(44, 32, 36)
-        poly(par, { { 80, 90 }, { 89, 94 }, { 88, 96.5 }, { 79, 93 } }, BLK, 0, 1)         -- ekor
-        limb(par, { { 75, 94 }, { 75, 97.5 } }, 1, 1, BLK)                                 -- kaki
+        poly(par, { { 80, 90 }, { 89, 94 }, { 88, 96.5 }, { 79, 93 } }, BLK, 0, 1)
+        limb(par, { { 75, 94 }, { 75, 97.5 } }, 1, 1, BLK)
         limb(par, { { 78.5, 94 }, { 78.5, 97.5 } }, 1, 1, BLK)
-        poly(par, ell(76, 91, 6.5, 3.7), BLK, 0, 1)                                         -- badan
-        poly(par, { { 72, 89.5 }, { 80, 90.5 }, { 79, 92.5 }, { 72, 91.5 } }, SHEEN, 0, 1) -- sayap
+        poly(par, ell(76, 91, 6.5, 3.7), BLK, 0, 1)
+        poly(par, { { 72, 89.5 }, { 80, 90.5 }, { 79, 92.5 }, { 72, 91.5 } }, SHEEN, 0, 1)
         local hl = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
         local hr = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false }, par)
         poly(hl, ell(70, 86.5, 3.2, 3), BLK, 0, 1)
@@ -504,8 +452,6 @@ do
         end
     end
 
-    -- Percikan bara naik pelan (semua adegan) dan daun kering jatuh (hanya adegan pohon).
-    -- Titik kecil polos, tanpa efek cahaya. Posisi pakai skala supaya geraknya halus.
     function decor.particles(par)
         local W, H = 107, 286
         local embers = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
@@ -554,7 +500,6 @@ do
         return leafL
     end
 
-    -- Kabut tipis di dasar sidebar: lapisan datar sangat transparan yang bergeser pelan.
     function decor.fog(par)
         local layer = make("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1 }, par)
         local F = {}
@@ -579,7 +524,6 @@ do
         return layer
     end
 
-    -- Kelelawar kecil melintas di header dari kanan ke kiri, sesekali saja, sayap mengepak.
     function decor.flyBat(par)
         local root = decor.root(par, { Size = UDim2.new(1, 0, 1, 0) })
         decor.hideMini[root] = true
@@ -628,9 +572,6 @@ do
         return root
     end
 
-    -- Pohon mati tinggi dan kurus (tinggi penuh sidebar, di belakang tombol), cabang
-    -- ranting bengkok, wajah menyala seperti di referensi. Bentuknya Frame statis; hanya
-    -- cahaya wajah yang berdenyut pelan.
     function decor.tree(par)
         local box = make("Frame", {
             AnchorPoint = Vector2.new(0, 1),
@@ -638,7 +579,7 @@ do
             Size = UDim2.new(0, 108, 0, 286),
             BackgroundTransparency = 1,
         }, par)
-        oval(box, 0, 276, 108, 18, Color3.fromRGB(255, 112, 16), 0.75) -- cahaya lava di dasar
+        oval(box, 0, 276, 108, 18, Color3.fromRGB(255, 112, 16), 0.75)
         local g = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0.08,
         }, box)
@@ -646,7 +587,6 @@ do
         local lit = Color3.fromRGB(104, 34, 68)
         local dark = Color3.fromRGB(30, 8, 24)
 
-        -- cabang dan ranting (digambar dulu, batang menutup pangkalnya)
         for _, b in ipairs({
             { 5, 1.5, { { 60, 170 }, { 74, 156 }, { 86, 152 }, { 96, 138 }, { 103, 120 } } },
             { 3, 1, { { 86, 152 }, { 94, 160 }, { 104, 156 } } },
@@ -673,7 +613,6 @@ do
             limb(g, b[3], b[1], b[2], bark)
         end
 
-        -- batang kurus bengkok: tepi kiri dari bawah ke atas, tepi kanan dari atas ke bawah
         local L = { { 24, 288 }, { 31, 270 }, { 35, 258 }, { 34, 240 }, { 36, 222 }, { 38, 205 }, { 42, 185 },
             { 43, 160 }, { 45, 130 }, { 46, 100 }, { 47, 70 }, { 48, 40 }, { 49, -4 } }
         local R = { { 82, 288 }, { 72, 270 }, { 69, 258 }, { 70, 240 }, { 68, 222 }, { 67, 205 }, { 63, 185 },
@@ -683,14 +622,12 @@ do
         for i = #R, 1, -1 do trunk[#trunk + 1] = R[i] end
         poly(g, trunk, bark, 0, 2)
 
-        -- sisi terang di kiri batang
         local hw = { 8, 8, 8, 8, 8, 8, 7, 6, 5, 4, 3, 2, 1 }
         local hl = {}
         for i, p in ipairs(L) do hl[#hl + 1] = { p[1] + 2, p[2] } end
         for i = #L, 1, -1 do hl[#hl + 1] = { L[i][1] + 2 + hw[i], L[i][2] } end
         poly(g, hl, lit, 0, 2)
 
-        -- retakan kulit kayu
         for _, c in ipairs({
             { { 40, 284 }, { 43, 270 }, { 41, 262 } }, { { 66, 284 }, { 62, 272 }, { 64, 262 } },
             { { 47, 182 }, { 50, 168 }, { 48, 150 } }, { { 54, 176 }, { 53, 160 } },
@@ -699,12 +636,10 @@ do
             limb(g, c, 2, 1, dark)
         end
 
-        -- alis marah dan bayangan hidung
         poly(g, { { 38, 210 }, { 51, 217 }, { 51, 213 }, { 38, 205 } }, dark, 0, 1)
         poly(g, { { 66, 210 }, { 53, 217 }, { 53, 213 }, { 66, 205 } }, dark, 0, 1)
         poly(g, { { 50, 222 }, { 54, 222 }, { 52, 231 } }, dark, 0, 1)
 
-        -- wajah menyala: mata miring dan mulut menyeringai bergerigi
         local gg = make("CanvasGroup", {
             Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, GroupTransparency = 0,
         }, box)
@@ -716,7 +651,7 @@ do
         }
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 112, 14), 2, 1) end
         for _, s in ipairs(shapes) do poly(gg, s, Color3.fromRGB(255, 214, 60), 0, 1) end
-        -- labu di tanah, di bawah pohon (wajah ikut berdenyut)
+
         drawPumpkinBody(g, 90, 275, 16, 10)
         drawPumpkinFace(gg, 90, 275, 16, 10)
         decor.crow(box)
@@ -726,9 +661,6 @@ do
         return box
     end
 
-    -- Kelelawar besar: dua kaki memegang tombol gear, badan, kepala, dan sayap keluar dari
-    -- tepi papan. Gambar statis (tanpa animasi), semua bentuk terisi penuh.
-    -- par = root tanpa clip dengan titik (0,0) di pojok kiri atas papan, cx = pusat gear.
     function decor.bat(par, cx)
         local RIM = Color3.fromRGB(150, 62, 14)
         local MEM = Color3.fromRGB(38, 12, 32)
@@ -749,7 +681,6 @@ do
         end
         local wl, wr = wing(-1), wing(1)
 
-        -- garis tepi oranye (digambar paling bawah)
         poly(par, wl, RIM, 1, 1)
         poly(par, wr, RIM, 1, 1)
         poly(par, { { cx - 6, -14 }, { cx - 5, -24 }, { cx - 1, -17 } }, RIM, 1, 1)
@@ -757,7 +688,6 @@ do
         oval(par, cx - 8, -11, 16, 16, RIM)
         oval(par, cx - 7, -20, 14, 13, RIM)
 
-        -- selaput sayap, lalu tulang jari yang menyatu dengannya
         poly(par, wl, MEM, 0, 1)
         poly(par, wr, MEM, 0, 1)
         for _, w in ipairs({ wl, wr }) do
@@ -767,14 +697,12 @@ do
             end
         end
 
-        -- kaki, telinga, badan, kepala
         poly(par, { { cx - 6, -14 }, { cx - 5, -24 }, { cx - 1, -17 } }, BODY, 0, 1)
         poly(par, { { cx + 6, -14 }, { cx + 5, -24 }, { cx + 1, -17 } }, BODY, 0, 1)
         oval(par, cx - 7, -10, 14, 14, BODY)
         oval(par, cx - 4, -7, 8, 9, Color3.fromRGB(58, 22, 46))
         oval(par, cx - 6, -19, 12, 11, BODY)
 
-        -- mata menyala, taring, dan cakar yang mencengkeram gear
         for _, ex in ipairs({ -4, 1 }) do
             make("Frame", {
                 Position = UDim2.new(0, cx + ex, 0, -15), Size = UDim2.new(0, 3, 0, 2),
@@ -789,10 +717,6 @@ do
         end
     end
 
-    -- Tengkorak mengintip dari balik tepi atas papan (pose A). par = batRoot (titik 0,0 = pojok
-    -- kiri atas papan). Kepala di belakang papan: hanya bagian di atas tepi yang terlihat
-    -- (dipotong frame pemotong). Lengan ada di balik papan, jadi yang terlihat hanya buku jari
-    -- di tepi dan jari yang melengkung ke depan papan.
     function decor.skullPeek(par)
         local BONE = Color3.fromRGB(226, 214, 188)
         local SHADE = Color3.fromRGB(185, 169, 138)
@@ -825,12 +749,12 @@ do
                 BackgroundColor3 = Color3.fromRGB(217, 130, 42), BorderSizePixel = 0,
             }, sk)
         end
-        -- bayangan tepi papan jatuh di kepala
+
         make("Frame", {
             Position = UDim2.new(0, 3, 0, -2), Size = UDim2.new(0, 32, 0, 2),
             BackgroundColor3 = Color3.fromRGB(23, 23, 27), BackgroundTransparency = 0.55, BorderSizePixel = 0,
         }, off)
-        -- dua tangan tulang bertumpu di tepi atas papan
+
         local hands = { { 3.5, 1 }, { 34.5, -1 } }
         local xs, len = { -3.9, -1.3, 1.3, 3.9 }, { 5.5, 7, 7, 5.5 }
         local function finger(cx, d, i)
@@ -847,10 +771,6 @@ do
         end
     end
 
-    -- Labu tinggi yang membuka mulut lebar, gear berada di tengah mulutnya seperti mau dimakan.
-    -- Bentuk dijiplak dari foto referensi (badan tong low-poly, mata telur yang tidak sama,
-    -- mulut miring dengan dua taring bawah). Koordinat bentuk memakai piksel foto lalu
-    -- dipetakan ke papan: pusat mulut foto (404,720) jatuh di pusat gear (19,17).
     function decor.gearPumpkin(par)
         local K = 0.052
         local function map(pts)
@@ -877,7 +797,7 @@ do
         poly(par, stem, C(60, 14, 5), 0, 1)
         poly(par, body, C(110, 22, 4), 1, 1)
         poly(par, body, bodyColor, 0, 1)
-        -- bahu kanan atas lebih terang
+
         poly(par, map({ { 440, 172 }, { 610, 202 }, { 742, 372 }, { 700, 345 }, { 580, 270 } }), C(232, 142, 22), 0, 1)
 
         local mouth = map({ { 168, 458 }, { 208, 502 }, { 300, 497 }, { 375, 494 }, { 535, 582 }, { 576, 568 },
@@ -888,7 +808,6 @@ do
         local eyeR = map({ { 482, 286 }, { 505, 300 }, { 535, 345 }, { 547, 375 }, { 525, 420 }, { 487, 436 },
             { 455, 425 }, { 440, 385 }, { 443, 330 }, { 460, 298 } })
 
-        -- cahaya tipis di sekitar mulut dan mata (lapisan transparan seragam, tidak berdenyut)
         local gl = make("CanvasGroup", {
             Position = UDim2.new(0, -4, 0, -20), Size = UDim2.new(0, 50, 0, 62),
             BackgroundTransparency = 1, GroupTransparency = 0.78,
@@ -904,8 +823,6 @@ do
 
     end
 
-    -- Laba-laba kecil menggantung. Benang berayun dari titik atas header (lurus, utuh);
-    -- badannya punya engsel sendiri di ujung benang supaya geraknya lentur.
     function decor.spider(par, x)
         local H = HEADER_H
         local cx = 13
@@ -928,7 +845,7 @@ do
         local legC = Color3.fromRGB(120, 48, 74)
         local bodyC = Color3.fromRGB(58, 18, 44)
         local rim = Color3.fromRGB(190, 80, 18)
-        -- 4 pasang kaki bersendi: pangkal, lutut, telapak
+
         for _, sd in ipairs({ -1, 1 }) do
             for _, l in ipairs({
                 { { 2, 15 }, { 6, 11 }, { 10, 14 } },
@@ -978,7 +895,6 @@ local function getStat(name)
     return v and v.Value or 0
 end
 
--- Sama seperti getStat, tapi nil kalau datanya belum ada (bukan 0)
 local function getStatN(name)
     local ls = LocalPlayer:FindFirstChild("leaderstats")
     local v = ls and ls:FindFirstChild(name)
@@ -986,14 +902,8 @@ local function getStatN(name)
     return nil
 end
 
--- =================================================================
--- Auto save
--- =================================================================
 local canFile = (writefile and readfile and isfile) and true or false
 
--- Penyimpanan: semua file ada di folder LightHub/ (Settings, Macros, Data).
--- Kalau executor tidak punya makefolder/isfolder, dipakai nama file datar seperti dulu.
--- Pengaturan disimpan per akun (UserId); file macro dipakai bersama.
 local FS = { root = "LightHub", dir = false }
 do
     if canFile and makefolder and isfolder then
@@ -1006,7 +916,7 @@ do
             return isfolder(FS.root .. "/Settings") and isfolder(FS.root .. "/Macros") and isfolder(FS.root .. "/Data")
         end)
         FS.dir = (ok and r == true) or false
-        if FS.dir and delfile then -- uji tulis sekali; gagal berarti pakai file datar
+        if FS.dir and delfile then
             local t = FS.root .. "/Data/.probe"
             local okw = pcall(writefile, t, "1")
             if okw and isfile(t) then pcall(delfile, t) else FS.dir = false end
@@ -1025,7 +935,7 @@ do
     function FS.data(n)
         return FS.dir and (FS.root .. "/Data/" .. n .. ".json") or ("LightHub_" .. n .. ".json")
     end
-    -- Salin file lama ke lokasi baru sekali saja (file lama tidak dihapus)
+
     local function copyOnce(from, to)
         if from == to then return end
         pcall(function()
@@ -1081,7 +991,7 @@ local function setFlag(key, value)
 end
 
 local function readSaved()
-    -- File per akun lebih dulu; kalau belum ada, ambil dari file lama (sekali, untuk migrasi)
+
     local mine = FS.settings()
     local okm, rawm = pcall(function()
         if isfile(mine) then return readfile(mine) end
@@ -1116,7 +1026,7 @@ local function loadSettings()
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
-    -- v3.3: tiga toggle animasi lama digabung jadi satu
+
     if data.skipCrateAnim == true or data.skipSummonAnim == true or data.skipSpinAnim == true then
         settings.skipAnim = true
     end
@@ -1135,17 +1045,16 @@ local function loadSettings()
             if type(v) == type(default) then flags[k] = v end
         end
     end
-    -- Buang nilai lama yang sudah tidak ada di pilihan sekarang
+
     if not inOptions(SUMMON_OPTIONS, flags.summonAmount) then flags.summonAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.crateAmount) then flags.crateAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.luckyAmount) then flags.luckyAmount = 1 end
-    if flags.potionType ~= "" and not inOptions(POTION_OPTIONS, flags.potionType) then flags.potionType = "" end
     if not inOptions(SPEED_OPTIONS, flags.speedValue) then flags.speedValue = 1.5 end
     if flags.modeValue ~= "" and not inOptions(MODE_OPTIONS, flags.modeValue) then flags.modeValue = "" end
     if flags.macroSelected ~= "" and not (isfile and isfile(FS.macro(flags.macroSelected))) then
         flags.macroSelected = ""
     end
-    do -- migrasi nama map lama yang tersimpan di setting
+    do
         local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "CanyonBridge" }
         if legacy[flags.playMap] then flags.playMap = legacy[flags.playMap] end
     end
@@ -1156,9 +1065,6 @@ end
 
 loadSettings()
 
--- =================================================================
--- Bersihkan instance lama
--- =================================================================
 local env = (getgenv and getgenv()) or _G
 
 for _, key in ipairs({ "RexHubCleanup", "LightnHubCleanup", "LightHubCleanup" }) do
@@ -1186,9 +1092,6 @@ for _, p in ipairs({ parent, CoreGui }) do
     end
 end
 
--- =================================================================
--- Anti-AFK
--- =================================================================
 local idledConn = LocalPlayer.Idled:Connect(function()
     if not settings.antiAfk then return end
     pcall(function()
@@ -1198,9 +1101,6 @@ local idledConn = LocalPlayer.Idled:Connect(function()
 end)
 env.AFKHubConn = idledConn
 
--- =================================================================
--- Remote (dicari saat dipakai, tidak menahan startup)
--- =================================================================
 local function RF(name)
     local folder = ReplicatedStorage:FindFirstChild("RemoteFunctions")
     return folder and folder:FindFirstChild(name)
@@ -1211,19 +1111,8 @@ local function RE(name)
     return folder and folder:FindFirstChild(name)
 end
 
--- Pelacak penempatan (dipakai Unit Mower): registry mencatat CFrame penempatan asli
--- tiap unit. Hook-nya dipasang di bagian Macro dan berjalan berdampingan dengan recorder macro.
--- Penghubung antar blok Endless (lihat bagian akhir blok Endless)
 local EP = {}
 
--- Apakah animasi buka crate / lucky block / summon masih berjalan?
--- Game memasang penanda _ExclusiveCrateOpening di player selama animasi, dan
--- handler animasi bawaan-lah yang menghapusnya di akhir. Saat Skip Animation aktif
--- handler itu dimatikan, jadi penandanya tidak pernah terhapus dan auto-open
--- macet di "Wait for animation". Solusinya:
---   - Skip Animation aktif: tidak ada animasi yang perlu ditunggu, penanda dibersihkan.
---   - Skip mati: tunggu normal, tapi kalau penanda menempel > 12 detik anggap macet
---     dan bersihkan juga.
 do
     local since = nil
     local function clearFlag()
@@ -1256,7 +1145,7 @@ local function invoke(name, ...)
     local remote = RF(name)
     if not remote then return false, "remote tidak ada: " .. name end
     local args = table.pack(...)
-    -- Penempatan dari script sendiri (macro play, Unit Mower) ikut dicatat
+
     if name == "PlaceTower" and placeHook.register and typeof(args[2]) == "CFrame" then
         task.spawn(placeHook.register, args[1], args[2])
     end
@@ -1265,7 +1154,6 @@ local function invoke(name, ...)
     end)
 end
 
--- Server dianggap menerima kalau tidak error dan tidak membalas false
 local function accepted(ok, res)
     if not ok or res == false then return false end
     if type(res) == "table" and (res.Success == false or res.success == false) then
@@ -1274,8 +1162,6 @@ local function accepted(ok, res)
     return true
 end
 
--- GuiObject benar-benar tampil: dirinya, semua ancestor, dan ScreenGui-nya.
--- GUI Light Hub sendiri diabaikan (ada teks "Auto Replay", "Wave", dll).
 local function isShown(d)
     local gui = d:FindFirstAncestorOfClass("ScreenGui")
     if gui and (not gui.Enabled or gui.Name == GUI_NAME) then return false end
@@ -1297,9 +1183,6 @@ local function bindEvent(name, fn)
     end)
 end
 
--- =================================================================
--- Window
--- =================================================================
 local ScreenGui = make("ScreenGui", {
     Name = GUI_NAME,
     ResetOnSpawn = false,
@@ -1317,11 +1200,6 @@ local MainFrame = make("Frame", {
 }, ScreenGui)
 make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, MainFrame)
 
--- Layar pembuka: hanya di lobby. Di match tidak dibuat sama sekali, jadi tidak ada delay.
--- Ikon game dalam bingkai kotak; garis di sekeliling bingkai terisi searah jarum jam.
--- Setelah penuh dan hub siap, layar memudar lalu hub muncul bertahap:
--- papan + header, tombol sidebar, lalu isi halaman. Tanpa efek memantul.
--- Warna mengikuti tema yang dipilih.
 if game.PlaceId == LOBBY_PLACE then
     local hw = settings.theme == "Halloween"
     local ACC = hw and Color3.fromRGB(255, 140, 24) or Color3.fromRGB(226, 226, 230)
@@ -1367,7 +1245,7 @@ if game.PlaceId == LOBBY_PLACE then
             Size = UDim2.new(0, TH, 0, 0), BackgroundColor3 = ACC, BorderSizePixel = 0,
         }, box),
     }
-    -- p 0..1: tiap sisi mengisi seperempat (atas, kanan, bawah, kiri)
+
     local function setProg(p)
         for i = 1, 4 do
             local f = math.clamp(p * 4 - (i - 1), 0, 1)
@@ -1385,7 +1263,7 @@ if game.PlaceId == LOBBY_PLACE then
         BorderSizePixel = 0, ScaleType = Enum.ScaleType.Fit,
         Image = "rbxthumb://type=GameIcon&id=" .. tostring(game.GameId) .. "&w=150&h=150",
     }, root)
-    -- Huruf cadangan kalau ikon game belum/tidak bisa dimuat
+
     local letter = make("TextLabel", {
         Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "L",
         TextColor3 = TXT, TextSize = 40, Font = Enum.Font.GothamBold,
@@ -1396,7 +1274,6 @@ if game.PlaceId == LOBBY_PLACE then
         Text = "Loading LIGHTN HUB v" .. VERSION, TextColor3 = TXT, TextSize = 14, Font = Enum.Font.GothamBold,
     }, root)
 
-    -- Garis terisi minimal 1,4 detik; berhenti di 90% sampai ikon dan hub siap
     local t0, prog, finished = nil, 0, false
     local spin
     spin = RunService.Heartbeat:Connect(function(dt)
@@ -1421,7 +1298,6 @@ if game.PlaceId == LOBBY_PLACE then
         end
         task.wait(0.15)
 
-        -- Persiapan: sidebar dan isi halaman ditutup tirai dulu, label sidebar disembunyikan
         local P = EVENT.parts or {}
         local function veil(par)
             if not par then return nil end
@@ -1440,11 +1316,10 @@ if game.PlaceId == LOBBY_PLACE then
         local pagePos = P.page and P.page.Position
         if pagePos then P.page.Position = pagePos + UDim2.new(0, 0, 0, 10) end
 
-        -- 1) papan + header muncul saat layar loading memudar
         MainFrame.Visible = true
         tween(root, 0.35, { GroupTransparency = 1 })
         task.wait(0.25)
-        -- 2) tombol sidebar satu per satu
+
         if sv then tween(sv, 0.3, { BackgroundTransparency = 1 }) end
         if nv then
             for i, g in ipairs(nv.groups) do
@@ -1454,7 +1329,7 @@ if game.PlaceId == LOBBY_PLACE then
             end
         end
         task.wait(0.35)
-        -- 3) isi halaman naik pelan ke tempatnya
+
         if pv then tween(pv, 0.35, { BackgroundTransparency = 1 }) end
         if pagePos then tween(P.page, 0.35, { Position = pagePos }) end
         task.wait(0.4)
@@ -1465,8 +1340,6 @@ if game.PlaceId == LOBBY_PLACE then
     end)
 end
 
--- Latar bergerak pelan seperti tinta abu-abu/putih diaduk di air:
--- dua lapisan gradient berputar dan bergeser dengan arah/kecepatan berbeda.
 local function fluidLayer(colors, alphas)
     local layer = make("Frame", {
         Size = UDim2.new(1.5, 0, 1.5, 0),
@@ -1481,8 +1354,6 @@ local function fluidLayer(colors, alphas)
     return layer, g
 end
 
--- Gradient papan (kartu, header, sidebar, tab) berayun pelan; tiap papan
--- punya fase dan kecepatan sendiri sehingga tidak selaras dengan teks judul.
 local movers = {}
 local function swing(frame, lo, hi, base, amp, speed, phase)
     lo, hi = T(lo, "gen"), T(hi, "gen")
@@ -1498,10 +1369,9 @@ local function swing(frame, lo, hi, base, amp, speed, phase)
     return g
 end
 
--- Warna teks judul: pita abu-abu ke putih yang mengalir pelan ke kanan
 local function titleSeq(t)
     if theme.name == "Halloween" then
-        -- oranye tua dengan pita cahaya emas yang lewat dari kiri ke kanan
+
         local p = (t * 0.3) % 1.7 - 0.35
         local list = {}
         for i = 0, 8 do
@@ -1557,13 +1427,12 @@ applyFluid()
 table.insert(conns, RunService.Heartbeat:Connect(function(dt)
     if not settings.fluidBg then return end
     fluid.acc = fluid.acc + dt
-    if fluid.acc < 0.06 then return end -- ~16 fps cukup untuk gerakan lambat
+    if fluid.acc < 0.06 then return end
     fluid.t = fluid.t + fluid.acc
     fluid.acc = 0
     local t = fluid.t
     if theme.name == "Halloween" then
-        -- Cahaya api: kilau naik-turun pelan dengan kedipan tipis, seperti lava atau obor.
-        -- Arah gradient tetap, hanya posisinya yang bergeser.
+
         local flick = math.sin(t * 2.3) * 0.03 + math.sin(t * 5.1) * 0.015
         local a = math.sin(t * 0.32) * 0.3 + flick
         local b = math.sin(t * 0.21 + 1.3) * 0.25 - flick
@@ -1588,7 +1457,6 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
     if fluid.titleGrad then fluid.titleGrad.Color = titleSeq(t) end
 end))
 
--- Loop latar belakang yang berhenti otomatis saat GUI dihancurkan
 local function runLoop(fn)
     task.spawn(function()
         while ScreenGui.Parent do
@@ -1602,14 +1470,12 @@ local function runLoop(fn)
     end)
 end
 
--- Dekorasi: jaring di pojok kanan atas jendela
 do
     local root = decor.root(MainFrame, { Size = UDim2.new(1, 0, 1, 0) })
     decor.web(root, WIN_W, 0, 130, 90, 180, 6, 5, 0.86)
     decor.hideMini[root] = true
 end
 
--- Header
 local Header = make("Frame", {
     Size = UDim2.new(1, 0, 0, HEADER_H),
     BackgroundColor3 = C.white,
@@ -1672,8 +1538,6 @@ local TimerLabel = make("TextLabel", {
 
 local ui = { minimized = false, lastTouch = os.clock() }
 
--- Deteksi sentuhan ke GUI (klik, sentuh, geser, gulir) untuk Auto minimize.
--- Dipasang ke semua elemen di window utama dan jendela melayang.
 function ui.poke() ui.lastTouch = os.clock() end
 function ui.watch(o)
     if o:IsA("GuiObject") then
@@ -1685,8 +1549,6 @@ ui.watch(MainFrame)
 for _, d in ipairs(MainFrame:GetDescendants()) do ui.watch(d) end
 table.insert(conns, MainFrame.DescendantAdded:Connect(ui.watch))
 
--- Ikon gear (putih) di kiri atas: membuka Settings. Digambar dari batang dan lingkaran,
--- sama seperti ikon lain di hub ini. Berputar 45 derajat saat Settings terbuka.
 do
     local btn = make("TextButton", {
         Size = UDim2.new(0, 22, 0, 22),
@@ -1696,8 +1558,7 @@ do
         AutoButtonColor = false,
         BorderSizePixel = 0,
     }, Header)
-    -- Oranye tua khusus gear: lebih gelap dari oranye tertua di GUI (205,78,10), supaya terpisah
-    -- dari labu, tengkorak, dan kelelawar yang berwarna oranye terang
+
     local GEAR_ORANGE = Color3.fromRGB(168, 60, 8)
     local icon = make("Frame", {
         Size = UDim2.new(0, 15, 0, 15),
@@ -1718,11 +1579,11 @@ do
         return f
     end
     local gparts = {}
-    for _, rot in ipairs({ 0, 45, 90, 135 }) do gparts[#gparts + 1] = part(15, 3, rot, C.white) end -- 8 gigi
-    gparts[#gparts + 1] = part(9, 9, 0, C.white, true)                                           -- badan
-    local hole = part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)                                 -- lubang tengah
+    for _, rot in ipairs({ 0, 45, 90, 135 }) do gparts[#gparts + 1] = part(15, 3, rot, C.white) end
+    gparts[#gparts + 1] = part(9, 9, 0, C.white, true)
+    local hole = part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)
     local gscale = make("UIScale", { Scale = 1 }, icon)
-    -- Tema Halloween: gear oranye (ukuran tetap), dengan piringan gelap bergaris oranye
+
     function ui.gearTheme(on)
         for _, p in ipairs(gparts) do p.BackgroundColor3 = on and GEAR_ORANGE or Color3.fromRGB(255, 255, 255) end
         hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4) or Color3.fromRGB(14, 14, 16)
@@ -1730,13 +1591,9 @@ do
     end
     ui.gearBtn, ui.gear = btn, icon
 
-    -- Kelelawar besar yang memegang gear dengan kakinya. Ada di ScreenGui (bukan di MainFrame)
-    -- supaya sayap dan kepalanya bisa keluar dari papan; posisinya mengikuti MainFrame.
     local batRoot = decor.root(ScreenGui, { Position = MainFrame.Position, Size = UDim2.new(0, 0, 0, 0), ZIndex = 20 })
     batRoot.ClipsDescendants = false
-    -- Kelelawar dimiringkan ke kiri dengan pusat putar di tengah gear; badannya setengah
-    -- di belakang gear, kakinya tertutup penuh oleh ikon gear.
-    -- Penghuni gear diundi tiap script dijalankan: kelelawar, tengkorak mengintip, atau labu
+
     decor.gearBuddy = ({ "Bat", "Skull", "Pumpkin" })[math.random(3)]
     if decor.gearBuddy == "Bat" then
         local tilt = make("Frame", {
@@ -1752,7 +1609,7 @@ do
     else
         decor.gearPumpkin(batRoot)
     end
-    -- Gear oranye digambar lagi di atas kelelawar (ikut berputar dengan gear asli)
+
     local ov = make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 19, 0, 17),
         Size = UDim2.new(0, 15, 0, 15), BackgroundTransparency = 1,
@@ -1765,7 +1622,7 @@ do
         }, ov)
         if round then make("UICorner", { CornerRadius = UDim.new(1, 0) }, f) end
     end
-    -- Di mode labu lubang tengah gear kuning, seperti tembus ke mulut; di mode lain gelap.
+
     local gearCol, holeCol = GEAR_ORANGE, Color3.fromRGB(34, 12, 4)
     if decor.gearBuddy == "Pumpkin" then holeCol = Color3.fromRGB(236, 196, 24) end
     for _, rot in ipairs({ 0, 45, 90, 135 }) do ovPart(15, 3, rot, gearCol) end
@@ -1785,7 +1642,6 @@ local function applyTimerVisibility()
 end
 applyTimerVisibility()
 
--- Wave sekarang, hanya tampil saat window diperkecil
 local MiniWave = make("Frame", {
     Size = UDim2.new(0, 70, 1, -1),
     Position = UDim2.new(0, 106, 0, 0),
@@ -1819,17 +1675,15 @@ local MiniWaveValue = make("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, MiniWave)
 
--- Streak: nyala api digambar dari kotak 1px (dua lapis), warnanya ikut tier streak.
--- Pembatas: judul | wave | streak | timer. Hanya tampil saat diperkecil.
 do
     local TIERS = {
-        { min = 48, outer = Color3.fromRGB(125, 75, 225),  inner = Color3.fromRGB(215, 185, 255) },  -- ungu violet
-        { min = 24, outer = Color3.fromRGB(55, 155, 235),  inner = Color3.fromRGB(190, 238, 255) },  -- biru kristal
-        { min = 14, outer = Color3.fromRGB(55, 175, 40),   inner = Color3.fromRGB(170, 255, 70) },   -- hijau toxic
-        { min = 9,  outer = Color3.fromRGB(240, 175, 20),  inner = Color3.fromRGB(255, 240, 120) },  -- kuning
-        { min = 4,  outer = Color3.fromRGB(255, 115, 25),  inner = Color3.fromRGB(255, 185, 70) },   -- oranye terang
-        { min = 1,  outer = Color3.fromRGB(185, 70, 35),   inner = Color3.fromRGB(245, 130, 50) },   -- bara
-        { min = 0,  outer = Color3.fromRGB(70, 70, 76),    inner = Color3.fromRGB(190, 190, 195) },  -- abu-abu
+        { min = 48, outer = Color3.fromRGB(125, 75, 225),  inner = Color3.fromRGB(215, 185, 255) },
+        { min = 24, outer = Color3.fromRGB(55, 155, 235),  inner = Color3.fromRGB(190, 238, 255) },
+        { min = 14, outer = Color3.fromRGB(55, 175, 40),   inner = Color3.fromRGB(170, 255, 70) },
+        { min = 9,  outer = Color3.fromRGB(240, 175, 20),  inner = Color3.fromRGB(255, 240, 120) },
+        { min = 4,  outer = Color3.fromRGB(255, 115, 25),  inner = Color3.fromRGB(255, 185, 70) },
+        { min = 1,  outer = Color3.fromRGB(185, 70, 35),   inner = Color3.fromRGB(245, 130, 50) },
+        { min = 0,  outer = Color3.fromRGB(70, 70, 76),    inner = Color3.fromRGB(190, 190, 195) },
     }
     local OUTER = { {4,1}, {4,2}, {3,3}, {3,4}, {2,5}, {1,6}, {1,7}, {0,8}, {0,9}, {0,9}, {1,7}, {2,5} }
     local INNER = { [6] = {4,1}, [7] = {3,3}, [8] = {3,3}, [9] = {2,5}, [10] = {2,5}, [11] = {3,3}, [12] = {3,3} }
@@ -1921,7 +1775,6 @@ do
     end
 end
 
--- Bar progres wave di tepi bawah, hanya saat diperkecil
 local MiniBarTrack = make("Frame", {
     Size = UDim2.new(1, 0, 0, 2),
     Position = UDim2.new(0, 0, 1, -3),
@@ -1976,7 +1829,6 @@ make("UIStroke", { Color = C.text, Thickness = 1.5 }, MinBox)
 local CloseBtn = iconButton(-34)
 local CloseBars = { iconBar(CloseBtn, 13, 2, 45), iconBar(CloseBtn, 13, 2, -45) }
 
--- Body: sidebar kiri + halaman kanan
 local Body = make("Frame", {
     Size = UDim2.new(1, 0, 1, -HEADER_H),
     Position = UDim2.new(0, 0, 0, HEADER_H),
@@ -1997,7 +1849,6 @@ make("Frame", {
     BorderSizePixel = 0,
 }, Sidebar)
 
--- Dekorasi sidebar: jaring raksasa dari pojok kiri atas, labu dan kelelawar di bawah
 do
     local root = decor.root(Sidebar, { Size = UDim2.new(1, -1, 1, 0) })
     decor.web(root, 0, 0, 230, 0, 90, 8, 7, 0.82)
@@ -2011,9 +1862,8 @@ local PageHolder = make("Frame", {
     Position = UDim2.new(0, SIDEBAR_W, 0, 0),
     BackgroundTransparency = 1,
 }, Body)
-EVENT.parts = { sidebar = Sidebar, page = PageHolder } -- dipakai layar loading
+EVENT.parts = { sidebar = Sidebar, page = PageHolder }
 
--- Drag lewat header (mouse & sentuh)
 local drag = { on = false }
 
 Header.InputBegan:Connect(function(input)
@@ -2047,9 +1897,6 @@ table.insert(conns, UserInputService.InputChanged:Connect(function(input)
     end
 end))
 
--- =================================================================
--- Dropdown: daftar muncul di bawah tombol, panah berputar saat terbuka
--- =================================================================
 local Overlay = make("Frame", {
     Size = UDim2.new(1, 0, 1, 0),
     BackgroundTransparency = 1,
@@ -2086,7 +1933,6 @@ end
 
 Catcher.MouseButton1Click:Connect(closeOverlay)
 
--- Daftar panjang bisa di-scroll dan punya tombol Close
 local ListScroll = make("ScrollingFrame", {
     Size = UDim2.new(1, 0, 1, 0),
     BackgroundTransparency = 1,
@@ -2132,7 +1978,6 @@ local function openList(anchor, options, current, onPick, chev)
     local below = aPos.Y - mainPos.Y + anchor.AbsoluteSize.Y + 2
     local above = aPos.Y - mainPos.Y - h - 2
 
-    -- Utamakan ke bawah; kalau tidak muat baru ke atas
     local y
     if below + h <= mainSize.Y - 4 then
         y = below
@@ -2160,8 +2005,9 @@ local function openList(anchor, options, current, onPick, chev)
             AutoButtonColor = false,
             ZIndex = 4,
         }, ListScroll)
+        local hasCount = type(o.count) == "number"
         make("TextLabel", {
-            Size = UDim2.new(1, -16, 1, 0),
+            Size = UDim2.new(1, hasCount and -72 or -16, 1, 0),
             Position = UDim2.new(0, 10, 0, 0),
             BackgroundTransparency = 1,
             Text = o.label,
@@ -2172,6 +2018,19 @@ local function openList(anchor, options, current, onPick, chev)
             TextTruncate = Enum.TextTruncate.AtEnd,
             ZIndex = 5,
         }, b)
+        if hasCount then
+            make("TextLabel", {
+                Size = UDim2.new(0, 58, 1, 0),
+                Position = UDim2.new(1, -64, 0, 0),
+                BackgroundTransparency = 1,
+                Text = "\195\151" .. o.count,
+                TextColor3 = selected and C.hi or C.muted,
+                TextSize = 11,
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Right,
+                ZIndex = 5,
+            }, b)
+        end
         if selected then
             make("Frame", {
                 Size = UDim2.new(0, 2, 1, 0),
@@ -2202,9 +2061,6 @@ local function openList(anchor, options, current, onPick, chev)
     end
 end
 
--- =================================================================
--- Komponen UI (sudut tegas, tanpa rounding)
--- =================================================================
 local function createCard(par, height)
     local card = make("Frame", {
         Size = UDim2.new(1, 0, 0, height),
@@ -2225,7 +2081,6 @@ local function styleControl(obj)
     }, obj)
 end
 
--- Panah "v" dari dua garis; Rotation 180 = "^"
 local function createChevron(par, xOff)
     local holder = make("Frame", {
         Size = UDim2.new(0, 12, 0, 12),
@@ -2246,7 +2101,6 @@ local function createChevron(par, xOff)
     return holder
 end
 
--- Kolom info (caption kecil + angka monospace)
 local function createCells(container, defs, top, pad)
     local total = 0
     for _, d in ipairs(defs) do total = total + (d.weight or 1) end
@@ -2299,7 +2153,6 @@ local function createCells(container, defs, top, pad)
     return cells
 end
 
--- Gembok kecil: kotak datar dan batang 2px, gaya sama dengan chevron
 local function createLockIcon(par, pos, k)
     k = k or 1
     local holder = make("Frame", {
@@ -2316,15 +2169,14 @@ local function createLockIcon(par, pos, k)
             BorderSizePixel = 0,
         }, holder)
     end
-    bar(1, 0, 8, 2)   -- atas busur
-    bar(1, 0, 2, 6)   -- kiri
-    bar(7, 0, 2, 6)   -- kanan
-    bar(0, 5, 10, 7)  -- badan
-    bar(4, 7, 2, 3, C.control)  -- lubang kunci
+    bar(1, 0, 8, 2)
+    bar(1, 0, 2, 6)
+    bar(7, 0, 2, 6)
+    bar(0, 5, 10, 7)
+    bar(4, 7, 2, 3, C.control)
     return holder
 end
 
--- Kartu fitur: judul + toggle persegi (opsional) + body (opsional)
 local function createFeature(par, title, opts)
     opts = opts or {}
     local bodyH = opts.bodyHeight or 0
@@ -2464,7 +2316,6 @@ local function createFeature(par, title, opts)
     return api
 end
 
--- Pilihan segmen (mis. 1.5x | 2x)
 local function createSegmented(par, props, options, initial, onChange)
     local frame = make("Frame", {
         BackgroundColor3 = C.control,
@@ -2518,7 +2369,6 @@ local function createSegmented(par, props, options, initial, onChange)
     }
 end
 
--- Dropdown asli: panah ke bawah, daftar terbuka ke bawah
 local function createSelect(par, props, cfg)
     local options, current = cfg.options, cfg.initial
 
@@ -2542,7 +2392,27 @@ local function createSelect(par, props, cfg)
     }, btn)
     local chev = createChevron(btn, -9)
 
+    local cnt
+    if cfg.countOf then
+        lbl.Size = UDim2.new(1, -96, 1, 0)
+        cnt = make("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, -26, 0, 0),
+            Size = UDim2.new(0, 62, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            TextColor3 = C.text,
+            TextSize = 11,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, btn)
+    end
+
     local function refresh()
+        if cnt then
+            local n = (current and current ~= "") and cfg.countOf(current) or nil
+            cnt.Text = type(n) == "number" and ("\195\151" .. n) or ""
+        end
         local text
         if cfg.getOptions then
             if current and current ~= "" then
@@ -2577,14 +2447,18 @@ local function createSelect(par, props, cfg)
     end)
 
     refresh()
+    if cnt then
+        runLoop(function()
+            refresh()
+            return 1.5
+        end)
+    end
     return {
         get = function() return current end,
         set = function(v) current = v; refresh() end,
     }
 end
 
--- Tombol lipat bergaya Select: judul di kiri, jumlah + panah di kanan.
--- Klik membuka/menutup daftar yang ada di bawahnya (pemanggil yang membangun ulang).
 local function createCollapse(par, props, title, count, isOpen, onToggle)
     local btn = make("TextButton", {
         BackgroundColor3 = C.control,
@@ -2623,7 +2497,6 @@ local function createCollapse(par, props, title, count, isOpen, onToggle)
     return btn
 end
 
--- Tombol pil persegi (toggle kecil dengan teks)
 local function createPill(par, props, text, initial, onChange)
     local state = initial and true or false
 
@@ -2638,7 +2511,6 @@ local function createPill(par, props, text, initial, onChange)
     for k, v in pairs(props) do btn[k] = v end
     styleControl(btn)
 
-    -- Saat aktif: gradient biru-es ke lavender yang bergeser pelan
     local grad = make("UIGradient", {
         Color = ColorSequence.new(T(Color3.fromRGB(240, 240, 242), "gen"), T(Color3.fromRGB(160, 160, 166), "gen")),
         Rotation = 0,
@@ -2685,7 +2557,6 @@ local function createPill(par, props, text, initial, onChange)
     }
 end
 
--- Tombol biasa
 local function createButton(par, props, text, onClick)
     local btn = make("TextButton", {
         BackgroundColor3 = C.control,
@@ -2708,9 +2579,6 @@ local function createButton(par, props, text, onClick)
     return btn
 end
 
--- Tombol aksi dengan umpan balik: kilat warna saat ditekan, lalu gradient
--- bergeser selama aksinya masih berjalan. Aksi dijalankan langsung saat klik
--- (task.spawn), jadi animasinya tidak pernah menunda aksinya.
 local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
     c1 = c1 or Color3.fromRGB(70, 150, 240)
     c2 = c2 or Color3.fromRGB(150, 110, 235)
@@ -2744,7 +2612,7 @@ local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
         { Offset = Vector2.new(0.35, 0) })
 
     local busy = false
-    local active = 0 -- jumlah aksi yang sedang berjalan (untuk tombol reentrant)
+    local active = 0
     btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.hover end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.control end)
     btn.MouseButton1Down:Connect(function()
@@ -2773,7 +2641,6 @@ local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
     return btn
 end
 
--- Switch kecil (tampilannya sama dengan toggle di kartu fitur)
 local function createMiniSwitch(par, props, initial, onChange)
     local track = make("Frame", {
         Size = UDim2.new(0, 34, 0, 16),
@@ -2821,8 +2688,6 @@ local function createMiniSwitch(par, props, initial, onChange)
     return api
 end
 
--- Jendela kecil melayang (jalan pintas): bisa digeser seperti jendela utama
--- dan ditutup dengan tombol x. Isinya daftar tombol aksi.
 local function createFloat(title, startPos)
     local W = 150
     local f = make("Frame", {
@@ -2879,7 +2744,6 @@ local function createFloat(title, startPos)
         BackgroundTransparency = 1,
     }, f)
 
-    -- Geser lewat baris judul
     local dragging, dragStart, startAbs = false, nil, nil
     bar.InputBegan:Connect(function(input)
         local t = input.UserInputType
@@ -2936,7 +2800,6 @@ local function createFloat(title, startPos)
     return api
 end
 
--- Kotak input teks (multiline untuk JSON)
 local function createInput(par, props, placeholder, multiline)
     local box = make("TextBox", {
         BackgroundColor3 = C.control,
@@ -2964,7 +2827,6 @@ local function createInput(par, props, placeholder, multiline)
     return box
 end
 
--- Kartu fitur dengan state tersimpan; soon=true menandai belum ada fungsi
 local function visualFeature(par, title, key, bodyHeight, build, soon)
     local f = createFeature(par, title, {
         initial = flags[key],
@@ -2975,12 +2837,6 @@ local function visualFeature(par, title, key, bodyHeight, build, soon)
     return f
 end
 
--- =================================================================
--- Halaman + sidebar
--- Tiap halaman adalah satu ScrollingFrame. Sidebar menampilkan grup; grup yang
--- berisi lebih dari satu halaman mendapat topbar kecil di atas halaman.
--- Settings tidak ada di sidebar: dibuka lewat ikon gear di header.
--- =================================================================
 local tabs = {}
 local TOPBAR_H = 30
 local nav = {
@@ -3007,7 +2863,6 @@ make("Frame", {
     BorderSizePixel = 0,
 }, nav.bar)
 
--- Garis penanda tab aktif: satu garis yang meluncur ke tab terpilih
 nav.ind = make("Frame", {
     AnchorPoint = Vector2.new(0.5, 1),
     Size = UDim2.new(0.5, 0, 0, 2),
@@ -3033,7 +2888,7 @@ local function selectTab(name)
     for _, grp in ipairs(nav.groups) do
         grp.label.TextColor3 = (grp == g) and C.hi or C.muted
     end
-    -- Papan penanda geser ke item yang dibuka; disembunyikan saat di Settings (gear)
+
     if g == nav.settings then
         nav.sel.Visible = false
     else
@@ -3118,7 +2973,7 @@ local function addTopButton(pg)
     }, btn)
     nav.top[pg[1]] = { btn = btn, label = label }
     btn.MouseButton1Click:Connect(function()
-        if nav.suppress and os.clock() - nav.suppress < 0.25 then return end -- baru selesai digeser
+        if nav.suppress and os.clock() - nav.suppress < 0.25 then return end
         selectTab(pg[1])
     end)
     btn.InputBegan:Connect(function(input)
@@ -3137,7 +2992,6 @@ for _, grp in ipairs({ nav.groups[2], nav.groups[3], nav.settings }) do
     for _, pg in ipairs(grp.pages) do addTopButton(pg) end
 end
 
--- Papan penanda item sidebar yang sedang dibuka (di bawah label, bergeser saat pindah)
 nav.sel = make("Frame", {
     Size = UDim2.new(1, -1, 0, 30),
     Position = UDim2.new(0, 0, 0, 8),
@@ -3154,8 +3008,6 @@ make("Frame", {
     BorderSizePixel = 0,
 }, nav.sel)
 
--- Geser di topbar: garis mengikuti jari, lepas = pindah ke tab yang ditunjuk.
--- Ketuk langsung tetap bekerja seperti biasa.
 do
     local function slotAt(x)
         local g = nav.byPage[nav.cur]
@@ -3215,23 +3067,14 @@ for i, grp in ipairs(nav.groups) do
         TextXAlignment = Enum.TextXAlignment.Left,
     }, item)
     grp.item = item
-    -- Buka halaman terakhir yang dipakai di grup ini
+
     item.MouseButton1Click:Connect(function() selectTab(grp.last or grp.pages[1][1]) end)
 end
 
--- =================================================================
--- Statistik (Wave x/y, Units, Sell, Upgrade)
--- =================================================================
 local statLabels = {}
 local stats = { sells = 0, upgrades = 0 }
-local waveNow = { cur = nil, max = nil } -- diisi oleh tracking wave
+local waveNow = { cur = nil, max = nil }
 
--- =================================================================
--- Main: Play, Speed, Skip, Replay, Lobby
--- Remote dari SPY:
---   JoinQueue(map, jumlah)  SetGameSpeed(kecepatan)  SkipWaveVote(wave)
---   ReplayVote()            ReplicatedStorage.ReturnToLobby()
--- =================================================================
 do
     local page = tabs["Main"].page
     local inLobby = (game.PlaceId == LOBBY_PLACE)
@@ -3249,10 +3092,9 @@ do
     statLabels.sells = cells[3].value
     statLabels.upgrades = cells[4].value
 
-    -- ---------------- Win / Lose: 15 match terakhir ----------------
     local HISTORY_FILE = FS.data("History")
     local HISTORY_MAX = 15
-    local history = {}  -- terbaru di depan: { win, wave = "12/20", time = "00:42:10" }
+    local history = {}
     if canFile then
         pcall(function()
             if isfile(HISTORY_FILE) then
@@ -3383,8 +3225,6 @@ do
     end)
     renderHistory()
 
-    -- Deteksi akhir match: layar akhir (Replay + Lobby tampil). Menang/kalah dari
-    -- perubahan WinStreak, lalu teks layar akhir, lalu wave terakhir.
     local function streakNow() return tonumber(LocalPlayer:GetAttribute("WinStreak")) or 0 end
     local lastWave = { cur = nil, max = nil }
     local streakStart, armed, ended, keyVerdict, lastRecord = streakNow(), false, false, nil, 0
@@ -3466,7 +3306,7 @@ do
             if isEnd and not ended then
                 ended = true
                 keyVerdict = v
-                task.delay(1.5, recordMatch)  -- tunggu WinStreak diperbarui
+                task.delay(1.5, recordMatch)
             elseif isEnd then
                 keyVerdict = keyVerdict or v
             elseif ended then
@@ -3476,7 +3316,6 @@ do
         end)
     end
 
-    -- Remote Knit (versi paket bisa berubah, jadi dicari lewat nama)
     local function knitRF(service, name)
         local pk = ReplicatedStorage:FindFirstChild("Packages")
         local idx = pk and pk:FindFirstChild("_Index")
@@ -3494,7 +3333,6 @@ do
         return nil
     end
 
-    -- ---------------- Auto Play (hanya di lobby) ----------------
     local fPlay = visualFeature(page, "Auto Play", "autoPlay", 28, function(body)
         createSelect(body, {
             Size = UDim2.new(0.62, -4, 1, 0),
@@ -3515,8 +3353,6 @@ do
         })
     end)
 
-    -- Cari nama map asli dari server (GetMapQueueCounts), lalu fallback ke
-    -- kandidat: nama apa adanya, versi pakai spasi, versi tanpa spasi.
     local function normName(x)
         return (string.lower(tostring(x)):gsub("[%s_%-]", ""))
     end
@@ -3545,7 +3381,7 @@ do
         if #found > 0 then serverNames = found end
     end
 
-    local workingName = {}  -- value -> nama yang terbukti berhasil
+    local workingName = {}
     local function mapCandidates(value)
         local list, seen = {}, {}
         local function add(n)
@@ -3558,8 +3394,8 @@ do
             if normName(n) == target then add(n) end
         end
         add(value)
-        add((value:gsub("(%l)(%u)", "%1 %2")))   -- ToiletBunker -> Toilet Bunker
-        add((value:gsub("%s+", "")))             -- Camera Lab -> CameraLab
+        add((value:gsub("(%l)(%u)", "%1 %2")))
+        add((value:gsub("%s+", "")))
         return list
     end
 
@@ -3583,7 +3419,7 @@ do
             fPlay.setNote("")
             return 1
         end
-        -- Kalau teleport belum terjadi, coba lagi setelah 25 detik
+
         if os.clock() - lastJoin < 25 then
             fPlay.setNote("Joining", C.text)
             return 1
@@ -3616,7 +3452,6 @@ do
         return 1
     end)
 
-    -- ---------------- Auto Speed (hanya di match) ----------------
     local fSpeed
     local function sendSpeed()
         local ev = RE("SetGameSpeed")
@@ -3624,7 +3459,7 @@ do
         return pcall(function() ev:FireServer(flags.speedValue) end)
     end
 
-    fSpeed = visualFeature(page, "Auto Speed", "autoSpeed", 28, function(body)
+    fSpeed = visualFeature(page, "Auto Set Speed", "autoSpeed", 28, function(body)
         createSegmented(body, {
             Size = UDim2.new(0, 220, 1, 0),
         }, SPEED_OPTIONS, flags.speedValue, function(v)
@@ -3633,7 +3468,6 @@ do
         end)
     end)
 
-    -- Dikirim ulang tiap 4 detik supaya kecepatan tetap setelah ronde baru
     runLoop(function()
         if not flags.autoSpeed then
             fSpeed.setNote("")
@@ -3651,9 +3485,6 @@ do
         return 4
     end)
 
-    -- ---------------- Auto Select Mode (voting mode, hanya di match) ----------------
-    -- ReplicatedStorage.ModeVote.Vote:FireServer("Crazy"). Dikirim sekali
-    -- tiap remote muncul atau pilihan berubah.
     local fMode = visualFeature(page, "Auto Select Mode", "autoMode", 28, function(body)
         createSelect(body, {
             Size = UDim2.new(1, 0, 1, 0),
@@ -3693,7 +3524,7 @@ do
             fMode.setNote("Voted " .. mode, C.text)
             return 1.5
         end
-        task.wait(0.8) -- beri waktu UI voting siap
+        task.wait(0.8)
         if not flags.autoMode or flags.modeValue ~= mode then return 0.5 end
         local ok = pcall(function() ev:FireServer(mode) end)
         if ok then
@@ -3705,12 +3536,7 @@ do
         return 1.5
     end)
 
-    -- ---------------- Auto Skip Wave ----------------
-    -- 1) Kalau tombol Skip tampil di layar, diklik lewat game sendiri, jadi
-    --    argumen SkipWaveVote selalu benar dan tidak perlu membaca nomor wave.
-    -- 2) Kalau tombol tidak ketemu: SkipWaveVote(wave) dan (wave+1) langsung.
-    -- 3) Kalau wave tidak terbaca: menebak urutan 1, 2, 3, ...
-    do -- urutan kartu: Select Mode, Play, Speed
+    do
         local o = fPlay.card.LayoutOrder
         fMode.card.LayoutOrder = o
         fPlay.card.LayoutOrder = o + 1
@@ -3719,8 +3545,6 @@ do
 
     local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
 
-    -- anyState = true: tombol yang sedang tersembunyi juga diambil, supaya bisa disimpan
-    -- dan langsung ditekan begitu tampil.
     local function findSkipButton(anyState)
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         if not pg then return nil end
@@ -3763,8 +3587,6 @@ do
         return fired
     end
 
-    -- Tombol Skip disimpan setelah ketemu, jadi pengecekan tiap putaran murah. Pencarian
-    -- penuh di PlayerGui (mahal) hanya dilakukan paling cepat tiap 0.5 detik.
     local skipState = { pressed = false, lastWave = nil, waveAt = 0, lastFire = 0, fires = 0, blind = 0, btn = nil, scanAt = 0 }
     runLoop(function()
         if not flags.autoSkip then
@@ -3788,7 +3610,6 @@ do
         end
         skipState.btn = btn
 
-        -- Penekanan utama dilakukan oleh pengecek per frame di bawah; di sini cuma cadangan
         if btn and isShown(btn) then
             if skipState.pressed then
                 fSkip.setNote("")
@@ -3807,7 +3628,7 @@ do
         local wsA = ReplicatedStorage:FindFirstChild("WaveState")
         local w = wsA and wsA:GetAttribute("CurrentWave")
         if type(w) ~= "number" then w = waveNow.cur end
-        -- ReplicatedStorage.WaveState.CanSkipWave = true berarti skip sudah boleh dipilih
+
         local ws = ReplicatedStorage:FindFirstChild("WaveState")
         local can = ws ~= nil and ws:GetAttribute("CanSkipWave") == true
         if w and now - (skipState.lastAct or 0) < 5 then
@@ -3825,7 +3646,7 @@ do
                 fSkip.setNote("Skipped wave " .. w, C.text)
                 return 0.15
             end
-            -- Kalau game belum menandai skip boleh, beri waktu singkat supaya tombol sempat muncul
+
             if not can and now - skipState.waveAt < 0.7 then return 0.15 end
             skipState.fires = skipState.fires + 1
             skipState.lastFire = now
@@ -3843,7 +3664,6 @@ do
         return 1
     end)
 
-    -- Tombol Skip ditekan di frame yang sama saat ia tampil (tetap secepat itu di game speed x3).
     table.insert(conns, RunService.Heartbeat:Connect(function()
         if not flags.autoSkip then return end
         local b = skipState.btn
@@ -3862,19 +3682,18 @@ do
             skipState.pressed = false
         end
     end))
-    -- Jalur tercepat: begitu game menyalakan CanSkipWave, skip langsung dikirim dari event atributnya
-    -- (tanpa polling). Nomor wave dibaca dari atribut WaveState kalau ada, kalau tidak dari pembaca wave.
+
     function skipState.fireNow()
         local now = os.clock()
         if now - (skipState.lastAct or 0) < 2 then return end
         local ev = RE("SkipWaveVote")
         if not ev then return end
-        -- Dari spy: SkipWaveVote(n) memakai n = WaveState.CurrentWave (sekali saja per wave)
+
         local ws = ReplicatedStorage:FindFirstChild("WaveState")
         local w = ws and ws:GetAttribute("CurrentWave")
         if type(w) ~= "number" then w = nil end
         w = w or waveNow.cur
-        if not w then return end -- nomor wave belum diketahui: jalur cadangan di loop yang menangani
+        if not w then return end
         skipState.lastAct, skipState.lastWave, skipState.fires, skipState.lastFire = now, w, 2, now
         if w + SKIP_WAVE_OFFSET >= 1 then pcall(function() ev:FireServer(w + SKIP_WAVE_OFFSET) end) end
         fSkip.setNote("Skipped wave " .. w, C.text)
@@ -3886,7 +3705,7 @@ do
             if flags.autoSkip and ws:GetAttribute("CanSkipWave") == true then skipState.fireNow() end
         end))
     end)
-    -- Tombol baru yang dibuat game memicu pencarian ulang segera
+
     task.spawn(function()
         local pg = LocalPlayer:WaitForChild("PlayerGui", 30)
         if not pg then return end
@@ -3895,10 +3714,6 @@ do
         end))
     end)
 
-    -- ---------------- Auto Replay / Auto Lobby (layar akhir match) ----------------
-    -- Dianggap akhir match kalau tombol/teks "Replay" DAN "Lobby" sama-sama tampil.
-    -- Aksi dikirim sekali per layar akhir (vote bisa saja toggle). Replay dan
-    -- Lobby saling mematikan supaya tidak bentrok.
     local fReplay, fLobby
 
     fReplay = createFeature(page, "Auto Replay", {
@@ -3970,7 +3785,7 @@ do
             return 1.5
         end
 
-        task.wait(0.8) -- beri waktu tombol aktif
+        task.wait(0.8)
         local ev = wantLobby and ReplicatedStorage:FindFirstChild("ReturnToLobby") or RE("ReplayVote")
         if not ev then
             f.setNote("", C.muted)
@@ -3987,15 +3802,9 @@ do
     end)
 end
 
--- =================================================================
--- Gacha: Summon, Spin, Crate, Lucky Block, Potion
--- Argumen SummonUnits, OpenCrate, SpinWheel sudah dicocokkan dengan SPY.
--- Pesan status memakai bahasa biasa; fitur berhenti mengirim remote
--- saat stok / koin / tiket tidak cukup.
--- =================================================================
 local counts, summonPrices, tickets = nil, nil, nil
-local countsFull, crateDefs = false, {} -- countsFull: data lengkap dari server (yang tidak tercantum = 0)
-local boost = { inv = {}, rem = {}, at = nil }
+local countsFull, crateDefs = false, {}
+local boost = { inv = {}, rem = {}, at = nil, names = {} }
 local BOOST_FIELD = {
     Money = "MoneyTimeRemaining", XP = "XPTimeRemaining",
     Luck = "LuckTimeRemaining", SummonDiscount = "SummonDiscountTimeRemaining",
@@ -4019,7 +3828,6 @@ local function onBoost(t)
     boost.at = os.clock()
 end
 
--- Data crate: event bisa berisi sebagian item saja, jadi digabung ke data yang sudah ada
 local function mergeCounts(t)
     if type(t) ~= "table" then return end
     if type(t.Crates) == "table" then
@@ -4030,7 +3838,7 @@ local function mergeCounts(t)
         end
     end
     if type(t.Inventory) == "table" then
-        -- Data lengkap: gantikan seluruhnya supaya item yang sudah habis ikut hilang
+
         local fresh = {}
         for k, v in pairs(t.Inventory) do fresh[k] = v end
         counts, countsFull = fresh, true
@@ -4043,7 +3851,6 @@ local function mergeCounts(t)
     end
 end
 
--- Cari jumlah item di data (kunci bisa string/angka, atau bersarang dalam tabel lain)
 local function findCount(t, id, depth)
     if type(t) ~= "table" or depth > 3 then return nil end
     local v = t[id]
@@ -4062,43 +3869,64 @@ local function findCount(t, id, depth)
     return nil
 end
 
+local function loadCounts()
+    local ok, res = invoke("GetCrateState")
+    if ok and type(res) == "table" and type(res.Inventory) == "table" then
+        mergeCounts(res)
+        return
+    end
+    local okD, d = invoke("GetData")
+    local items = okD and type(d) == "table" and type(d.Inventory) == "table"
+        and type(d.Inventory.Items) == "table" and d.Inventory.Items.Crates or nil
+    if type(items) == "table" then
+        mergeCounts({ Inventory = items })
+    elseif ok and type(res) == "table" then
+        mergeCounts(res)
+    end
+end
 local countsAt = 0
 local function refreshCounts()
     if os.clock() - countsAt < 8 then return end
     countsAt = os.clock()
-    local ok, res = invoke("GetCrateState")
-    if ok and type(res) == "table" then mergeCounts(res) end
+    loadCounts()
 end
 
 bindEvent("CratesUpdated", function(t)
     mergeCounts(t)
     countsAt = 0
-    task.delay(0.6, refreshCounts) -- ambil data lengkap supaya item yang habis ikut terbarui
+    task.delay(0.6, refreshCounts)
 end)
 bindEvent("SummonStateUpdated", function(t)
     if type(t) == "table" and type(t.Prices) == "table" then summonPrices = t.Prices end
     if type(t) == "table" and type(t.Has25Summon) == "boolean" then EP.has25 = t.Has25Summon end
 end)
 bindEvent("BoostStateUpdated", onBoost)
--- UpdateCurrency dikirim sebagai (nama, jumlah), mis. "Tickets", 68
+
 bindEvent("UpdateCurrency", function(name, amount)
     if name == "Tickets" and type(amount) == "number" then tickets = amount end
 end)
 
--- State awal (kalau game menyediakan)
 task.spawn(function()
     boostAt = os.clock()
     local ok, res = invoke("GetBoostState")
     if ok then onBoost(res) end
+
+    local okW, wheel = invoke("GetSpinWheelState")
+    if okW and type(wheel) == "table" and type(wheel.Rewards) == "table" then
+        for _, r in ipairs(wheel.Rewards) do
+            if type(r) == "table" and r.Type == "Boost" and type(r.BoostName) == "string"
+                and type(r.DisplayName) == "string" then
+                boost.names[r.BoostName] = r.DisplayName
+            end
+        end
+    end
     local okS, resS = invoke("GetSummonState")
     if okS and type(resS) == "table" and type(resS.Prices) == "table" then summonPrices = resS.Prices end
     if okS and type(resS) == "table" and type(resS.Has25Summon) == "boolean" then EP.has25 = resS.Has25Summon end
     countsAt = os.clock()
-    local ok2, res2 = invoke("GetCrateState")
-    if ok2 and type(res2) == "table" then mergeCounts(res2) end
+    loadCounts()
 end)
 
--- Jumlah tiket diambil dari GetData.Currency.Tickets (event UpdateCurrency bisa tertinggal)
 local ticketsAt = 0
 local function refreshTickets()
     if os.clock() - ticketsAt < 5 then return end
@@ -4116,15 +3944,9 @@ local function refreshBoost()
     if ok then onBoost(res) end
 end
 
-local function fmtTime(s)
-    s = math.max(0, math.floor(s))
-    return string.format("%d:%02d", math.floor(s / 60), s % 60)
-end
-
 do
     local page = tabs["Gacha"].page
 
-    -- Auto Summon
     local fSummon = visualFeature(page, "Auto Summon", "autoSummon", 28, function(body)
         createSegmented(body, {
             Size = UDim2.new(0, 150, 1, 0),
@@ -4174,7 +3996,6 @@ do
         return amount >= 10 and 1.2 or 0.6
     end)
 
-    -- Auto Spin
     local fSpin = visualFeature(page, "Auto Spin", "autoSpin", 0)
     local spinFullNotified = false
 
@@ -4184,7 +4005,7 @@ do
             spinFullNotified = false
             return 0.4
         end
-        -- Format asli GetSpinWheelState: { Ready, Tickets, FreeSpins, Cost, InventoryFull }
+
         local okS, st = invoke("GetSpinWheelState")
         if okS and type(st) == "table" then
             if type(st.Tickets) == "number" then tickets = st.Tickets end
@@ -4225,10 +4046,6 @@ end
 do
     local page = tabs["Gacha"].page
 
-    -- Cek stok crate / lucky block. Hanya dianggap kosong kalau datanya jelas menyebut
-    -- jumlah 0. Kalau item tidak ditemukan di data (data gagal dimuat / formatnya beda),
-    -- jangan dianggap kosong: ambil ulang datanya lalu coba buka saja dan biarkan server
-    -- yang menjawab (blind = true).
     local noDataSince = nil
     local function stockCheck(id, want, noun)
         local have = findCount(counts, id, 0)
@@ -4251,18 +4068,17 @@ do
         return want
     end
 
-    -- Daftar yang dimiliki pemain: hanya item berjumlah lebih dari 0 dari GetCrateState.Inventory.
-    -- Nama tampilan diambil dari definisi crate di data yang sama, jadi crate baru ikut muncul sendiri.
-    -- `covered` = data lengkap sudah dimuat; kalau belum, daftar tidak dianggap kosong.
     local function amountOf(v)
         if type(v) == "table" then v = v.Amount or v.Count or v.Quantity or v.amount or v.count end
         return type(v) == "number" and v or nil
     end
     local function labelFor(kind, id)
         if crateDefs[id] then return crateDefs[id] end
-        local known = (kind == "crate") and CRATE_OPTIONS or LUCKY_OPTIONS
-        for _, o in ipairs(known) do
-            if o.value == id then return o.label end
+        if kind == "crate" and id == "Free" then return "Free Scientist Crate" end
+        if kind == "lucky" then
+            for _, o in ipairs(LUCKY_OPTIONS) do
+                if o.value == id then return o.label end
+            end
         end
         return (string.gsub(tostring(id), "(%l)(%u)", "%1 %2"))
     end
@@ -4281,31 +4097,32 @@ do
         table.sort(out, function(x, y) return x.label < y.label end)
         return out, true
     end
-    -- Dipakai dropdown: daftar yang dimiliki; kalau datanya belum jelas, pakai daftar tetap
+
     local function optionsFor(kind)
         task.spawn(refreshCounts)
         local list, covered = ownedItems(kind)
-        if not covered then return (kind == "crate") and CRATE_OPTIONS or LUCKY_OPTIONS end
+        if not covered then return (kind == "lucky") and LUCKY_OPTIONS or {} end
         local opts = {}
         for _, it in ipairs(list) do
-            opts[#opts + 1] = { label = it.label .. "   x" .. it.n, value = it.value }
+            opts[#opts + 1] = { label = it.label, count = it.n, value = it.value }
         end
         return opts
     end
 
-    -- Auto Open Crate (jumlah + jenis)
+    local crateSel
     local fCrate = visualFeature(page, "Auto Open Crate", "autoCrate", 28, function(body)
         createSegmented(body, {
             Size = UDim2.new(0, 96, 1, 0),
         }, CRATE_AMOUNT_OPTIONS, flags.crateAmount, function(v)
             setFlag("crateAmount", v)
         end)
-        createSelect(body, {
+        crateSel = createSelect(body, {
             Size = UDim2.new(1, -104, 1, 0),
             Position = UDim2.new(0, 104, 0, 0),
         }, {
             getOptions = function() return optionsFor("crate") end,
             labelOf = function(id) return labelFor("crate", id) end,
+            countOf = function(id) return findCount(counts, id, 0) end,
             emptyMsg = "No crates yet",
             initial = flags.crateType,
             placeholder = "Select a crate",
@@ -4331,7 +4148,14 @@ do
         end
         local amount, why, blind = stockCheck(id, flags.crateAmount, "crate")
         if not amount then
-            fCrate.setNote(why, C.muted)
+            if why == "Out of stock" and countsFull then
+
+                setFlag("crateType", "")
+                if crateSel then crateSel.set("") end
+                fCrate.setNote("Select a crate", C.warn)
+                return 1.5
+            end
+            fCrate.setNote(why ~= "" and why or "Loading crates...", C.muted)
             return 1.5
         end
         local ok, res = invoke("OpenCrate", id, amount)
@@ -4352,7 +4176,6 @@ do
         return 1.5
     end)
 
-    -- Auto Open Lucky Block (bukan crate; remote OpenLuckyBlock)
     local fLucky = visualFeature(page, "Auto Open Lucky Block", "autoLucky", 28, function(body)
         createSegmented(body, {
             Size = UDim2.new(0, 96, 1, 0),
@@ -4365,6 +4188,7 @@ do
         }, {
             getOptions = function() return optionsFor("lucky") end,
             labelOf = function(id) return labelFor("lucky", id) end,
+            countOf = function(id) return findCount(counts, id, 0) end,
             emptyMsg = "No lucky blocks yet",
             initial = flags.luckyType,
             placeholder = "Select a block",
@@ -4411,8 +4235,6 @@ do
         return 1.5
     end)
 
-    -- Kartu crate / lucky block hilang kalau pemain tidak punya satu pun (event sudah dihapus),
-    -- dan muncul lagi begitu punya. Saat disembunyikan, fiturnya dimatikan.
     runLoop(function()
         task.spawn(refreshCounts)
         for _, k in ipairs({ { "crate", fCrate, "autoCrate" }, { "lucky", fLucky, "autoLucky" } }) do
@@ -4430,17 +4252,37 @@ do
         return 3
     end)
 
-    -- Auto Use Potion: potion bisa di-stack, dipakai terus sampai stok habis
+    local function potionName(k)
+        if boost.names[k] then return boost.names[k] end
+        local spaced = string.gsub(tostring(k), "(%l)(%u)", "%1 %2")
+        if string.find(spaced, "Discount", 1, true) then return spaced end
+        return spaced .. " Potion"
+    end
+    local function potionOptions()
+        task.spawn(refreshBoost)
+        local list = {}
+        for k, n in pairs(boost.inv) do
+            if type(k) == "string" and type(n) == "number" and n > 0 then
+                list[#list + 1] = { label = potionName(k), count = n, value = k }
+            end
+        end
+        table.sort(list, function(a, b) return a.label < b.label end)
+        return list
+    end
+    local potionSel
     local fPotion = visualFeature(tabs["Inventory"].page, "Auto Use Potion", "autoPotion", 28, function(body)
-        createSelect(body, {
+        potionSel = createSelect(body, {
             Size = UDim2.new(1, 0, 1, 0),
         }, {
-            options = POTION_OPTIONS,
+            getOptions = potionOptions,
+            labelOf = potionName,
+            countOf = function(k) return boost.inv[k] end,
             initial = flags.potionType,
             placeholder = "Select a potion",
             onChange = function(v) setFlag("potionType", v) end,
         })
     end)
+    local potionUsed = 0
 
     local POTION_INTERVAL = 0.3
     local potionFails = 0
@@ -4448,6 +4290,7 @@ do
         if not flags.autoPotion then
             fPotion.setNote("")
             potionFails = 0
+            potionUsed = 0
             return 0.5
         end
         local key = flags.potionType
@@ -4458,20 +4301,20 @@ do
         local have = boost.inv[key]
         local blind = (have == nil)
         if blind then
-            task.spawn(refreshBoost) -- stok belum diketahui: ambil ulang, lalu coba saja
+            task.spawn(refreshBoost)
         elseif have <= 0 then
-            fPotion.setNote("Out of stock", C.muted)
+
+            setFlag("potionType", "")
+            if potionSel then potionSel.set("") end
+            fPotion.setNote("Select a potion", C.warn)
             return 2
         end
         local ok, res = invoke("UseBoost", key)
         if accepted(ok, res) then
             potionFails = 0
-            if boost.at and boost.rem[key] and have then
-                local left = boost.rem[key] - (os.clock() - boost.at)
-                fPotion.setNote("Active " .. fmtTime(left) .. " · " .. math.max(0, have - 1) .. " left", C.text)
-            else
-                fPotion.setNote("Active", C.text)
-            end
+            potionUsed = potionUsed + 1
+            if have then boost.inv[key] = math.max(0, have - 1) end
+            fPotion.setNote("Total used " .. potionUsed, C.text)
             return POTION_INTERVAL
         end
         potionFails = potionFails + 1
@@ -4486,18 +4329,12 @@ do
     end)
 end
 
--- =================================================================
--- Inventory: Units (lihat jumlah per unit + jual)
--- Data dari GetData.Inventory.Troops (daftar unit, tiap unit punya UUID dan Name).
--- Jual: RemoteFunctions.SellUnits({ [uuid] = true, ... })
--- Unit yang sedang dipakai (Equipped) atau terkunci tidak dihitung dan tidak dijual.
--- =================================================================
 do
     local page = tabs["Inventory"].page
 
     local KEEP_KEYS = { "Equipped", "Locked", "Lock", "Favorite", "Favourite", "InUse", "Placed" }
 
-    local cache = nil            -- { list = { {n, ids}... }, total = n }
+    local cache = nil
     local cacheAt, busy = -100, false
     local warned = false
 
@@ -4544,7 +4381,7 @@ do
     end
 
     local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
-    card.card.LayoutOrder = -2   -- paling atas di halaman Inventory
+    card.card.LayoutOrder = -2
     local selected, statusUntil, selling = nil, 0, false
 
     local function say(t, color)
@@ -4561,9 +4398,15 @@ do
             refresh(false)
             local opts = {}
             for _, g in ipairs(cache and cache.list or {}) do
-                opts[#opts + 1] = { label = g.n .. "   x" .. #g.ids, value = g.n }
+                opts[#opts + 1] = { label = g.n, count = #g.ids, value = g.n }
             end
             return opts
+        end,
+        countOf = function(name)
+            for _, g in ipairs(cache and cache.list or {}) do
+                if g.n == name then return #g.ids end
+            end
+            return 0
         end,
         onChange = function(v) selected = v end,
     })
@@ -4574,16 +4417,11 @@ do
         TextXAlignment = Enum.TextXAlignment.Center,
     }, "Amount")
 
-    local function sellUnits()
-        if selling then return end
+    local function planSale(all)
+        if selling then return nil end
         if not selected then
             say("Select a unit", C.warn)
-            return
-        end
-        local amount = tonumber(amountBox.Text)
-        if not amount or amount < 1 then
-            say("Enter an amount", C.warn)
-            return
+            return nil
         end
         local group
         for _, g in ipairs(cache and cache.list or {}) do
@@ -4591,9 +4429,25 @@ do
         end
         if not group then
             say("Out of stock", C.warn)
-            return
+            return nil
         end
-        amount = math.min(math.floor(amount), #group.ids)
+        local amount
+        if all then
+            amount = #group.ids
+        else
+            amount = tonumber(amountBox.Text)
+            if not amount or amount < 1 then
+                say("Enter an amount", C.warn)
+                return nil
+            end
+            amount = math.min(math.floor(amount), #group.ids)
+        end
+        return group, amount
+    end
+
+    local function sellUnits(all)
+        local group, amount = planSale(all)
+        if not group then return end
         selling = true
         task.spawn(function()
             local sold, failed = 0, false
@@ -4622,10 +4476,41 @@ do
         end)
     end
 
-    createButton(card.body, {
-        Size = UDim2.new(1, -98, 0, 28),
+    local sellBtn, allBtn
+    local base, armed = {}, nil
+    local function disarm()
+        if armed then
+            armed.Text = base[armed]
+            armed.TextColor3 = C.text
+            armed = nil
+        end
+    end
+    local function press(btn, all)
+        if armed == btn then
+            disarm()
+            sellUnits(all)
+            return
+        end
+        disarm()
+        local group, amount = planSale(all)
+        if not group then return end
+        armed = btn
+        btn.Text = "Sure?"
+        btn.TextColor3 = C.warn
+        say((all and "Sell all " or "Sell ") .. amount .. " " .. group.n .. "?", C.warn)
+        task.delay(3, function()
+            if armed == btn then disarm() end
+        end)
+    end
+    sellBtn = createButton(card.body, {
+        Size = UDim2.new(0.5, -52, 0, 28),
         Position = UDim2.new(0, 98, 0, 36),
-    }, "Sell", sellUnits)
+    }, "Sell", function() press(sellBtn, false) end)
+    allBtn = createButton(card.body, {
+        Size = UDim2.new(0.5, -52, 0, 28),
+        Position = UDim2.new(0.5, 52, 0, 36),
+    }, "Sell all", function() press(allBtn, true) end)
+    base[sellBtn], base[allBtn] = "Sell", "Sell all"
 
     runLoop(function()
         refresh(false)
@@ -4640,9 +4525,6 @@ do
     end)
 end
 
--- =================================================================
--- Endless: Auto Upgrade (remote dicari saat match berjalan)
--- =================================================================
 do
     local page = tabs["Endless"].page
     local upg
@@ -4693,7 +4575,6 @@ do
         return tostring(t:GetAttribute("Level")) .. ":" .. tostring(t:GetAttribute("UpgradePrice"))
     end
 
-    -- Mengembalikan tower target, atau nil + alasan ("MAX" / "WAIT")
     local function pickTarget(towers, cash)
         local candidates = {}
         for _, t in ipairs(towers) do
@@ -4765,12 +4646,6 @@ do
     end)
 end
 
--- =================================================================
--- Endless: Teleport UTTM + Unit Mower + Auto use ability
--- Lokasi dipilih manual: tekan Select / Add, lalu double-tap di tanah.
---   UTTM: CinemaRelocate("Start", tower, nil) lalu ("Place", tower, CFrame)
---   Unit Mower: rekam penempatan, lalu jual + pasang ulang serentak di posisi rekaman
--- =================================================================
 local SPOTS_FILE = FS.data("Spots")
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
@@ -4778,7 +4653,6 @@ do
     local page = tabs["Endless"].page
     local mouse = LocalPlayer:GetMouse()
 
-    -- ---------------- Penyimpanan ----------------
     local spots = { uttm = {}, mowers = {}, home = {} }
 
     local function readLocs(src)
@@ -4837,7 +4711,6 @@ do
         if canFile then pcall(writefile, SPOTS_FILE, HttpService:JSONEncode(spots)) end
     end
 
-    -- ---------------- Pilih lokasi: double-tap di tanah ----------------
     local pick = nil
 
     local function startPick(cb)
@@ -4875,7 +4748,6 @@ do
         pick.lastT, pick.lastPos = now, here
     end))
 
-    -- ---------------- Tower ----------------
     local function findTowerNear(name, x, z, r)
         local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
@@ -4908,7 +4780,6 @@ do
         end
     end
 
-    -- Baris lokasi: Loc N | Teleport | Select | Delete
     local function addLocRow(rows, list, s, y, onTeleport, onChanged, rebuild)
         make("TextLabel", {
             Size = UDim2.new(0, 66, 0, 28),
@@ -4963,7 +4834,6 @@ do
         end)
     end
 
-    -- ---------------- Teleport UTTM (muncul otomatis kalau unitnya ada) ----------------
     local uttmCard = createCard(page, 80)
     local uttmFloat, refreshUttmFloat
     local uttmTitle = make("TextLabel", {
@@ -4976,8 +4846,7 @@ do
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, uttmCard)
-    -- Hanya kata "UTTM" yang berwarna: biru dan ungu yang saling menyatu dan
-    -- bergeser pelan di seluruh teks (bukan pita warna yang lewat satu-satu).
+
     local TextService = game:GetService("TextService")
     local prefixW = TextService:GetTextSize("Teleport ", 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     local uttmWord = make("TextLabel", {
@@ -5052,10 +4921,6 @@ do
         return nil
     end
 
-    -- ---------------- Mode drone ----------------
-    -- Satu klik Teleport menjalankan semuanya: drone dimatikan (kalau aktif),
-    -- teleport, lalu drone dinyalakan lagi. Kalau drone tidak aktif, tidak ada
-    -- yang dinyalakan.
     local droneState = env.LightHubDrone
     if not droneState then
         droneState = { on = nil }
@@ -5064,7 +4929,6 @@ do
     droneState.active = true
     droneState.internal = false
 
-    -- Catat klik Drones manual dari pemain (panggilan dari script ini diabaikan)
     if hookmetamethod and getnamecallmethod and not env.LightHubDroneHooked then
         pcall(function()
             local old
@@ -5085,7 +4949,6 @@ do
         end)
     end
 
-    -- Kamera tidak lagi mengikuti karakter = sedang di mode drone
     local function cameraInDrone()
         local cam = workspace.CurrentCamera
         local ch = LocalPlayer.Character
@@ -5104,7 +4967,6 @@ do
         return cameraInDrone() or droneState.on == true
     end
 
-    -- Berhasil kalau remote tidak error dan tidak menolak secara eksplisit
     local function toggleDrone(tw, newState)
         droneState.internal = true
         local ok, res = invoke("CinemaRelocate", "Drones", tw, nil)
@@ -5136,7 +4998,6 @@ do
             end
             uttmSay("Working...", C.muted)
 
-            -- 1. Drone aktif -> matikan dulu
             local droneOff = false
             if isDroneOn(tw) then
                 uttmSay("Drone off...", C.muted)
@@ -5144,7 +5005,6 @@ do
                 task.wait(0.7)
             end
 
-            -- 2. Start; kalau ditolak karena drone masih aktif, matikan lalu coba lagi
             local started = false
             for _ = 1, 5 do
                 local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
@@ -5163,7 +5023,6 @@ do
                 end
             end
 
-            -- 3. Pindahkan
             local placed = false
             if started then
                 local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
@@ -5179,7 +5038,6 @@ do
                 uttmSay("On cooldown" .. ago, C.warn)
             end
 
-            -- 4. Nyalakan drone lagi kalau tadi dimatikan oleh script
             if droneOff then
                 task.wait(0.6)
                 toggleDrone(findUttm() or tw, true)
@@ -5193,7 +5051,7 @@ do
     local uttmOpen = false
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
-        -- Dropdown: daftar Loc tersembunyi sampai tombolnya dibuka
+
         createCollapse(uttmRows, {
             Size = UDim2.new(1, 0, 0, 28),
             Position = UDim2.new(0, 0, 0, 0),
@@ -5246,34 +5104,24 @@ do
         return 1
     end)
 
-    -- Dibagikan ke blok Unit Mower dan Auto use ability (dipisah supaya jumlah variabel
-    -- lokal per blok tidak melewati batas 200 milik Lua)
     EP.page, EP.spots, EP.saveSpots = page, spots, saveSpots
     EP.UTTM_BLUE, EP.UTTM_VIOLET = UTTM_BLUE, UTTM_VIOLET
     EP.findUttm, EP.pushMacro = findUttm, pushMacro
     EP.isBusy = function() return uttmBusy end
     EP.readUnits = readUnits
     EP.droneOn = isDroneOn
-    -- Pastikan drone UTTM ada di keadaan yang diminta (true = aktif). Mengembalikan true kalau berhasil.
+
     EP.setDrone = function(tw, want)
         if isDroneOn(tw) == want then return true end
         return toggleDrone(tw, want)
     end
 end
 
--- =================================================================
--- Endless: Unit Replace (dulu Unit Mower)
--- =================================================================
 do
     local page, spots, saveSpots = EP.page, EP.spots, EP.saveSpots
     local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
     local pushMacro = EP.pushMacro
 
-    -- ---------------- Unit Mower ----------------
-    -- Rekam penempatan sendiri (Record placement), simpan jadi "Replace N".
-    -- Klik Place: unit yang sedang terpasang dijual lalu dipasang lagi di posisi
-    -- rekaman, semuanya serentak, lalu di-upgrade lagi ke level semula.
-    -- Back default: kembalikan semua unit ke posisi saat tombol Save ditekan.
     do
         local GREEN_A, GREEN_B = Color3.fromRGB(46, 128, 94), Color3.fromRGB(128, 212, 164)
         local RED_A, RED_B = Color3.fromRGB(150, 24, 44), Color3.fromRGB(255, 176, 208)
@@ -5313,7 +5161,6 @@ do
             if mowerFloat then mowerFloat.toggle() end
         end)
 
-        -- ---------- Unit di lapangan ----------
         local function myTowers()
             local out = {}
             local folder = workspace:FindFirstChild("Towers")
@@ -5350,7 +5197,6 @@ do
             return best
         end
 
-        -- Titik tanah di bawah unit (sama seperti titik yang dibaca dari tap di tanah)
         local function groundOf(pos)
             local ok, hit = pcall(function()
                 local params = RaycastParams.new()
@@ -5374,7 +5220,6 @@ do
             return CFrame.new(tg.x, tg.y, tg.z)
         end
 
-        -- Jalankan fn untuk semua item secara bersamaan, tunggu sampai semuanya selesai
         local function parallel(list, fn, timeout)
             local left = #list
             if left == 0 then return end
@@ -5388,11 +5233,10 @@ do
             while left > 0 and os.clock() - t0 < (timeout or 45) do task.wait(0.1) end
         end
 
-        local inFlight = {} -- unit yang sedang diproses (jangan diambil dua kali)
-        local runId = 0     -- naik tiap tombol mower ditekan; run lama berhenti mencoba tujuan lamanya
-        local pending = 0   -- unit yang sudah dijual tapi belum terpasang lagi
+        local inFlight = {}
+        local runId = 0
+        local pending = 0
 
-        -- Cocokkan unit yang terpasang dengan target (nama sama, paling dekat)
         local function plan(targets)
             local pool = {}
             for _, u in ipairs(myTowers()) do
@@ -5429,10 +5273,8 @@ do
             return moves, same, missing
         end
 
-        local learnedKind = {} -- nama unit -> jenis tinggi yang diterima server
+        local learnedKind = {}
 
-        -- Rekaman: CFrame persis dari game. Default: beberapa kandidat tinggi,
-        -- dicoba bergantian sampai server menerima ("Not allowed this area" -> coba berikutnya)
         local function candidatesFor(tg)
             if type(tg.cf) == "table" and #tg.cf == 12 then
                 return { { cf = targetCF(tg), kind = 0 } }
@@ -5454,8 +5296,6 @@ do
             return list
         end
 
-        -- Lokasi sebuah unit saat ini (dipakai untuk default, dan untuk mengembalikan
-        -- unit ke tempat asalnya kalau tujuannya diblokir)
         local function locOf(u)
             if u.exact then
                 return { n = u.name, x = u.exact[1], y = u.exact[2], z = u.exact[3], cf = u.exact }
@@ -5467,11 +5307,10 @@ do
             return { n = u.name, x = u.pos.X, y = ground, z = u.pos.Z, ys = { ground, bottom, u.pos.Y } }
         end
 
-        -- Coba pasang di target; mengembalikan unit baru kalau diterima server
         local function tryPlace(target, tries, myRun)
             local cands = candidatesFor(target)
             for attempt = 1, tries do
-                if myRun and myRun ~= runId then return nil end -- tombol lain ditekan: berhenti
+                if myRun and myRun ~= runId then return nil end
                 local cand = cands[(attempt - 1) % #cands + 1]
                 invoke("PlaceTower", target.n, cand.cf)
                 for _ = 1, 8 do
@@ -5488,8 +5327,6 @@ do
             return nil
         end
 
-        -- Satu unit: jual -> pasang di tujuan (kalau diblokir, kembali ke tempat asal)
-        -- -> upgrade lagi ke level semula. Semua unit diproses bersamaan.
         local function processUnit(m)
             local u, tg = m.unit, m.tg
             local tw = u.tower
@@ -5504,7 +5341,7 @@ do
             end
             if tw.Parent then
                 inFlight[tw] = nil
-                m.failed = true -- gagal dijual, unit tetap di tempatnya
+                m.failed = true
                 return
             end
             pushMacro({ t = "sell", n = u.name, p = { u.pos.X, u.pos.Y, u.pos.Z } })
@@ -5514,7 +5351,7 @@ do
             if placed then
                 m.atTarget = true
             else
-                placed = tryPlace(m.orig, 8) -- tujuan diblokir: kembalikan supaya unit tidak hilang
+                placed = tryPlace(m.orig, 8)
                 m.blocked = true
             end
             m.placed = placed
@@ -5539,13 +5376,10 @@ do
             inFlight[tw] = nil
         end
 
-        -- Tidak ada penguncian: tombol bisa ditekan lagi kapan saja walau proses
-        -- sebelumnya belum selesai (unit yang sedang diproses tidak diambil dua kali)
         local function execute(label, targets)
             runId = runId + 1
             local myRun = runId
-            -- Kalau proses sebelumnya masih jalan, unit yang diblokir langsung dikembalikan ke
-            -- tempat asalnya; tunggu sebentar (maksimal 4 detik) supaya unit itu bisa ikut dihitung
+
             local t0 = os.clock()
             while pending > 0 and os.clock() - t0 < 4 do task.wait(0.1) end
             local moves, same, missing = plan(targets)
@@ -5573,7 +5407,6 @@ do
             say(msg, (moved == #moves) and C.text or C.warn)
         end
 
-        -- ---------- Default (posisi awal) ----------
         local function snapshotHome()
             spots.home = {}
             local exact = 0
@@ -5598,7 +5431,6 @@ do
             execute("Mower " .. m.id, m.units)
         end
 
-        -- ---------- Rekam penempatan ----------
         local recBuf, recOn = {}, false
         local recSwitch
 
@@ -5608,8 +5440,6 @@ do
             return set
         end
 
-        -- Cari unit baru hasil penempatan. before = daftar unit sebelum penempatan (kalau ada),
-        -- kalau tidak, ambil unit terdekat yang belum tercatat.
         local function findPlaced(n, x, z, before)
             local best, bd
             for _, u in ipairs(myTowers()) do
@@ -5622,7 +5452,6 @@ do
             return best
         end
 
-        -- Dipanggil dari invoke() untuk penempatan oleh script sendiri
         placeHook.register = function(n, cf)
             if type(n) ~= "string" or typeof(cf) ~= "CFrame" then return end
             local before = towerSet()
@@ -5637,7 +5466,6 @@ do
             end
         end
 
-        -- Dipanggil dari hook untuk penempatan manual pemain (selalu aktif di belakang layar)
         placeHook.handler = function(nm, a1, a2)
             if nm == "PlaceTower" then
                 if type(a1) ~= "string" or typeof(a2) ~= "CFrame" or a1 == UTTM_NAME then return end
@@ -5670,7 +5498,6 @@ do
             end
         end
 
-        -- Pasang hook begitu bagian Macro siap; setelah itu terus mencatat di belakang layar
         task.spawn(function()
             for _ = 1, 60 do
                 if placeHook.install then
@@ -5725,7 +5552,6 @@ do
             say("Replace " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
         end
 
-        -- ---------- UI ----------
         local rows = make("Frame", {
             Size = UDim2.new(1, -24, 0, 64),
             Position = UDim2.new(0, 12, 0, 34),
@@ -5746,7 +5572,7 @@ do
         end
 
         local function armed(btn, idle, ms)
-            -- konfirmasi dua langkah: ketuk sekali jadi "Sure?", ketuk lagi untuk lanjut
+
             local on = false
             return function()
                 if on then
@@ -5766,7 +5592,6 @@ do
         rebuildMower = function()
             for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
 
-            -- Record placement [toggle]
             rowLabel(0, "Record placement")
             recSwitch = createMiniSwitch(rows, {
                 Position = UDim2.new(0, 110, 0, 6),
@@ -5778,7 +5603,6 @@ do
                 end
             end)
 
-            -- Back default [Back] [Save/Edit]
             rowLabel(32, "Back default")
             createFxButton(rows, {
                 Size = UDim2.new(0, 60, 0, 28),
@@ -5814,7 +5638,6 @@ do
                 }, rows)
             end
 
-            -- Dropdown: daftar Replace N tersembunyi sampai tombolnya dibuka
             createCollapse(rows, {
                 Size = UDim2.new(1, 0, 0, 28),
                 Position = UDim2.new(0, 0, 0, 64),
@@ -5822,7 +5645,7 @@ do
                 replaceOpen = v
                 rebuildMower()
             end)
-            -- Replace N [Place] [Delete]
+
             for i, m in ipairs(replaceOpen and spots.mowers or {}) do
                 local y = 100 + (i - 1) * 32
                 rowLabel(y, "Replace " .. m.id)
@@ -5879,8 +5702,6 @@ do
         rebuildMower()
         refreshMowerFloat()
 
-        -- ---------- Share Replace ----------
-        -- Kode: JSON { v = 1, t = "replace", list = { { units = {...} }, ... } }
         local function replaceOptions()
             local t = {}
             if #spots.mowers > 1 then t[#t + 1] = { label = "All replace", value = "All replace" } end
@@ -5892,7 +5713,7 @@ do
         end
 
         local share = createFeature(tabs["Share"].page, "Share Replace", { noToggle = true, bodyHeight = 28 })
-        share.card.LayoutOrder = 101  -- tepat di bawah Share Macro
+        share.card.LayoutOrder = 101
         local shareSel = createSelect(share.body, {
             Size = UDim2.new(1, -96, 1, 0),
         }, {
@@ -5933,7 +5754,6 @@ do
             end
         end)
 
-        -- ---------- Import Replace ----------
         local imp = createFeature(tabs["Share"].page, "Import Replace", { noToggle = true, bodyHeight = 28 })
         imp.card.LayoutOrder = 103
         local codeBox = createInput(imp.body, { Size = UDim2.new(1, -96, 1, 0) }, "Paste replace code")
@@ -5972,18 +5792,13 @@ do
     end
 end
 
--- =================================================================
--- Endless: Auto use ability
--- =================================================================
 do
     local page = EP.page
     local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
     local findUttm = EP.findUttm
 
     do
-    -- ---------------- Auto Use Ability ----------------
-    -- Sword = ability UTTM (CinemaRelocate "Spin"), Spinner = Speaker Woman 2.0
-    -- (UseTowerAbility). Kedua unit dicari di workspace.Towers milik sendiri.
+
     local SPW_NAME = "Speaker Woman 2.0"
     local SPW_DARK = Color3.fromRGB(150, 24, 44)
     local SPW_PINK = Color3.fromRGB(255, 176, 208)
@@ -6044,7 +5859,6 @@ do
         if allBtn then allBtn.Text = allOn() and "Disable all" or "Enable all" end
     end
 
-    -- Switch kecil, tampilannya sama dengan toggle di kartu fitur
     local function makeSwitch(parent, onChange)
         local track = make("Frame", {
             Size = UDim2.new(0, 34, 0, 16),
@@ -6144,7 +5958,6 @@ do
         refreshAll()
     end)
 
-    -- Gradient bergeser pelan seperti di kartu Teleport UTTM
     runLoop(function()
         local k = (math.sin(os.clock() * 0.9) + 1) / 2
         for _, r in ipairs(abilityRows) do
@@ -6158,7 +5971,6 @@ do
         return 0.05
     end)
 
-    -- Kartu dan barisnya muncul sendiri begitu unitnya dipasang, hilang kalau dijual
     runLoop(function()
         local n = 0
         for _, r in ipairs(abilityRows) do
@@ -6184,13 +5996,6 @@ do
     end
 end
 
--- =================================================================
--- Macro: rekam dan putar ulang strategi
---   PlaceTower(nama, CFrame)   UpgradeTower(tower)   SellTower(tower)
---   CinemaRelocate("Drones", UTTM)   ChangeTargetMode(tower)
--- Rekaman ditulis ke file LightHub_Macro_<nama>.json (daftar nama di
--- LightHub_Macro_Index.json). Tower dikenali lewat nama + posisi.
--- =================================================================
 do
     local page = tabs["Macro"].page
     local inMatch = (game.PlaceId == MATCH_PLACE)
@@ -6202,7 +6007,6 @@ do
         env.LightHubMacroState = mstate
     end
 
-    -- ---------------- File ----------------
     local function macroFile(name)
         return FS.macro(name)
     end
@@ -6231,7 +6035,6 @@ do
         pcall(writefile, MACRO_INDEX, HttpService:JSONEncode(list))
     end
 
-    -- Daftar macro: dari index, ditambah hasil listfiles kalau executor mendukung
     local function macroNames()
         local out, seen = {}, {}
         local function add(n)
@@ -6278,7 +6081,7 @@ do
         for _, a in ipairs(m.actions) do
             if type(a) ~= "table" or (a.d ~= nil and type(a.d) ~= "number") then return false end
             if a.t == "wait" then
-                -- hanya jeda
+
             elseif type(a.n) ~= "string" then
                 return false
             elseif a.t == "place" then
@@ -6297,9 +6100,6 @@ do
         return true
     end
 
-    -- Format macro lain: {"Name":..,"Actions":[{"t":"P","i":1,"p":[x,y,z],"n":"Unit","d":4.6},
-    -- {"t":"U","i":1},{"t":"S","i":1},{"t":"W"}]}. i = nomor tower, d = jeda (detik).
-    -- P=place, U=upgrade, S=sell, W=jeda saja.
     local function convertForeign(data)
         local src = data.Actions
         if type(src) ~= "table" then return nil end
@@ -6347,8 +6147,6 @@ do
         return true
     end
 
-    -- Place, upgrade, mode drone, dan ganti target UTTM ikut direkam. Hanya jual UTTM yang
-    -- dibuang (UTTM tidak bisa dijual). Ability Spin dan teleport UTTM tidak direkam.
     local function stripUttm(m)
         local keep, removed = {}, 0
         for _, a in ipairs(m.actions) do
@@ -6381,9 +6179,8 @@ do
         writeIndex(keep)
     end
 
-    -- ---------------- Tower ----------------
     local function findTower(name, x, z, r)
-        -- UTTM hanya satu dan bisa berpindah lewat Teleport, jadi dicari lewat nama saja
+
         if name == UTTM_NAME and EP.findUttm then return EP.findUttm() end
         local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
@@ -6402,7 +6199,6 @@ do
         return best
     end
 
-    -- ---------------- Rekam ----------------
     local function saveCurrentRec()
         local rec = mstate.rec
         if not rec then return end
@@ -6421,7 +6217,6 @@ do
         notify("Macro saved", "'" .. rec.name .. "': " .. #rec.actions .. " actions", 4)
     end
 
-    -- Mode target tower dibaca dari atribut yang namanya memuat "target" (kalau ada)
     function mstate.modeOf(tw)
         for name, v in pairs(tw:GetAttributes()) do
             if (type(v) == "string" or type(v) == "number") and string.find(string.lower(name), "target", 1, true) then
@@ -6431,8 +6226,6 @@ do
         return nil
     end
 
-    -- Dipanggil (deferred) saat game memanggil Place/Upgrade/SellTower, mode drone, dan ganti target.
-    -- Aksi baru dicatat kalau hasilnya benar-benar terlihat di game.
     local function onCall(nm, a1, a2)
         local rec = mstate.rec
         if not rec then return end
@@ -6454,7 +6247,7 @@ do
             end
             if not ok then return end
         elseif nm == "Drones" then
-            -- CinemaRelocate("Drones", tower): nyala/mati mode drone. Yang disimpan keadaan akhirnya.
+
             local tw = a2
             if typeof(tw) ~= "Instance" or not EP.droneOn then return end
             local before = EP.droneOn(tw)
@@ -6478,11 +6271,11 @@ do
                 mode = mstate.modeOf(a1)
                 if mode ~= before then break end
             end
-            if mode == before then mode = nil end -- game tidak menyimpan mode di atribut
+            if mode == before then mode = nil end
             act = { t = "target", n = a1.Name, p = { pos.X, pos.Y, pos.Z }, m = mode, w = w }
         else
             if typeof(a1) ~= "Instance" then return end
-            if a1.Name == UTTM_NAME and nm == "SellTower" then return end -- UTTM tidak bisa dijual
+            if a1.Name == UTTM_NAME and nm == "SellTower" then return end
             local okp, pos = pcall(function() return a1:GetPivot().Position end)
             if not okp then return end
             local lvl = a1:GetAttribute("Level")
@@ -6511,8 +6304,6 @@ do
     end
     mstate.handler = onCall
 
-    -- Aksi dari Unit Replace (sell + place + upgrade) ikut direkam saat Record aktif.
-    -- UTTM sengaja tidak ikut direkam dari sini.
     mstate.push = function(act)
         local rec = mstate.rec
         if not rec or act.n == UTTM_NAME then return end
@@ -6522,12 +6313,10 @@ do
         saveCurrentRec()
     end
 
-    -- Hook dipasang sekali per server, membaca handler dari mstate
     local function installHook()
         if not (hookmetamethod and newcclosure and getnamecallmethod) then return false end
         if mstate.hooked and mstate.hookV2 then return true end
-        -- Kalau hook versi lama masih terpasang di server ini, hook baru hanya menangani
-        -- mode drone dan ganti target supaya aksi lama tidak tercatat dua kali.
+
         local full = not mstate.hooked
         local ok = pcall(function()
             local orig
@@ -6559,7 +6348,6 @@ do
 
     placeHook.install = installHook
 
-    -- ---------------- UI ----------------
     local selFile, refreshSel, selLabel
     local fRec, fPlay
     local play = { idx = 1, macro = nil, name = nil, stepSince = nil }
@@ -6574,7 +6362,6 @@ do
         end
     end
 
-    -- Make file
     local mk = createFeature(page, "Make Macro", { noToggle = true, bodyHeight = 28 })
     local mkInput = createInput(mk.body, { Size = UDim2.new(1, -86, 1, 0) }, "Macro name")
     createButton(mk.body, {
@@ -6598,7 +6385,6 @@ do
         end
     end)
 
-    -- List file + select + delete
     local fileCard = createFeature(page, "Macro File", { noToggle = true, bodyHeight = 28 })
     selFile = createSelect(fileCard.body, {
         Size = UDim2.new(1, -86, 1, 0),
@@ -6641,7 +6427,6 @@ do
         refreshSel()
     end)
 
-    -- Record
     fRec = createFeature(page, "Record Macro", {
         bodyHeight = 16,
         initial = flags.macroRecord,
@@ -6682,7 +6467,6 @@ do
     }, fRec.body)
     refreshSel()
 
-    -- Playback
     fPlay = createFeature(page, "Playback Macro", {
         initial = flags.macroPlay,
         onToggle = function(v)
@@ -6705,7 +6489,6 @@ do
         end,
     })
 
-    -- urutan kartu: File, Record, Playback, Make Macro
     do
         local o = mk.card.LayoutOrder
         fileCard.card.LayoutOrder = o
@@ -6714,7 +6497,6 @@ do
         mk.card.LayoutOrder = o + 3
     end
 
-    -- Share
     local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
     share.card.LayoutOrder = 100
     local shareSel = createSelect(share.body, {
@@ -6745,7 +6527,6 @@ do
         pcall(setclipboard, HttpService:JSONEncode({ v = 1, name = name, actions = m.actions }))
     end)
 
-    -- Import
     local imp = createFeature(tabs["Share"].page, "Import Macro", { noToggle = true, bodyHeight = 108 })
     imp.card.LayoutOrder = 102
     local jsonBox = createInput(imp.body, { Size = UDim2.new(1, 0, 0, 70) }, "Paste macro JSON here", true)
@@ -6804,7 +6585,6 @@ do
         end
     end)
 
-    -- ---------------- Loop rekam ----------------
     runLoop(function()
         if not flags.macroRecord then
             if mstate.rec then stopRecording() end
@@ -6841,9 +6621,6 @@ do
         return 0.5
     end)
 
-    -- ---------------- Loop playback ----------------
-    -- Berurutan: tiap aksi menunggu wave-nya, lalu diulang sampai berhasil
-    -- (misalnya menunggu cash cukup). Aksi yang macet 90 detik dilewati.
     runLoop(function()
         if not flags.macroPlay then
             play.idx, play.macro = 1, nil
@@ -6899,7 +6676,7 @@ do
 
         local done = false
         if a.t == "wait" or (a.n == UTTM_NAME and a.t == "sell") then
-            done = true -- jeda, atau jual UTTM yang dilewati
+            done = true
         elseif a.t == "place" then
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true
@@ -6948,7 +6725,7 @@ do
                 else
                     local price = tw:GetAttribute("UpgradePrice")
                     if type(price) ~= "number" or price <= 0 then
-                        done = true -- sudah max
+                        done = true
                     else
                         local lvl = tw:GetAttribute("Level")
                         local ok, res = invoke("UpgradeTower", tw)
@@ -6963,7 +6740,7 @@ do
                 end
             else
                 if not tw then
-                    done = true -- sudah tidak ada
+                    done = true
                 else
                     invoke("SellTower", tw)
                     task.wait(0.4)
@@ -6992,21 +6769,17 @@ do
     end)
 end
 
--- =================================================================
--- Rewards: Auto Claim Gift + Auto Claim Season Pass
--- =================================================================
 do
     local page = tabs["AFK"].page
     local GIFT_COUNT = 9
     local claimedCount = 0
     local applyClaimState
 
-    local feature = createFeature(page, "Auto Claim Gift", {
+    local feature = createFeature(page, "Auto Claim Playtime Gift", {
         bodyHeight = 26,
         onToggle = function(v) applyClaimState(v, true) end,
     })
 
-    -- Baris atas: angka (RobotoMono, sama dengan angka di UI lain) + dropdown hadiah
     local giftOpen, giftRows = false, 1
     local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
 
@@ -7043,7 +6816,6 @@ do
     DropBtn.MouseEnter:Connect(function() DropBtn.BackgroundColor3 = C.hover end)
     DropBtn.MouseLeave:Connect(function() DropBtn.BackgroundColor3 = C.control end)
 
-    -- Daftar hadiah: satu baris per gift yang sudah diklaim
     local GiftList = make("Frame", {
         Size = UDim2.new(1, 0, 0, 22),
         Position = UDim2.new(0, 0, 0, 30),
@@ -7126,7 +6898,6 @@ do
         layoutGifts()
     end
 
-    -- Hadiah dibaca dari notifikasi game yang muncul sesaat setelah klaim
     bindEvent("Notify", function(text)
         if type(text) ~= "string" or not lastClaimAt or not lastClaimIndex then return end
         if os.clock() - lastClaimAt > 3 or rewards[lastClaimIndex] then return end
@@ -7135,14 +6906,9 @@ do
         rewards[lastClaimIndex] = string.sub(clean, 1, 60)
     end)
 
-    -- Status singkat tampil di sebelah toggle
-    local function setStatus(text, color)
-        feature.setNote(text, color)
-    end
-    setStatus("", C.muted)
+    local function setStatus() end
     renderGifts()
 
-    -- Jumlah bit yang menyala di bitmask PlaytimeGiftClaimed
     local function popcount(mask)
         local n = 0
         for i = 0, GIFT_COUNT - 1 do
@@ -7151,7 +6917,6 @@ do
         return n
     end
 
-    -- ID periode SELALU dari game. Tidak pernah ditebak atau ditambah sendiri.
     local function readGameDay()
         local d = LocalPlayer:GetAttribute("PlaytimeGiftDay")
         if type(d) == "number" and d > 0 then
@@ -7176,7 +6941,6 @@ do
         end
     end
 
-    -- Toggle terkunci sampai data ID dari game tersedia
     local lastLocked = nil
     local function refreshLock()
         local id = readGameDay()
@@ -7186,10 +6950,8 @@ do
             lastLocked = locked
             if locked then
                 feature.setLocked(true)
-                feature.setNote("Waiting for game data", C.warn)
             else
                 feature.setLocked(false)
-                feature.setNote("")
             end
         end
     end
@@ -7198,7 +6960,6 @@ do
     local wantAutoStart = settings.claimEnabled
     local lastValidDay, staleMask, backoff = nil, nil, 5
 
-    -- Progress dari game; boleh lebih tinggi dari hitungan lokal, tidak boleh lebih rendah
     local function syncFromGame()
         local mask = LocalPlayer:GetAttribute("PlaytimeGiftClaimed")
         if type(mask) ~= "number" then return end
@@ -7220,7 +6981,6 @@ do
             applyClaimState(true, false)
         end
 
-        -- ID baru dari game: reset progress, beri waktu data baru masuk
         if day and day ~= lastValidDay then
             local changed = (lastValidDay ~= nil)
             lastValidDay = day
@@ -7245,10 +7005,7 @@ do
             setStatus("Loading", C.warn)
             return 1
         end
-        if not remote then
-            setStatus("Unavailable", C.muted)
-            return 2
-        end
+        if not remote then return 2 end
         if claimedCount >= GIFT_COUNT then
             setStatus("All claimed", C.muted)
             return 1
@@ -7262,7 +7019,7 @@ do
         setStatus("Claiming", C.text)
         for giftIndex = startIdx, lastIdx do
             if not run.claim or not ScreenGui.Parent then break end
-            -- Pastikan ID masih sama tepat sebelum klaim
+
             if readGameDay() ~= day then break end
 
             lastClaimAt, lastClaimIndex = os.clock(), giftIndex
@@ -7282,7 +7039,7 @@ do
             return 1.5
         end
         if run.claim and claimedCount < GIFT_COUNT and readGameDay() == day then
-            -- Gift berikutnya belum terbuka: tunggu, bangun lebih awal kalau ID berganti
+
             setStatus("Waiting", C.warn)
             for _ = 1, backoff do
                 if not run.claim or not ScreenGui.Parent then break end
@@ -7295,20 +7052,12 @@ do
     end)
 end
 
--- =================================================================
--- Rewards: Auto Claim Season Pass
--- Status klaim dibaca dari GetData.SeasonPass (ClaimedFree, ClaimedPremium, Premium).
--- Hanya level yang belum diklaim yang dicoba: ClaimSeasonReward(level, "Free" | "Premium").
--- Jalur Premium hanya dicoba kalau pemain punya Premium. Berhasil tidaknya dinilai dari
--- data yang dibaca ulang setelah klaim, bukan dari balasan remote.
--- =================================================================
 do
     local page = tabs["AFK"].page
     local MAX_LEVEL = 50
-    local total = 0
-    local lastSig, lastRun, wasOn = nil, 0, false
+    local wasOn = false
 
-    local feat = visualFeature(page, "Auto Claim Season Pass", "autoSeason", 0)
+    local feat = visualFeature(page, "Auto Claim Pass", "autoSeason", 0)
 
     local function seasonData()
         local ok, res = invoke("GetData")
@@ -7319,16 +7068,7 @@ do
     local function isClaimed(map, level)
         return type(map) == "table" and (map[level] == true or map[tostring(level)] == true)
     end
-    local function claimedCount(sp)
-        local n = 0
-        for level = 1, MAX_LEVEL do
-            if isClaimed(sp.ClaimedFree, level) then n = n + 1 end
-            if isClaimed(sp.ClaimedPremium, level) then n = n + 1 end
-        end
-        return n
-    end
 
-    -- Level naik berurutan: begitu satu level ditolak (belum tercapai), sisanya juga
     local function sweep(sp)
         local tracks = { { "Free", sp.ClaimedFree } }
         if sp.Premium ~= false then
@@ -7343,7 +7083,7 @@ do
                     local good = ok and (res == true
                         or (type(res) == "table" and (res.Success == true or res.success == true)))
                     if not good then
-                        -- Balasan tidak jelas: cek di data apakah level ini benar-benar terklaim
+
                         local fresh = seasonData()
                         local map = fresh and (tr[1] == "Free" and fresh.ClaimedFree or fresh.ClaimedPremium)
                         good = isClaimed(map, level)
@@ -7354,54 +7094,36 @@ do
         end
     end
 
+    local wake, nextAt = false, 0
+    bindEvent("SeasonPassStateUpdated", function() wake = true end)
     runLoop(function()
         if not flags.autoSeason then
             wasOn = false
-            feat.setNote("")
             return 0.5
         end
-        if not RF("ClaimSeasonReward") then
-            feat.setNote("Unavailable", C.muted)
-            return 3
-        end
+        if not RF("ClaimSeasonReward") then return 3 end
         if not wasOn then
             wasOn = true
-            lastSig, lastRun = nil, 0
+            nextAt = 0
         end
+        if not wake and os.clock() < nextAt then return 0.3 end
+        if wake then task.wait(0.3) end
+        wake = false
+        nextAt = os.clock() + 8
         local sp = seasonData()
         if not sp then
-            feat.setNote("Unavailable", C.muted)
-            return 6
+            nextAt = os.clock() + 3
+            return 0.3
         end
-        local sig = tostring(sp.XP) .. "|" .. tostring(sp.Premium) .. "|" .. claimedCount(sp)
-        if sig == lastSig and os.clock() - lastRun < 120 then return 8 end
-        lastRun = os.clock()
-        local before = claimedCount(sp)
-        feat.setNote("")
         sweep(sp)
-        local after = seasonData()
-        after = after or sp
-        local got = claimedCount(after) - before
-        lastSig = tostring(after.XP) .. "|" .. tostring(after.Premium) .. "|" .. claimedCount(after)
-        if got > 0 then
-            total = total + got
-        end
-        feat.setNote(total > 0 and ("Claimed " .. total) or "Nothing to claim", total > 0 and C.text or C.muted)
-        return 8
+        return 0.3
     end)
 end
 
-
--- =================================================================
--- Skip animation: mematikan handler animasi bawaan game di sisi client
--- (crate/lucky block lewat CrateOpening & LuckyBlockOpening, mythic summon
--- lewat MythicSummoned). Handler dikembalikan saat dimatikan atau GUI ditutup.
--- =================================================================
 local ANIM_EVENTS = {
     crate = { "CrateOpening", "LuckyBlockOpening" },
     summon = { "MythicSummoned" },
-    -- Isi nama RemoteEvent animasi UTTM (server -> client) dari log Cobalt.
-    -- Contoh: uttm = { "NamaEventSpin" },  Dibiarkan kosong kalau belum ketemu.
+
     uttm = {},
 }
 local skipDisabled = {}
@@ -7436,7 +7158,6 @@ local function applySkip(group, on)
     return true
 end
 
--- Pasang ulang berkala supaya handler baru yang dibuat game ikut dimatikan
 runLoop(function()
     if settings.skipAnim then
         applySkip("crate", true)
@@ -7446,9 +7167,6 @@ runLoop(function()
     return 3
 end)
 
--- =================================================================
--- Settings
--- =================================================================
 do
     local page = tabs["Settings"].page
 
@@ -7473,7 +7191,6 @@ do
         end,
     })
 
-    -- Satu tombol untuk semua animasi: crate, lucky block, summon, spin
     local fSkipAnim
     fSkipAnim = createFeature(tabs["Gacha"].page, "Skip Gacha Animation", {
         initial = settings.skipAnim,
@@ -7489,19 +7206,6 @@ do
         end,
     })
 
-    -- =================================================================
-    -- Settings: Anti Lag
-    -- Hanya mengubah tampilan di sisi client. Musuh tidak disembunyikan dan
-    -- animasinya tidak disentuh, jadi tetap bisa dipantau.
-    --   - Efek (particle, trail, beam, api, asap, lampu, highlight, ledakan) dimatikan.
-    --     Particle juga dibuat tidak bisa memancar lagi lewat Emit.
-    --   - Decal/Texture disembunyikan, bayangan dan efek layar dimatikan,
-    --     material peta dibuat polos, mesh peta diturunkan ke detail terendah
-    --   - Karakter (pemain, musuh, tower) tidak disentuh sama sekali, jadi tidak ada
-    --     beban tambahan setiap musuh baru muncul
-    --   - Kualitas grafik diturunkan, dekorasi rumput dan gelombang air dimatikan
-    -- Semua nilai asli disimpan dan dikembalikan saat toggle dimatikan.
-    -- =================================================================
     do
         local page = tabs["Settings"].page
         local Lighting = game:GetService("Lighting")
@@ -7516,8 +7220,8 @@ do
             ColorCorrectionEffect = true, DepthOfFieldEffect = true, Atmosphere = true,
         }
 
-        local saved = setmetatable({}, { __mode = "k" })     -- instance -> nilai asli
-        local npcs = setmetatable({}, { __mode = "k" })      -- Humanoid musuh -> true
+        local saved = setmetatable({}, { __mode = "k" })
+        local npcs = setmetatable({}, { __mode = "k" })
         local postSaved = {}
         local envSaved = nil
         local conn = nil
@@ -7526,7 +7230,6 @@ do
         local touched = 0
         local feat
 
-        -- Bagian dari model ber-Humanoid (pemain, musuh, tower): tidak disentuh
         local function inCharacter(inst)
             local m = inst:FindFirstAncestorOfClass("Model")
             return m ~= nil and m:FindFirstChildOfClass("Humanoid") ~= nil
@@ -7594,8 +7297,6 @@ do
             end
         end
 
-        -- Pengaturan render global. `settings` di script ini adalah tabel milik hub,
-        -- jadi yang asli diambil lewat getrenv / getgenv bila ada.
         local function renderSettings()
             local ok, r = pcall(function() return getrenv().settings().Rendering end)
             if ok and r then return r end
@@ -7664,8 +7365,6 @@ do
                 end
             end
 
-            -- Di match: opsi game VFX, indikator darah, dan SFX dimatikan (sekali tiap Anti Lag
-            -- dinyalakan; dicoba ulang kalau server belum menjawab). Tidak dikembalikan saat dimatikan.
             if game.PlaceId == MATCH_PLACE then
                 task.spawn(function()
                     for _, opt in ipairs({ "VFX", "HealthIndicator", "SFX" }) do
@@ -7685,7 +7384,6 @@ do
                 if active then pcall(handle, inst) end
             end)
 
-            -- Sapuan awal dipecah per potongan supaya game tidak membeku sesaat
             task.spawn(function()
                 local list = workspace:GetDescendants()
                 for i, inst in ipairs(list) do
@@ -7730,7 +7428,7 @@ do
             task.spawn(function()
                 local n = 0
                 for inst, rec in pairs(saved) do
-                    if my ~= token then return end   -- dinyalakan lagi: hentikan pemulihan
+                    if my ~= token then return end
                     pcall(restore, inst, rec)
                     saved[inst] = nil
                     n = n + 1
@@ -7749,7 +7447,6 @@ do
         })
         if flags.antiLag then enable() end
 
-        -- Catatan kartu: jumlah objek yang dioptimalkan dan musuh terlihat
         runLoop(function()
             if not active then return 1 end
             local n = 0
@@ -7765,7 +7462,6 @@ do
         end
     end
 
-    -- Perkecil otomatis kalau tidak ada sentuhan ke GUI selama 7 detik
     local fAutoMin = createFeature(page, "Auto Minimize", {
         initial = settings.autoMinimize,
         onToggle = function(v)
@@ -7774,7 +7470,7 @@ do
             ui.poke()
         end,
     })
-    -- urutan: Show timer, Auto minimize, Anti Lag, Anti AFK, Skip Animation
+
     fAutoMin.card.LayoutOrder = 2
     fSkipAnim.card.LayoutOrder = 100
 
@@ -7786,7 +7482,6 @@ do
         end,
     })
 
-    -- Kartu profil pindah ke halaman Profile
     local info = createCard(tabs["Profile"].page, 134)
     local avatar = make("Frame", {
         Size = UDim2.new(0, 48, 0, 48),
@@ -7881,9 +7576,6 @@ do
     end)
 end
 
--- =================================================================
--- Tracking statistik (units, sell, upgrade, wave)
--- =================================================================
 local towerConns = {}
 
 do
@@ -7895,8 +7587,6 @@ do
         return t:GetAttribute("OwnerUserId") == LocalPlayer.UserId
     end
 
-    -- Sell = tower milikmu yang hilang. Kalau 3+ hilang bersamaan
-    -- (misal match selesai), tidak dihitung sebagai sell.
     local function registerSell()
         pendingSells = pendingSells + 1
         if sellScheduled then return end
@@ -7947,9 +7637,6 @@ do
         end))
     end
 
-    -- ---------------- Wave sekarang / wave akhir (mis. 8/60) ----------------
-    -- Sumber 1: teks HUD yang benar-benar tampil (ancestor ikut dicek).
-    -- Sumber 2: Attribute / Value bernama "wave" di workspace / ReplicatedStorage.
     local WAVE_BAD = { "best", "record", "highest", "weekly", "reward", "cooldown" }
     local WAVE_END_HINTS = { "max", "total", "final", "end", "last", "limit", "goal", "target", "required" }
 
@@ -7974,7 +7661,6 @@ do
         return (string.gsub(s, "<[^>]+>", ""))
     end
 
-    -- "Wave 8/60", "WAVE: 8 / 60", "8/60 Wave", "Wave 8"
     local function parseWave(text)
         text = string.gsub(stripTags(text), "%s+", " ")
         local c, m = string.match(text, "[Ww][Aa][Vv][Ee]%s*:?%s*(%d+)%s*/%s*(%d+)")
@@ -7986,7 +7672,6 @@ do
         return nil, nil
     end
 
-    -- Label bernama "Wave" yang isinya hanya "8/60"
     local function parseRatio(text)
         local c, m = string.match(stripTags(text), "^%s*(%d+)%s*/%s*(%d+)%s*$")
         if c then return tonumber(c), tonumber(m) end
@@ -8038,7 +7723,7 @@ do
 
     local function readWave()
         local c0, m0
-        -- 1) Label yang sudah ditemukan: dipakai selama masih tampil dan terbaca
+
         if waveLabel then
             if waveLabel.Parent and isShown(waveLabel) then
                 c0, m0 = labelWave(waveLabel)
@@ -8047,7 +7732,6 @@ do
             if not c0 then waveLabel = nil end
         end
 
-        -- 2) Cari label HUD (tiap 2 detik); utamakan yang punya angka sekarang dan akhir
         if tick() - lastScan > 2 then
             lastScan = tick()
             local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -8072,7 +7756,6 @@ do
         end
         if c0 then return c0, m0 end
 
-        -- 3) Attribute / Value
         if not attrGetters and tick() - lastAttrScan > 10 then
             lastAttrScan = tick()
             attrGetters = scanAttrGetters()
@@ -8101,7 +7784,6 @@ do
             hookFolder(folder)
         end
 
-        -- Wave: sekarang/akhir. Wave akhir diingat kalau sempat terbaca.
         local ok, cur, max = pcall(readWave)
         if ok and type(cur) == "number" then
             if type(max) == "number" and max > 0 then
@@ -8117,7 +7799,6 @@ do
             statLabels.wave.Text = "-"
         end
 
-        -- Units
         local pu = LocalPlayer:FindFirstChild("PlacedUnits")
         local maxU = LocalPlayer:GetAttribute("MaxPlacedUnits")
         local unitsText = pu and tostring(pu.Value) or "-"
@@ -8132,9 +7813,6 @@ do
     end)
 end
 
--- =================================================================
--- Timer, tombol header, cleanup
--- =================================================================
 local startTime = os.clock()
 
 runLoop(function()
@@ -8171,11 +7849,9 @@ local function cleanup()
 end
 env.LightHubCleanup = cleanup
 
-local MINI_W = 400   -- dihitung ulang oleh layoutMini sesuai isi
+local MINI_W = 400
 local AUTO_MIN_SECS = 7
 
--- Susun ulang isi header untuk mode kecil secara rapat: lebar mengikuti isi
--- (judul, wave, streak, timer), tanpa ruang kosong.
 local function layoutMini()
     local TS = game:GetService("TextService")
     local function tw(text, size)
@@ -8199,7 +7875,7 @@ local function layoutMini()
         TimerLabel.TextSize = 13
         MINI_W = x + 12 + timerW + 6 + 68
     else
-        -- tanpa timer: bar berhenti di streak, langsung disusul tombol
+
         MINI_W = x + 14 + 68
     end
 end
@@ -8212,7 +7888,6 @@ local function restoreFull()
     TitleLabel.TextSize = 13
 end
 
--- Diperkecil: bar tipis berisi nama hub, wave, streak, dan timer. Diperbesar: kembali normal.
 local function setMinimized(mini)
     if ui.minimized == mini then return end
     closeOverlay()
@@ -8242,7 +7917,6 @@ end
 
 MinimizeBtn.MouseButton1Click:Connect(function() setMinimized(not ui.minimized) end)
 
--- Gear: buka Settings (kalau sedang di Settings, kembali ke halaman sebelumnya)
 ui.gearBtn.MouseButton1Click:Connect(function()
     if ui.minimized then setMinimized(false) end
     local g = nav.byPage[nav.cur]
@@ -8253,7 +7927,6 @@ ui.gearBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Auto minimize: perkecil kalau tidak ada sentuhan ke GUI selama AUTO_MIN_SECS detik
 runLoop(function()
     if settings.autoMinimize and not ui.minimized and not drag.on
         and os.clock() - ui.lastTouch >= AUTO_MIN_SECS then
@@ -8262,7 +7935,6 @@ runLoop(function()
     return 0.5
 end)
 
--- Tekan pertama: minta konfirmasi (X berubah oranye 3 detik). Tekan kedua: tutup.
 local closeArmed = false
 CloseBtn.MouseButton1Click:Connect(function()
     if not closeArmed then
@@ -8279,14 +7951,11 @@ CloseBtn.MouseButton1Click:Connect(function()
     cleanup()
 end)
 
--- Tema: dekorasi tampil/sembunyi, warna objek yang sudah ada diganti
--- Dekorasi sidebar: hanya pohon berwajah dengan gagak dan labu
 decor.style = "Tree"
 
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
-    -- Labu di gear sedikit menutupi huruf pertama judul, jadi judul digeser ke kanan
-    -- Tombol - (krem tulang) dan X (merah-oranye tua); di tema Default kembali ke warna biasa
+
     local minCol = on and Color3.fromRGB(226, 214, 188) or C.text
     ui.closeNormal = on and Color3.fromRGB(196, 52, 16) or C.text
     MinLine.BackgroundColor3 = minCol
@@ -8346,7 +8015,6 @@ do
         settings.theme = name
         setPalette(name)
 
-        -- Dekorasi dan ikon gear tidak ikut diwarnai ulang
         local skip = {}
         for _, root in ipairs(decor.roots) do
             skip[root] = true
@@ -8355,7 +8023,7 @@ do
         if ui.gearBtn then
             for _, d in ipairs(ui.gearBtn:GetDescendants()) do skip[d] = true end
         end
-        -- Tombol - dan X diwarnai sendiri oleh ui.decorRefresh
+
         skip[MinLine] = true
         skip[MinBox] = true
         for _, d in ipairs(MinBox:GetDescendants()) do skip[d] = true end
@@ -8381,7 +8049,6 @@ do
 
 end
 
--- Terapkan tema tersimpan saat hub dibuka
 if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
 
 selectTab("Main")

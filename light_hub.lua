@@ -183,6 +183,7 @@ local FLAG_DEFAULTS = {
     autoMode = false, modeValue = "",
     autoReplay = false,
     autoLobby = false,
+    lossReturn = false, lossStreak = 0, lossNotice = false,
     autoSkip = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
@@ -3284,6 +3285,7 @@ do
             wave = (lastWave.cur and tostring(lastWave.cur) or "?") .. "/" .. (lastWave.max and tostring(lastWave.max) or "?"),
             time = TimerLabel.Text,
         })
+        lastWave.last, lastWave.seq = win, (lastWave.seq or 0) + 1
         while #history > HISTORY_MAX do table.remove(history) end
         if canFile then
             pcall(function() writefile(HISTORY_FILE, HttpService:JSONEncode(history)) end)
@@ -3737,6 +3739,39 @@ do
         end,
     })
 
+    local LOSS_LIMIT = 4
+    local fLoss
+    fLoss = createFeature(page, "Lobby after 4 losses", {
+        initial = flags.lossReturn,
+        onToggle = function(v)
+            setFlag("lossReturn", v)
+            setFlag("lossStreak", 0)
+            fLoss.setNote("")
+        end,
+    })
+    do
+
+        local c = fLoss.card
+        c.Size = UDim2.new(c.Size.X.Scale, c.Size.X.Offset, 0, 26)
+        for _, d in ipairs(c:GetChildren()) do
+            if d:IsA("TextLabel") then
+                d.Size = UDim2.new(0, d.Size.X.Offset, 0, 26)
+                d.TextSize = (d.TextSize >= 12) and 11 or 10
+                if d.Text == "Lobby after 4 losses" then
+                    d.Position = UDim2.new(0, 22, 0, 0)
+                    d.TextColor3 = C.muted
+                end
+            elseif d:IsA("TextButton") then
+                d.Size = UDim2.new(1, 0, 0, 26)
+            elseif d:IsA("Frame") and d.Size.X.Offset == 34 then
+                d.Position = UDim2.new(1, -46, 0, 5)
+            end
+        end
+        if (flags.lossStreak or 0) > 0 and flags.lossReturn then
+            fLoss.setNote("Losses in a row: " .. flags.lossStreak .. "/" .. LOSS_LIMIT)
+        end
+    end
+
     local function scanEndScreen()
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         if not pg then return false end
@@ -3757,7 +3792,7 @@ do
         return false
     end
 
-    local acted = false
+    local acted, counted, lossTries, seqBase = false, false, 0, (lastWave.seq or 0)
     runLoop(function()
         local wantLobby = flags.autoLobby
         local wantReplay = flags.autoReplay and not wantLobby
@@ -3776,9 +3811,37 @@ do
             return 2
         end
         if not scanEndScreen() then
-            acted = false
+            acted, counted, lossTries, seqBase = false, false, 0, (lastWave.seq or 0)
             f.setNote("")
             return 1.5
+        end
+        if flags.lossReturn and wantReplay and not counted then
+            local fresh = (lastWave.seq or 0) > seqBase
+            if not fresh and lossTries < 10 then
+                lossTries = lossTries + 1
+                return 0.5
+            end
+            counted = true
+            local res = fresh and (lastWave.last and "win" or "lose") or nil
+            if res == "lose" then
+                local n = (flags.lossStreak or 0) + 1
+                setFlag("lossStreak", n)
+                if n >= LOSS_LIMIT then
+                    setFlag("lossStreak", 0)
+                    setFlag("autoReplay", false)
+                    setFlag("autoPlay", false)
+                    setFlag("lossNotice", true)
+                    fReplay.set(false)
+                    fLoss.setNote("")
+                    notify("Lost " .. LOSS_LIMIT .. " in a row", "Returning to lobby", 6)
+                    wantLobby, f = true, fLobby
+                else
+                    fLoss.setNote("Losses in a row: " .. n .. "/" .. LOSS_LIMIT)
+                end
+            elseif res == "win" then
+                setFlag("lossStreak", 0)
+                fLoss.setNote("")
+            end
         end
         if acted then
             f.setNote(wantLobby and "Back to lobby" or "Voted replay", C.text)
@@ -8050,6 +8113,57 @@ do
 end
 
 if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
+
+if game.PlaceId == LOBBY_PLACE and flags.lossNotice then
+    setFlag("lossNotice", false)
+    local nGui = make("ScreenGui", {
+        Name = GUI_NAME .. "Notice",
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        DisplayOrder = 80,
+    }, parent)
+    local nLabel = make("TextButton", {
+        Size = UDim2.new(1, -40, 0, 90),
+        Position = UDim2.new(0.5, 0, 0.5, -24),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1,
+        AutoButtonColor = false,
+        Active = false,
+        Text = "Back to lobby cuz u lost 4x in a row",
+        TextColor3 = C.text,
+        TextSize = 30,
+        TextWrapped = true,
+        Font = Enum.Font.GothamBold,
+        TextTransparency = 1,
+        TextStrokeColor3 = Color3.new(0, 0, 0),
+        TextStrokeTransparency = 1,
+    }, nGui)
+    local nOk = make("TextButton", {
+        Size = UDim2.new(0, 110, 0, 30),
+        Position = UDim2.new(0.5, 0, 0.5, 40),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = C.text,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "Okay",
+        TextColor3 = C.ink,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        TextTransparency = 1,
+    }, nGui)
+    tween(nLabel, 0.5, { TextTransparency = 0, TextStrokeTransparency = 0.5 })
+    tween(nOk, 0.5, { BackgroundTransparency = 0, TextTransparency = 0 })
+    local gone = false
+    local function dismiss()
+        if gone then return end
+        gone = true
+        tween(nLabel, 0.4, { TextTransparency = 1, TextStrokeTransparency = 1 })
+        tween(nOk, 0.4, { BackgroundTransparency = 1, TextTransparency = 1 })
+        task.delay(0.5, function() nGui:Destroy() end)
+    end
+    nOk.MouseButton1Click:Connect(dismiss)
+end
 
 selectTab("Main")
 EVENT.parts.nav = nav

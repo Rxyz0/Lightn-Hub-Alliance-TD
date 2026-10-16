@@ -184,6 +184,7 @@ local FLAG_DEFAULTS = {
     autoReplay = false,
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
+    unitLocks = "", unitSort = "rarity",
     autoSkip = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
@@ -1959,18 +1960,146 @@ local CloseRow = make("TextButton", {
 }, ListFrame)
 CloseRow.MouseButton1Click:Connect(closeOverlay)
 
+ui.icons = {}
+ui.TIER = {
+    Basic     = { name = "Basic",     rank = 1, color = Color3.fromRGB(176, 176, 182) },
+    Uncommon  = { name = "Uncommon",  rank = 2, color = Color3.fromRGB(110, 205, 125) },
+    Rare      = { name = "Rare",      rank = 3, color = Color3.fromRGB(85, 155, 255) },
+    Epic      = { name = "Epic",      rank = 4, color = Color3.fromRGB(175, 105, 255) },
+    Legendary = { name = "Legendary", rank = 5, color = Color3.fromRGB(255, 200, 70) },
+    Mythic    = { name = "Mythic",    rank = 6, color = Color3.fromRGB(255, 85, 95) },
+    Exclusive = { name = "Exclusive", rank = 7, grad = true },
+    Omega     = { name = "Omega",     rank = 8, grad = true },
+}
+
+ui.GRAD_BLUE = Color3.fromRGB(70, 150, 240)
+ui.GRAD_VIOLET = Color3.fromRGB(150, 110, 235)
+ui.tierGrads = setmetatable({}, { __mode = "k" })
+runLoop(function()
+    if next(ui.tierGrads) then
+        local k = (math.sin(os.clock() * 0.9) + 1) / 2
+        local a = ui.GRAD_BLUE:Lerp(ui.GRAD_VIOLET, k)
+        local b = ui.GRAD_BLUE:Lerp(ui.GRAD_VIOLET, 1 - k)
+        local seq = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, a),
+            ColorSequenceKeypoint.new(0.5, a:Lerp(b, 0.5)),
+            ColorSequenceKeypoint.new(1, b),
+        })
+        for g in pairs(ui.tierGrads) do
+            if g.Parent then g.Color = seq else ui.tierGrads[g] = nil end
+        end
+    end
+    return 0.05
+end)
+
+function ui.styleName(label, tier)
+    local g = label:FindFirstChild("TierGrad")
+    if tier and tier.grad then
+        label.TextColor3 = Color3.new(1, 1, 1)
+        if not g then
+            g = make("UIGradient", {
+                Name = "TierGrad",
+                Color = ColorSequence.new(ui.GRAD_BLUE, ui.GRAD_VIOLET),
+                Rotation = 0,
+            }, label)
+            ui.tierGrads[g] = true
+        end
+    else
+        if g then g:Destroy() end
+        if tier then label.TextColor3 = tier.color end
+    end
+end
+
+function ui.tinyLock(par, pos, color)
+    local h = make("Frame", { Size = UDim2.new(0, 8, 0, 10), Position = pos, BackgroundTransparency = 1, ZIndex = 5 }, par)
+    local function bar(x, y, w, hh)
+        make("Frame", { Size = UDim2.new(0, w, 0, hh), Position = UDim2.new(0, x, 0, y), BackgroundColor3 = color, BorderSizePixel = 0, ZIndex = 5 }, h)
+    end
+    bar(1, 0, 6, 2)
+    bar(1, 0, 2, 5)
+    bar(5, 0, 2, 5)
+    bar(0, 4, 8, 6)
+    return h
+end
+
+function ui.iconFor(id)
+    if ui.icons[id] then return ui.icons[id] end
+    if ui._crates == nil then
+        local ok, m = pcall(function()
+            local mods = ReplicatedStorage:FindFirstChild("Modules")
+            local c = mods and mods:FindFirstChild("Crates")
+            return c and require(c)
+        end)
+        ui._crates = (ok and type(m) == "table" and type(m.Crates) == "table") and m.Crates or false
+    end
+    local d = ui._crates and ui._crates[id]
+    if d and type(d.Icon) == "string" then
+        ui.icons[id] = d.Icon
+        return d.Icon
+    end
+    return nil
+end
+
+function ui.boostIcon(key)
+    local ck = "boost:" .. tostring(key)
+    if ui.icons[ck] then return ui.icons[ck] end
+    if ui._lucky == nil then
+        local ok, m = pcall(function()
+            local sh = ReplicatedStorage:FindFirstChild("Shared")
+            local c = sh and sh:FindFirstChild("LuckyBlockConfig")
+            return c and require(c)
+        end)
+        ui._lucky = (ok and type(m) == "table" and type(m.Rewards) == "table") and m.Rewards or false
+    end
+    if ui._lucky then
+        for _, r in ipairs(ui._lucky) do
+            if type(r) == "table" and r.Type == "Boost" and r.Id == key and type(r.Icon) == "string" then
+                ui.icons[ck] = r.Icon
+                return r.Icon
+            end
+        end
+    end
+    return nil
+end
+
 local MAX_VISIBLE = 6
 
-local function openList(anchor, options, current, onPick, chev)
+local SearchBox = make("TextBox", {
+    Size = UDim2.new(1, -8, 0, 24),
+    Position = UDim2.new(0, 4, 0, 3),
+    BackgroundColor3 = C.control,
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "Search",
+    PlaceholderColor3 = C.dim,
+    TextColor3 = C.text,
+    TextSize = 11,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ClearTextOnFocus = false,
+    Visible = false,
+    ZIndex = 4,
+}, ListFrame)
+make("UIStroke", { Color = C.controlLine, Thickness = 1 }, SearchBox)
+make("UIPadding", { PaddingLeft = UDim.new(0, 8) }, SearchBox)
+local searchRender = nil
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if searchRender then searchRender(SearchBox.Text) end
+end)
+
+local function openList(anchor, options, current, onPick, chev, extra)
     closeOverlay()
-    for _, c in ipairs(ListScroll:GetChildren()) do
-        if c:IsA("TextButton") then c:Destroy() end
+    local withSearch = extra and extra.search and true or false
+    local anyIcon = false
+    for _, o in ipairs(options) do
+        if o.icon then anyIcon = true break end
     end
 
-    local itemH = 26
+    local itemH = anyIcon and 34 or 26
+    local topH = withSearch and 30 or 0
     local shown = math.min(#options, MAX_VISIBLE)
     local long = #options > MAX_VISIBLE
-    local h = shown * itemH + 4 + (long and 24 or 0)
+    local h = topH + shown * itemH + 4 + (long and 24 or 0)
     local w = math.max(anchor.AbsoluteSize.X, 120)
     local mainPos, mainSize = MainFrame.AbsolutePosition, MainFrame.AbsoluteSize
     local aPos = anchor.AbsolutePosition
@@ -1988,69 +2117,105 @@ local function openList(anchor, options, current, onPick, chev)
         y = math.max(HEADER_H, mainSize.Y - h - 4)
     end
 
+    ListScroll.Position = UDim2.new(0, 0, 0, topH)
     ListScroll.Size = UDim2.new(1, 0, 0, shown * itemH + 4)
-    ListScroll.CanvasSize = UDim2.new(0, 0, 0, #options * itemH + 4)
-    ListScroll.CanvasPosition = Vector2.new(0, 0)
     CloseRow.Visible = long
-    CloseRow.Position = UDim2.new(0, 2, 0, shown * itemH + 6)
+    CloseRow.Position = UDim2.new(0, 2, 0, topH + shown * itemH + 6)
+    searchRender = nil
+    SearchBox.Text = ""
+    SearchBox.Visible = withSearch
 
-    for i, o in ipairs(options) do
-        local selected = (o.value == current)
-        local b = make("TextButton", {
-            Size = UDim2.new(1, long and -8 or -4, 0, itemH),
-            Position = UDim2.new(0, 2, 0, 2 + (i - 1) * itemH),
-            BackgroundColor3 = C.hover,
-            BackgroundTransparency = selected and 0 or 1,
-            BorderSizePixel = 0,
-            Text = "",
-            AutoButtonColor = false,
-            ZIndex = 4,
-        }, ListScroll)
-        local hasCount = type(o.count) == "number"
-        make("TextLabel", {
-            Size = UDim2.new(1, hasCount and -72 or -16, 1, 0),
-            Position = UDim2.new(0, 10, 0, 0),
-            BackgroundTransparency = 1,
-            Text = o.label,
-            TextColor3 = selected and C.hi or C.muted,
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-            ZIndex = 5,
-        }, b)
-        if hasCount then
-            make("TextLabel", {
-                Size = UDim2.new(0, 58, 1, 0),
-                Position = UDim2.new(1, -64, 0, 0),
+    local function render(q)
+        for _, c in ipairs(ListScroll:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
+        q = string.lower(q or "")
+        local list = {}
+        for _, o in ipairs(options) do
+            if q == "" or string.find(string.lower(o.label), q, 1, true) then
+                list[#list + 1] = o
+            end
+        end
+        ListScroll.CanvasSize = UDim2.new(0, 0, 0, #list * itemH + 4)
+        ListScroll.CanvasPosition = Vector2.new(0, 0)
+
+        for i, o in ipairs(list) do
+            local selected = (o.value == current)
+            local b = make("TextButton", {
+                Size = UDim2.new(1, long and -8 or -4, 0, itemH),
+                Position = UDim2.new(0, 2, 0, 2 + (i - 1) * itemH),
+                BackgroundColor3 = C.hover,
+                BackgroundTransparency = selected and 0 or 1,
+                BorderSizePixel = 0,
+                Text = "",
+                AutoButtonColor = false,
+                ZIndex = 4,
+            }, ListScroll)
+            local hasCount = type(o.count) == "number"
+            local x0 = 10
+            if o.icon then
+                make("ImageLabel", {
+                    Size = UDim2.new(0, 24, 0, 24),
+                    Position = UDim2.new(0, 8, 0.5, -12),
+                    BackgroundTransparency = 1,
+                    Image = o.icon,
+                    ScaleType = Enum.ScaleType.Fit,
+                    ZIndex = 5,
+                }, b)
+                x0 = 40
+            end
+            local rightPad = (hasCount and 66 or 8) + (o.locked and 14 or 0)
+            local nameLbl = make("TextLabel", {
+                Size = UDim2.new(1, -(x0 + rightPad), 1, 0),
+                Position = UDim2.new(0, x0, 0, 0),
                 BackgroundTransparency = 1,
-                Text = "\195\151" .. o.count,
+                Text = o.label,
                 TextColor3 = selected and C.hi or C.muted,
                 TextSize = 11,
-                Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Right,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
                 ZIndex = 5,
             }, b)
+            if o.tier then ui.styleName(nameLbl, o.tier) end
+            if hasCount then
+                make("TextLabel", {
+                    Size = UDim2.new(0, 58, 1, 0),
+                    Position = UDim2.new(1, -64, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text = "\195\151" .. o.count,
+                    TextColor3 = selected and C.hi or C.muted,
+                    TextSize = 11,
+                    Font = Enum.Font.GothamBold,
+                    TextXAlignment = Enum.TextXAlignment.Right,
+                    ZIndex = 5,
+                }, b)
+            end
+            if o.locked then
+                ui.tinyLock(b, UDim2.new(1, hasCount and -80 or -22, 0.5, -5), C.hi)
+            end
+            if selected then
+                make("Frame", {
+                    Size = UDim2.new(0, 2, 1, 0),
+                    BackgroundColor3 = C.accent,
+                    BorderSizePixel = 0,
+                    ZIndex = 5,
+                }, b)
+            end
+            b.MouseEnter:Connect(function()
+                if not selected then b.BackgroundTransparency = 0.5 end
+            end)
+            b.MouseLeave:Connect(function()
+                if not selected then b.BackgroundTransparency = 1 end
+            end)
+            b.MouseButton1Click:Connect(function()
+                closeOverlay()
+                onPick(o.value)
+            end)
         end
-        if selected then
-            make("Frame", {
-                Size = UDim2.new(0, 2, 1, 0),
-                BackgroundColor3 = C.accent,
-                BorderSizePixel = 0,
-                ZIndex = 5,
-            }, b)
-        end
-        b.MouseEnter:Connect(function()
-            if not selected then b.BackgroundTransparency = 0.5 end
-        end)
-        b.MouseLeave:Connect(function()
-            if not selected then b.BackgroundTransparency = 1 end
-        end)
-        b.MouseButton1Click:Connect(function()
-            closeOverlay()
-            onPick(o.value)
-        end)
     end
+    render("")
+    if withSearch then searchRender = render end
 
     ListFrame.Size = UDim2.new(0, w, 0, h)
     ListFrame.Position = UDim2.new(0, x, 0, y)
@@ -2392,6 +2557,13 @@ local function createSelect(par, props, cfg)
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, btn)
     local chev = createChevron(btn, -9)
+    local ico = make("ImageLabel", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0, 8, 0.5, -10),
+        BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Fit,
+        Visible = false,
+    }, btn)
 
     local cnt
     if cfg.countOf then
@@ -2409,6 +2581,7 @@ local function createSelect(par, props, cfg)
         }, btn)
     end
 
+    local baseW = cfg.countOf and -96 or -30
     local function refresh()
         if cnt then
             local n = (current and current ~= "") and cfg.countOf(current) or nil
@@ -2424,12 +2597,25 @@ local function createSelect(par, props, cfg)
                 if o.value == current then text = o.label break end
             end
         end
+        local icon = (cfg.iconOf and text and current and current ~= "") and cfg.iconOf(current) or nil
+        if icon then
+            if ico.Image ~= icon then ico.Image = icon end
+            ico.Visible = true
+            lbl.Position = UDim2.new(0, 36, 0, 0)
+            lbl.Size = UDim2.new(1, baseW - 27, 1, 0)
+        else
+            ico.Visible = false
+            lbl.Position = UDim2.new(0, 9, 0, 0)
+            lbl.Size = UDim2.new(1, baseW, 1, 0)
+        end
         if text then
             lbl.Text = (cfg.prefix or "") .. text
             lbl.TextColor3 = C.text
+            ui.styleName(lbl, cfg.tierOf and cfg.tierOf(current) or nil)
         else
             lbl.Text = cfg.placeholder or "Select"
             lbl.TextColor3 = C.muted
+            ui.styleName(lbl, nil)
         end
     end
 
@@ -2444,7 +2630,7 @@ local function createSelect(par, props, cfg)
             current = v
             refresh()
             if cfg.onChange then cfg.onChange(v) end
-        end, chev)
+        end, chev, { search = cfg.search })
     end)
 
     refresh()
@@ -3897,6 +4083,7 @@ local function mergeCounts(t)
         for _, d in ipairs(t.Crates) do
             if type(d) == "table" and type(d.Id) == "string" and type(d.DisplayName) == "string" then
                 crateDefs[d.Id] = d.DisplayName
+                if type(d.Icon) == "string" and d.Icon ~= "" then ui.icons[d.Id] = d.Icon end
             end
         end
     end
@@ -4153,7 +4340,7 @@ do
             if type(id) == "string" and n and n > 0 and not string.find(id, "^Voucher") then
                 local isLucky = string.find(string.lower(id), "luckyblock", 1, true) ~= nil
                 if isLucky == (kind == "lucky") then
-                    out[#out + 1] = { label = labelFor(kind, id), value = id, n = n }
+                    out[#out + 1] = { label = labelFor(kind, id), value = id, n = n, icon = ui.iconFor(id) }
                 end
             end
         end
@@ -4164,10 +4351,17 @@ do
     local function optionsFor(kind)
         task.spawn(refreshCounts)
         local list, covered = ownedItems(kind)
-        if not covered then return (kind == "lucky") and LUCKY_OPTIONS or {} end
+        if not covered then
+            if kind ~= "lucky" then return {} end
+            local fb = {}
+            for _, o in ipairs(LUCKY_OPTIONS) do
+                fb[#fb + 1] = { label = o.label, value = o.value, icon = ui.iconFor(o.value) }
+            end
+            return fb
+        end
         local opts = {}
         for _, it in ipairs(list) do
-            opts[#opts + 1] = { label = it.label, count = it.n, value = it.value }
+            opts[#opts + 1] = { label = it.label, count = it.n, value = it.value, icon = it.icon }
         end
         return opts
     end
@@ -4185,6 +4379,7 @@ do
         }, {
             getOptions = function() return optionsFor("crate") end,
             labelOf = function(id) return labelFor("crate", id) end,
+            iconOf = function(id) return ui.iconFor(id) end,
             countOf = function(id) return findCount(counts, id, 0) end,
             emptyMsg = "No crates yet",
             initial = flags.crateType,
@@ -4251,6 +4446,7 @@ do
         }, {
             getOptions = function() return optionsFor("lucky") end,
             labelOf = function(id) return labelFor("lucky", id) end,
+            iconOf = function(id) return ui.iconFor(id) end,
             countOf = function(id) return findCount(counts, id, 0) end,
             emptyMsg = "No lucky blocks yet",
             initial = flags.luckyType,
@@ -4326,7 +4522,7 @@ do
         local list = {}
         for k, n in pairs(boost.inv) do
             if type(k) == "string" and type(n) == "number" and n > 0 then
-                list[#list + 1] = { label = potionName(k), count = n, value = k }
+                list[#list + 1] = { label = potionName(k), count = n, value = k, icon = ui.boostIcon(k) }
             end
         end
         table.sort(list, function(a, b) return a.label < b.label end)
@@ -4339,6 +4535,7 @@ do
         }, {
             getOptions = potionOptions,
             labelOf = potionName,
+            iconOf = function(k) return ui.boostIcon(k) end,
             countOf = function(k) return boost.inv[k] end,
             initial = flags.potionType,
             placeholder = "Select a potion",
@@ -4413,7 +4610,7 @@ do
                     local n = u.Name or u.DisplayName or "Unknown"
                     local g = groups[n]
                     if not g then
-                        g = { n = n, ids = {} }
+                        g = { n = n, ids = {}, icon = type(u.Icon) == "string" and u.Icon or nil, rarity = u.Rarity }
                         groups[n] = g
                         order[#order + 1] = g
                     end
@@ -4443,7 +4640,7 @@ do
         end)
     end
 
-    local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
+    local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 100 })
     card.card.LayoutOrder = -2
     local selected, statusUntil, selling = nil, 0, false
 
@@ -4452,27 +4649,110 @@ do
         card.setNote(t, color)
     end
 
-    createSelect(card.body, {
-        Size = UDim2.new(1, 0, 0, 28),
+    local function lockedSet()
+        local set = {}
+        for n in string.gmatch(flags.unitLocks or "", "[^|]+") do set[n] = true end
+        return set
+    end
+    local function setLocked(name, on)
+        local set = lockedSet()
+        set[name] = on or nil
+        local list = {}
+        for n in pairs(set) do list[#list + 1] = n end
+        table.sort(list)
+        setFlag("unitLocks", table.concat(list, "|"))
+    end
+    local function groupOf(name)
+        for _, g in ipairs(cache and cache.list or {}) do
+            if g.n == name then return g end
+        end
+        return nil
+    end
+    local function rankOf(g)
+        local t = ui.TIER[g.rarity]
+        return t and t.rank or 0
+    end
+
+    local lockBtn, lockIcon
+    local function renderLock()
+        if not lockIcon then return end
+        local on = selected and lockedSet()[selected] or false
+        local kids = lockIcon:GetChildren()
+        for i = 1, 4 do
+            if kids[i] then kids[i].BackgroundColor3 = on and C.hi or C.dim end
+        end
+        lockBtn.BackgroundColor3 = on and C.hover or C.control
+    end
+
+    local unitSel = createSelect(card.body, {
+        Size = UDim2.new(1, -34, 0, 28),
     }, {
         placeholder = "Select a unit",
         emptyMsg = "No units yet",
+        search = true,
         getOptions = function()
             refresh(false)
+            local locks = lockedSet()
+            local list = {}
+            for _, g in ipairs(cache and cache.list or {}) do list[#list + 1] = g end
+            local mode = flags.unitSort
+            table.sort(list, function(a, b)
+                if mode == "rarity" then
+                    local ra, rb = rankOf(a), rankOf(b)
+                    if ra ~= rb then return ra > rb end
+                elseif mode == "count_asc" then
+                    if #a.ids ~= #b.ids then return #a.ids < #b.ids end
+                else
+                    if #a.ids ~= #b.ids then return #a.ids > #b.ids end
+                end
+                return a.n < b.n
+            end)
             local opts = {}
-            for _, g in ipairs(cache and cache.list or {}) do
-                opts[#opts + 1] = { label = g.n, count = #g.ids, value = g.n }
+            for _, g in ipairs(list) do
+                opts[#opts + 1] = {
+                    label = g.n, count = #g.ids, value = g.n,
+                    icon = g.icon, tier = ui.TIER[g.rarity], locked = locks[g.n] or false,
+                }
             end
             return opts
         end,
         countOf = function(name)
-            for _, g in ipairs(cache and cache.list or {}) do
-                if g.n == name then return #g.ids end
-            end
-            return 0
+            local g = groupOf(name)
+            return g and #g.ids or 0
         end,
-        onChange = function(v) selected = v end,
+        iconOf = function(name)
+            local g = groupOf(name)
+            return g and g.icon or nil
+        end,
+        tierOf = function(name)
+            local g = groupOf(name)
+            return g and ui.TIER[g.rarity] or nil
+        end,
+        onChange = function(v) selected = v; renderLock() end,
     })
+
+    lockBtn = make("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(1, -28, 0, 0),
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+    }, card.body)
+    styleControl(lockBtn)
+    lockIcon = createLockIcon(lockBtn, UDim2.new(0.5, -5, 0.5, -6))
+    lockIcon.Visible = true
+    renderLock()
+    lockBtn.MouseButton1Click:Connect(function()
+        if not selected then
+            say("Select a unit", C.warn)
+            return
+        end
+        local on = not lockedSet()[selected]
+        setLocked(selected, on)
+        renderLock()
+        say((on and "Locked " or "Unlocked ") .. selected, C.text)
+    end)
 
     local amountBox = createInput(card.body, {
         Size = UDim2.new(0, 90, 0, 28),
@@ -4492,6 +4772,10 @@ do
         end
         if not group then
             say("Out of stock", C.warn)
+            return nil
+        end
+        if lockedSet()[group.n] then
+            say("Locked: " .. group.n, C.warn)
             return nil
         end
         local amount
@@ -4516,6 +4800,7 @@ do
             local sold, failed = 0, false
             local i = 1
             while i <= amount and not failed do
+                if lockedSet()[group.n] then break end
                 local batch, count = {}, 0
                 while i <= amount and count < 25 do
                     batch[group.ids[i]] = true
@@ -4574,6 +4859,64 @@ do
         Position = UDim2.new(0.5, 52, 0, 36),
     }, "Sell all", function() press(allBtn, true) end)
     base[sellBtn], base[allBtn] = "Sell", "Sell all"
+
+    do
+        local sortBtns = {}
+        local function paintSort()
+            for mode, b in pairs(sortBtns) do
+                local on = (flags.unitSort == mode)
+                b.btn.BackgroundColor3 = on and C.hover or C.control
+                for _, f in ipairs(b.parts) do
+                    f.BackgroundColor3 = on and C.hi or C.muted
+                end
+            end
+        end
+        local function addSort(mode, x, draw)
+            local btn = make("TextButton", {
+                Size = UDim2.new(0, 36, 0, 24),
+                Position = UDim2.new(0, x, 0, 74),
+                BackgroundColor3 = C.control,
+                BorderSizePixel = 0,
+                Text = "",
+                AutoButtonColor = false,
+            }, card.body)
+            styleControl(btn)
+            local parts = draw(btn)
+            sortBtns[mode] = { btn = btn, parts = parts }
+            btn.MouseButton1Click:Connect(function()
+                setFlag("unitSort", mode)
+                paintSort()
+            end)
+        end
+        local function bars(heights)
+            return function(btn)
+                local parts = {}
+                for i, hgt in ipairs(heights) do
+                    parts[#parts + 1] = make("Frame", {
+                        Size = UDim2.new(0, 3, 0, hgt),
+                        Position = UDim2.new(0.5, -8 + (i - 1) * 6, 0.5, 6 - hgt),
+                        BackgroundColor3 = C.muted,
+                        BorderSizePixel = 0,
+                    }, btn)
+                end
+                return parts
+            end
+        end
+        addSort("count_asc", 0, bars({ 4, 8, 12 }))
+        addSort("count_desc", 42, bars({ 12, 8, 4 }))
+        addSort("rarity", 84, function(btn)
+            local d = make("Frame", {
+                Size = UDim2.new(0, 9, 0, 9),
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Rotation = 45,
+                BackgroundColor3 = C.muted,
+                BorderSizePixel = 0,
+            }, btn)
+            return { d }
+        end)
+        paintSort()
+    end
 
     runLoop(function()
         refresh(false)

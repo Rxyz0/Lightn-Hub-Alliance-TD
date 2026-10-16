@@ -184,7 +184,6 @@ local FLAG_DEFAULTS = {
     autoReplay = false,
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
-    unitLocks = "", unitSort = "rarity",
     autoSkip = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
@@ -1945,27 +1944,12 @@ local ListScroll = make("ScrollingFrame", {
     ZIndex = 3,
 }, ListFrame)
 
-local CloseRow = make("TextButton", {
-    Size = UDim2.new(1, -4, 0, 22),
-    BackgroundColor3 = C.hover,
-    BackgroundTransparency = 0.4,
-    BorderSizePixel = 0,
-    Text = "Close  x",
-    TextColor3 = C.muted,
-    TextSize = 10,
-    Font = Enum.Font.GothamMedium,
-    AutoButtonColor = false,
-    Visible = false,
-    ZIndex = 3,
-}, ListFrame)
-CloseRow.MouseButton1Click:Connect(closeOverlay)
-
 ui.icons = {}
 ui.TIER = {
     Basic     = { name = "Basic",     rank = 1, color = Color3.fromRGB(176, 176, 182) },
     Uncommon  = { name = "Uncommon",  rank = 2, color = Color3.fromRGB(110, 205, 125) },
-    Rare      = { name = "Rare",      rank = 3, color = Color3.fromRGB(85, 155, 255) },
-    Epic      = { name = "Epic",      rank = 4, color = Color3.fromRGB(175, 105, 255) },
+    Rare      = { name = "Rare",      rank = 3, color = Color3.fromRGB(60, 215, 200) },
+    Epic      = { name = "Epic",      rank = 4, color = Color3.fromRGB(240, 95, 185) },
     Legendary = { name = "Legendary", rank = 5, color = Color3.fromRGB(255, 200, 70) },
     Mythic    = { name = "Mythic",    rank = 6, color = Color3.fromRGB(255, 85, 95) },
     Exclusive = { name = "Exclusive", rank = 7, grad = true },
@@ -2010,18 +1994,6 @@ function ui.styleName(label, tier)
     end
 end
 
-function ui.tinyLock(par, pos, color)
-    local h = make("Frame", { Size = UDim2.new(0, 8, 0, 10), Position = pos, BackgroundTransparency = 1, ZIndex = 5 }, par)
-    local function bar(x, y, w, hh)
-        make("Frame", { Size = UDim2.new(0, w, 0, hh), Position = UDim2.new(0, x, 0, y), BackgroundColor3 = color, BorderSizePixel = 0, ZIndex = 5 }, h)
-    end
-    bar(1, 0, 6, 2)
-    bar(1, 0, 2, 5)
-    bar(5, 0, 2, 5)
-    bar(0, 4, 8, 6)
-    return h
-end
-
 function ui.iconFor(id)
     if ui.icons[id] then return ui.icons[id] end
     if ui._crates == nil then
@@ -2043,6 +2015,21 @@ end
 function ui.boostIcon(key)
     local ck = "boost:" .. tostring(key)
     if ui.icons[ck] then return ui.icons[ck] end
+
+    if ui._boostCfg == nil then
+        local ok, m = pcall(function()
+            local mods = ReplicatedStorage:FindFirstChild("Modules")
+            local c = mods and mods:FindFirstChild("BoostConfig")
+            return c and require(c)
+        end)
+        ui._boostCfg = (ok and type(m) == "table") and m or false
+    end
+    local d = ui._boostCfg and ui._boostCfg[key]
+    if type(d) == "table" and type(d.Icon) == "string" and d.Icon ~= "" then
+        ui.icons[ck] = d.Icon
+        return d.Icon
+    end
+
     if ui._lucky == nil then
         local ok, m = pcall(function()
             local sh = ReplicatedStorage:FindFirstChild("Shared")
@@ -2097,30 +2084,24 @@ local function openList(anchor, options, current, onPick, chev, extra)
 
     local itemH = anyIcon and 34 or 26
     local topH = withSearch and 30 or 0
-    local shown = math.min(#options, MAX_VISIBLE)
-    local long = #options > MAX_VISIBLE
-    local h = topH + shown * itemH + 4 + (long and 24 or 0)
     local w = math.max(anchor.AbsoluteSize.X, 120)
     local mainPos, mainSize = MainFrame.AbsolutePosition, MainFrame.AbsoluteSize
     local aPos = anchor.AbsolutePosition
-
     local x = math.clamp(aPos.X - mainPos.X, 4, math.max(4, mainSize.X - w - 4))
-    local below = aPos.Y - mainPos.Y + anchor.AbsoluteSize.Y + 2
-    local above = aPos.Y - mainPos.Y - h - 2
 
-    local y
-    if below + h <= mainSize.Y - 4 then
-        y = below
-    elseif above >= HEADER_H then
-        y = above
-    else
-        y = math.max(HEADER_H, mainSize.Y - h - 4)
-    end
+    local below = aPos.Y - mainPos.Y + anchor.AbsoluteSize.Y + 2
+    local roomBelow = mainSize.Y - 4 - below
+    local roomAbove = (aPos.Y - mainPos.Y - 2) - HEADER_H
+    local function rowsFor(room) return math.floor((room - topH - 4) / itemH) end
+    local want = math.min(#options, MAX_VISIBLE)
+    local goBelow = rowsFor(roomBelow) >= math.min(want, 3) or rowsFor(roomBelow) >= rowsFor(roomAbove)
+    local shown = math.max(1, math.min(want, rowsFor(goBelow and roomBelow or roomAbove)))
+    local long = #options > shown
+    local h = topH + shown * itemH + 4
+    local y = goBelow and below or (aPos.Y - mainPos.Y - h - 2)
 
     ListScroll.Position = UDim2.new(0, 0, 0, topH)
     ListScroll.Size = UDim2.new(1, 0, 0, shown * itemH + 4)
-    CloseRow.Visible = long
-    CloseRow.Position = UDim2.new(0, 2, 0, topH + shown * itemH + 6)
     searchRender = nil
     SearchBox.Text = ""
     SearchBox.Visible = withSearch
@@ -2164,7 +2145,7 @@ local function openList(anchor, options, current, onPick, chev, extra)
                 }, b)
                 x0 = 40
             end
-            local rightPad = (hasCount and 66 or 8) + (o.locked and 14 or 0)
+            local rightPad = hasCount and 66 or 8
             local nameLbl = make("TextLabel", {
                 Size = UDim2.new(1, -(x0 + rightPad), 1, 0),
                 Position = UDim2.new(0, x0, 0, 0),
@@ -2190,9 +2171,6 @@ local function openList(anchor, options, current, onPick, chev, extra)
                     TextXAlignment = Enum.TextXAlignment.Right,
                     ZIndex = 5,
                 }, b)
-            end
-            if o.locked then
-                ui.tinyLock(b, UDim2.new(1, hasCount and -80 or -22, 0.5, -5), C.hi)
             end
             if selected then
                 make("Frame", {
@@ -4640,7 +4618,7 @@ do
         end)
     end
 
-    local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 100 })
+    local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
     card.card.LayoutOrder = -2
     local selected, statusUntil, selling = nil, 0, false
 
@@ -4649,69 +4627,26 @@ do
         card.setNote(t, color)
     end
 
-    local function lockedSet()
-        local set = {}
-        for n in string.gmatch(flags.unitLocks or "", "[^|]+") do set[n] = true end
-        return set
-    end
-    local function setLocked(name, on)
-        local set = lockedSet()
-        set[name] = on or nil
-        local list = {}
-        for n in pairs(set) do list[#list + 1] = n end
-        table.sort(list)
-        setFlag("unitLocks", table.concat(list, "|"))
-    end
     local function groupOf(name)
         for _, g in ipairs(cache and cache.list or {}) do
             if g.n == name then return g end
         end
         return nil
     end
-    local function rankOf(g)
-        local t = ui.TIER[g.rarity]
-        return t and t.rank or 0
-    end
 
-    local lockBtn, lockIcon
-    local function renderLock()
-        if not lockIcon then return end
-        local on = selected and lockedSet()[selected] or false
-        local kids = lockIcon:GetChildren()
-        for i = 1, 4 do
-            if kids[i] then kids[i].BackgroundColor3 = on and C.hi or C.dim end
-        end
-        lockBtn.BackgroundColor3 = on and C.hover or C.control
-    end
-
-    local unitSel = createSelect(card.body, {
-        Size = UDim2.new(1, -34, 0, 28),
+    createSelect(card.body, {
+        Size = UDim2.new(1, 0, 0, 28),
     }, {
         placeholder = "Select a unit",
         emptyMsg = "No units yet",
         search = true,
         getOptions = function()
             refresh(false)
-            local locks = lockedSet()
-            local list = {}
-            for _, g in ipairs(cache and cache.list or {}) do list[#list + 1] = g end
-            local mode = flags.unitSort
-            table.sort(list, function(a, b)
-                if mode == "rarity" then
-                    local ra, rb = rankOf(a), rankOf(b)
-                    if ra ~= rb then return ra > rb end
-                elseif mode == "count_asc" then
-                    if #a.ids ~= #b.ids then return #a.ids < #b.ids end
-                else
-                    if #a.ids ~= #b.ids then return #a.ids > #b.ids end
-                end
-                return a.n < b.n
-            end)
             local opts = {}
-            for _, g in ipairs(list) do
+            for _, g in ipairs(cache and cache.list or {}) do
                 opts[#opts + 1] = {
                     label = g.n, count = #g.ids, value = g.n,
-                    icon = g.icon, tier = ui.TIER[g.rarity], locked = locks[g.n] or false,
+                    icon = g.icon, tier = ui.TIER[g.rarity],
                 }
             end
             return opts
@@ -4728,31 +4663,8 @@ do
             local g = groupOf(name)
             return g and ui.TIER[g.rarity] or nil
         end,
-        onChange = function(v) selected = v; renderLock() end,
+        onChange = function(v) selected = v end,
     })
-
-    lockBtn = make("TextButton", {
-        Size = UDim2.new(0, 28, 0, 28),
-        Position = UDim2.new(1, -28, 0, 0),
-        BackgroundColor3 = C.control,
-        BorderSizePixel = 0,
-        Text = "",
-        AutoButtonColor = false,
-    }, card.body)
-    styleControl(lockBtn)
-    lockIcon = createLockIcon(lockBtn, UDim2.new(0.5, -5, 0.5, -6))
-    lockIcon.Visible = true
-    renderLock()
-    lockBtn.MouseButton1Click:Connect(function()
-        if not selected then
-            say("Select a unit", C.warn)
-            return
-        end
-        local on = not lockedSet()[selected]
-        setLocked(selected, on)
-        renderLock()
-        say((on and "Locked " or "Unlocked ") .. selected, C.text)
-    end)
 
     local amountBox = createInput(card.body, {
         Size = UDim2.new(0, 90, 0, 28),
@@ -4772,10 +4684,6 @@ do
         end
         if not group then
             say("Out of stock", C.warn)
-            return nil
-        end
-        if lockedSet()[group.n] then
-            say("Locked: " .. group.n, C.warn)
             return nil
         end
         local amount
@@ -4800,7 +4708,6 @@ do
             local sold, failed = 0, false
             local i = 1
             while i <= amount and not failed do
-                if lockedSet()[group.n] then break end
                 local batch, count = {}, 0
                 while i <= amount and count < 25 do
                     batch[group.ids[i]] = true
@@ -4859,64 +4766,6 @@ do
         Position = UDim2.new(0.5, 52, 0, 36),
     }, "Sell all", function() press(allBtn, true) end)
     base[sellBtn], base[allBtn] = "Sell", "Sell all"
-
-    do
-        local sortBtns = {}
-        local function paintSort()
-            for mode, b in pairs(sortBtns) do
-                local on = (flags.unitSort == mode)
-                b.btn.BackgroundColor3 = on and C.hover or C.control
-                for _, f in ipairs(b.parts) do
-                    f.BackgroundColor3 = on and C.hi or C.muted
-                end
-            end
-        end
-        local function addSort(mode, x, draw)
-            local btn = make("TextButton", {
-                Size = UDim2.new(0, 36, 0, 24),
-                Position = UDim2.new(0, x, 0, 74),
-                BackgroundColor3 = C.control,
-                BorderSizePixel = 0,
-                Text = "",
-                AutoButtonColor = false,
-            }, card.body)
-            styleControl(btn)
-            local parts = draw(btn)
-            sortBtns[mode] = { btn = btn, parts = parts }
-            btn.MouseButton1Click:Connect(function()
-                setFlag("unitSort", mode)
-                paintSort()
-            end)
-        end
-        local function bars(heights)
-            return function(btn)
-                local parts = {}
-                for i, hgt in ipairs(heights) do
-                    parts[#parts + 1] = make("Frame", {
-                        Size = UDim2.new(0, 3, 0, hgt),
-                        Position = UDim2.new(0.5, -8 + (i - 1) * 6, 0.5, 6 - hgt),
-                        BackgroundColor3 = C.muted,
-                        BorderSizePixel = 0,
-                    }, btn)
-                end
-                return parts
-            end
-        end
-        addSort("count_asc", 0, bars({ 4, 8, 12 }))
-        addSort("count_desc", 42, bars({ 12, 8, 4 }))
-        addSort("rarity", 84, function(btn)
-            local d = make("Frame", {
-                Size = UDim2.new(0, 9, 0, 9),
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(0.5, 0, 0.5, 0),
-                Rotation = 45,
-                BackgroundColor3 = C.muted,
-                BorderSizePixel = 0,
-            }, btn)
-            return { d }
-        end)
-        paintSort()
-    end
 
     runLoop(function()
         refresh(false)

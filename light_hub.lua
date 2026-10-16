@@ -125,6 +125,7 @@ local MAP_OPTIONS = {
     { label = "Wild Desert", value = "Wild Desert" },
     { label = "Camera Lab", value = "Camera Lab" },
     { label = "Toilet Bunker", value = "ToiletBunker" },
+    { label = "Spooky Town", value = "Spooky Town" },
     { label = "Endless", value = "Endless" },
 }
 local PLAYER_OPTIONS = {
@@ -184,6 +185,7 @@ local FLAG_DEFAULTS = {
     autoReplay = false,
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
+    forceLobby = false, forceMinutes = 20, lossLimit = 4, lossNoticeN = 4,
     autoSkip = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
@@ -192,6 +194,7 @@ local FLAG_DEFAULTS = {
     autoPotion = false, potionType = "",
     antiLag = false,
     autoSeason = false,
+    autoQuest = false,
 }
 
 local SPEND_KEYS = { "autoSummon", "autoSpin", "autoCrate", "autoLucky", "autoPotion" }
@@ -3562,6 +3565,9 @@ do
         add(value)
         add((value:gsub("(%l)(%u)", "%1 %2")))
         add((value:gsub("%s+", "")))
+        if normName(value) == "spookytown" then
+            add("Spoky Town"); add("SpookyTown"); add("SpokyTown")
+        end
         return list
     end
 
@@ -3903,37 +3909,137 @@ do
         end,
     })
 
-    local LOSS_LIMIT = 4
-    local fLoss
-    fLoss = createFeature(page, "Lobby after 4 losses", {
-        initial = flags.lossReturn,
-        onToggle = function(v)
+    local fLoss = { setNote = function() end }
+    local fForce = { setNote = function() end }
+    do
+        local TextService = game:GetService("TextService")
+        local panel = createCard(page, 76)
+        panel.Visible = false
+
+        local function miniToggle(pos, initial, onChange)
+            local state = initial and true or false
+            local track = make("Frame", {
+                Size = UDim2.new(0, 26, 0, 14),
+                Position = pos,
+                BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
+                BorderSizePixel = 0,
+            }, panel)
+            local stroke = make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, track)
+            local knob = make("Frame", {
+                Size = UDim2.new(0, 8, 0, 8),
+                Position = UDim2.new(0, 3, 0.5, -4),
+                BackgroundColor3 = C.muted,
+                BorderSizePixel = 0,
+            }, track)
+            local hit = make("TextButton", {
+                Size = UDim2.new(1, 8, 1, 8),
+                Position = UDim2.new(0, -4, 0, -4),
+                BackgroundTransparency = 1,
+                Text = "",
+                AutoButtonColor = false,
+                ZIndex = 2,
+            }, track)
+            local function render(animate)
+                local tc = state and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+                local kc = state and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
+                local kp = state and UDim2.new(1, -11, 0.5, -4) or UDim2.new(0, 3, 0.5, -4)
+                local sc = state and tc or C.controlLine
+                if animate then
+                    tween(track, 0.12, { BackgroundColor3 = tc })
+                    tween(stroke, 0.12, { Color = sc })
+                    tween(knob, 0.12, { BackgroundColor3 = kc, Position = kp })
+                else
+                    track.BackgroundColor3, stroke.Color = tc, sc
+                    knob.BackgroundColor3, knob.Position = kc, kp
+                end
+            end
+            hit.MouseButton1Click:Connect(function()
+                state = not state
+                render(true)
+                onChange(state)
+            end)
+            render(false)
+        end
+
+        local function label(text, x, y)
+            local w = TextService:GetTextSize(text, 10, Enum.Font.GothamMedium, Vector2.new(400, 20)).X
+            make("TextLabel", {
+                Size = UDim2.new(0, w + 2, 0, 26),
+                Position = UDim2.new(0, x, 0, y),
+                BackgroundTransparency = 1,
+                Text = text,
+                TextColor3 = C.muted,
+                TextSize = 10,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, panel)
+            return x + w + 6
+        end
+
+        local function addRow(y, toggleKey, onToggle, prefix, numKey, minV, maxV, suffix)
+            miniToggle(UDim2.new(0, 12, 0, y + 6), flags[toggleKey], onToggle)
+            local x = label(prefix, 46, y)
+            local box = createInput(panel, {
+                Size = UDim2.new(0, 38, 0, 18),
+                Position = UDim2.new(0, x, 0, y + 4),
+                TextSize = 10,
+                TextXAlignment = Enum.TextXAlignment.Center,
+            }, "")
+            box.Text = tostring(flags[numKey])
+            box.FocusLost:Connect(function()
+                local n = tonumber(box.Text)
+                if n then setFlag(numKey, math.clamp(math.floor(n), minV, maxV)) end
+                box.Text = tostring(flags[numKey])
+            end)
+            label(suffix, x + 44, y)
+            local note = make("TextLabel", {
+                Size = UDim2.new(0, 80, 0, 26),
+                Position = UDim2.new(1, -92, 0, y),
+                BackgroundTransparency = 1,
+                Text = "",
+                TextColor3 = C.muted,
+                TextSize = 10,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Right,
+            }, panel)
+            return {
+                setNote = function(t, color)
+                    t = t or ""
+                    if note.Text ~= t then note.Text = t end
+                    note.TextColor3 = color or C.muted
+                end,
+            }
+        end
+
+        fLoss = addRow(8, "lossReturn", function(v)
             setFlag("lossReturn", v)
             setFlag("lossStreak", 0)
             fLoss.setNote("")
-        end,
-    })
-    do
+        end, "Back to lobby after", "lossLimit", 1, 20, "losses in a row")
+        fForce = addRow(40, "forceLobby", function(v)
+            setFlag("forceLobby", v)
+        end, "Back to lobby after", "forceMinutes", 1, 240, "min in a match")
 
-        local c = fLoss.card
-        c.Size = UDim2.new(c.Size.X.Scale, c.Size.X.Offset, 0, 26)
-        for _, d in ipairs(c:GetChildren()) do
-            if d:IsA("TextLabel") then
-                d.Size = UDim2.new(0, d.Size.X.Offset, 0, 26)
-                d.TextSize = (d.TextSize >= 12) and 11 or 10
-                if d.Text == "Lobby after 4 losses" then
-                    d.Position = UDim2.new(0, 22, 0, 0)
-                    d.TextColor3 = C.muted
-                end
-            elseif d:IsA("TextButton") then
-                d.Size = UDim2.new(1, 0, 0, 26)
-            elseif d:IsA("Frame") and d.Size.X.Offset == 34 then
-                d.Position = UDim2.new(1, -46, 0, 5)
-            end
+        if flags.lossReturn and (flags.lossStreak or 0) > 0 then
+            fLoss.setNote("Losses " .. flags.lossStreak .. "/" .. (flags.lossLimit or 4))
         end
-        if (flags.lossStreak or 0) > 0 and flags.lossReturn then
-            fLoss.setNote("Losses in a row: " .. flags.lossStreak .. "/" .. LOSS_LIMIT)
-        end
+
+        local tw = TextService:GetTextSize("Auto Lobby", 12, Enum.Font.GothamMedium, Vector2.new(300, 30)).X
+        local chev = createChevron(fLobby.card, 0)
+        chev.AnchorPoint = Vector2.new(0, 0.5)
+        chev.Position = UDim2.new(0, 12 + tw + 8, 0.5, 0)
+        local chevHit = make("TextButton", {
+            Size = UDim2.new(0, 26, 0, 30),
+            Position = UDim2.new(0, 12 + tw + 1, 0, 2),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 3,
+        }, fLobby.card)
+        chevHit.MouseButton1Click:Connect(function()
+            panel.Visible = not panel.Visible
+            tween(chev, 0.12, { Rotation = panel.Visible and 180 or 0 })
+        end)
     end
 
     local function scanEndScreen()
@@ -3990,17 +4096,19 @@ do
             if res == "lose" then
                 local n = (flags.lossStreak or 0) + 1
                 setFlag("lossStreak", n)
-                if n >= LOSS_LIMIT then
+                local limitN = flags.lossLimit or 4
+                if n >= limitN then
                     setFlag("lossStreak", 0)
                     setFlag("autoReplay", false)
                     setFlag("autoPlay", false)
                     setFlag("lossNotice", true)
+                    setFlag("lossNoticeN", limitN)
                     fReplay.set(false)
                     fLoss.setNote("")
-                    notify("Lost " .. LOSS_LIMIT .. " in a row", "Returning to lobby", 6)
+                    notify("Lost " .. limitN .. " in a row", "Returning to lobby", 6)
                     wantLobby, f = true, fLobby
                 else
-                    fLoss.setNote("Losses in a row: " .. n .. "/" .. LOSS_LIMIT)
+                    fLoss.setNote("Losses " .. n .. "/" .. limitN)
                 end
             elseif res == "win" then
                 setFlag("lossStreak", 0)
@@ -4026,6 +4134,37 @@ do
             f.setNote("Vote failed", C.warn)
         end
         return 1.5
+    end)
+
+    local TeleportService = game:GetService("TeleportService")
+    local startAt, lastTry, wasForce = os.clock(), -100, false
+    runLoop(function()
+        if not inMatch then
+            fForce.setNote(flags.forceLobby and "Match only" or "")
+            return 3
+        end
+        if not flags.forceLobby then
+            wasForce = false
+            fForce.setNote("")
+            return 1
+        end
+        if not wasForce then
+            wasForce = true
+            startAt = os.clock()
+        end
+        local limit = (tonumber(flags.forceMinutes) or 20) * 60
+        local left = limit - (os.clock() - startAt)
+        if left > 0 then
+            fForce.setNote(string.format("Lobby in %d:%02d", math.floor(left / 60), math.floor(left % 60)))
+            return 1
+        end
+        fForce.setNote("Teleporting...", C.warn)
+        if os.clock() - lastTry > 25 then
+            lastTry = os.clock()
+            notify("Time limit reached", "Teleporting to lobby", 5)
+            pcall(function() TeleportService:Teleport(LOBBY_PLACE, LocalPlayer) end)
+        end
+        return 1
     end)
 end
 
@@ -7375,6 +7514,260 @@ do
     end)
 end
 
+do
+    local page = tabs["AFK"].page
+    local feat = visualFeature(page, "Auto Claim Quests", "autoQuest", 0)
+
+    local INFO = {
+        { "Global quests", "Hourly, Daily and Weekly" },
+        { "Halloween quests", "Easy and Hard" },
+        { "Daily quests", "The three daily tasks" },
+    }
+    local NOT_YET = {
+        { "Season quests", "Not included yet" },
+        { "Group chest", "Not included yet" },
+    }
+    local board
+
+    local function addRow(par, y, name, desc, dim)
+        local row = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 36),
+            Position = UDim2.new(0, 0, 0, y),
+            BackgroundColor3 = C.control,
+            BackgroundTransparency = 0.3,
+            BorderSizePixel = 0,
+        }, par)
+        make("TextLabel", {
+            Size = UDim2.new(0.5, -12, 1, 0),
+            Position = UDim2.new(0, 12, 0, 0),
+            BackgroundTransparency = 1,
+            Text = name,
+            TextColor3 = dim and C.dim or C.text,
+            TextSize = 12,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, row)
+        make("TextLabel", {
+            Size = UDim2.new(0.5, -12, 1, 0),
+            Position = UDim2.new(0.5, 0, 0, 0),
+            BackgroundTransparency = 1,
+            Text = desc,
+            TextColor3 = dim and C.dim or C.muted,
+            TextSize = 11,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Right,
+        }, row)
+    end
+
+    local function buildBoard()
+        if board then return end
+        board = make("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.fromRGB(10, 10, 11),
+            BorderSizePixel = 0,
+            Active = true,
+            Visible = false,
+            ZIndex = 60,
+        }, MainFrame)
+        make("TextLabel", {
+            Size = UDim2.new(0.7, 0, 0, 36),
+            Position = UDim2.new(0, 14, 0, 4),
+            BackgroundTransparency = 1,
+            Text = "Auto Claim Quests",
+            TextColor3 = C.hi,
+            TextSize = 14,
+            Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, board)
+        local closeBtn = make("TextButton", {
+            Size = UDim2.new(0, 70, 0, 26),
+            Position = UDim2.new(1, -84, 0, 9),
+            BackgroundColor3 = C.control,
+            BorderSizePixel = 0,
+            Text = "Close",
+            TextColor3 = C.text,
+            TextSize = 11,
+            Font = Enum.Font.GothamMedium,
+            AutoButtonColor = false,
+        }, board)
+        make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, closeBtn)
+        closeBtn.MouseButton1Click:Connect(function() board.Visible = false end)
+        make("Frame", {
+            Size = UDim2.new(1, -28, 0, 1),
+            Position = UDim2.new(0, 14, 0, 44),
+            BackgroundColor3 = C.line,
+            BorderSizePixel = 0,
+        }, board)
+
+        local body = make("ScrollingFrame", {
+            Size = UDim2.new(1, -28, 1, -56),
+            Position = UDim2.new(0, 14, 0, 52),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ScrollBarThickness = 3,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+        }, board)
+        local y = 0
+        local function heading(text)
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 2, 0, y),
+                BackgroundTransparency = 1,
+                Text = text,
+                TextColor3 = C.muted,
+                TextSize = 10,
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, body)
+            y = y + 24
+        end
+        heading("TURNING THIS ON CLAIMS")
+        for _, r in ipairs(INFO) do
+            addRow(body, y, r[1], r[2], false)
+            y = y + 40
+        end
+        y = y + 8
+        heading("NOT INCLUDED")
+        for _, r in ipairs(NOT_YET) do
+            addRow(body, y, r[1], r[2], true)
+            y = y + 40
+        end
+        y = y + 8
+        make("TextLabel", {
+            Size = UDim2.new(1, -4, 0, 44),
+            Position = UDim2.new(0, 2, 0, y),
+            BackgroundTransparency = 1,
+            Text = "A quest is claimed as soon as its goal is reached. Checked every 20 seconds and whenever the game updates its quests.",
+            TextColor3 = C.dim,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top,
+        }, body)
+        body.CanvasSize = UDim2.new(0, 0, 0, y + 50)
+    end
+
+    local badge = make("TextButton", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(1, -78, 0.5, -10),
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 3,
+    }, feat.card)
+    make("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
+    make("UIStroke", { Color = C.muted, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
+    make("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "!",
+        TextColor3 = C.text,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 4,
+    }, badge)
+    badge.MouseButton1Click:Connect(function()
+        buildBoard()
+        board.Visible = true
+    end)
+
+    local tried = {}
+
+    local function claim(remote, ...)
+        if not flags.autoQuest or not ScreenGui.Parent then return end
+        local parts = { remote }
+        for i = 1, select("#", ...) do parts[#parts + 1] = tostring((select(i, ...))) end
+        local key = table.concat(parts, "|")
+        if tried[key] and os.clock() - tried[key] < 60 then return end
+        tried[key] = os.clock()
+        invoke(remote, ...)
+        task.wait(0.4)
+    end
+
+    local function eachReady(slots, fn)
+        if type(slots) ~= "table" then return end
+        for _, q in ipairs(slots) do
+            if type(q) == "table" and type(q.InstanceId) == "string" and type(q.Index) == "number"
+                and type(q.Progress) == "number" and type(q.Target) == "number"
+                and q.Claimed ~= true and q.Progress >= q.Target then
+                fn(q)
+            end
+        end
+    end
+
+    local function sweepDaily()
+        if not RF("ClaimQuest") then return end
+        local ok, st = invoke("GetQuestState")
+        if ok and type(st) == "table" then
+            eachReady(st.Slots, function(q) claim("ClaimQuest", q.Index, q.InstanceId) end)
+        end
+    end
+
+    local function sweepHalloween()
+        if not RF("ClaimHalloweenQuest") then return end
+        local ok, st = invoke("GetHalloweenQuestState")
+        if ok and type(st) == "table" and st.Enabled ~= false and type(st.Tracks) == "table" then
+            for _, tr in ipairs(st.Tracks) do
+                if type(tr) == "table" and type(tr.Id) == "string" then
+                    eachReady(tr.Slots, function(q) claim("ClaimHalloweenQuest", tr.Id, q.Index, q.InstanceId) end)
+                end
+            end
+        end
+    end
+
+    local function globalId(t)
+        for _, v in pairs(t) do
+            if type(v) == "string" and string.find(v, "global_quests", 1, true) then return v end
+        end
+        if type(t.TierId) == "string" and type(t.StartedAt) == "number" and type(t.EndsAt) == "number"
+            and t.EndsAt > t.StartedAt then
+            return string.format("global_quests_v3:%s:%d", t.TierId, math.floor(t.StartedAt / (t.EndsAt - t.StartedAt)))
+        end
+        return nil
+    end
+
+    local function sweepGlobal()
+        if not RF("ClaimGlobalQuest") then return end
+        local ok, st = invoke("GetGlobalQuestState")
+        if not ok or type(st) ~= "table" or type(st.Tiers) ~= "table" then return end
+        for _, name in ipairs(type(st.Order) == "table" and st.Order or { "Hourly", "Daily", "Weekly" }) do
+            local t = st.Tiers[name]
+            if type(t) == "table" and t.Claimed ~= true and t.Available ~= false and t.Eligible ~= false
+                and type(t.Progress) == "number" then
+
+                local target = tonumber(t.Target) or tonumber(string.match(tostring(t.QuestId or ""), "(%d+)$"))
+                local id = globalId(t)
+                if target and id and t.Progress >= target then claim("ClaimGlobalQuest", name, id) end
+            end
+        end
+    end
+
+    local wake, nextAt, wasOn = false, 0, false
+    for _, ev in ipairs({ "QuestStateUpdated", "HalloweenQuestStateUpdated", "GlobalQuestStateUpdated" }) do
+        bindEvent(ev, function() wake = true end)
+    end
+    runLoop(function()
+        if not flags.autoQuest then
+            wasOn = false
+            return 0.5
+        end
+        if not wasOn then
+            wasOn = true
+            nextAt = 0
+        end
+        if not wake and os.clock() < nextAt then return 0.3 end
+        if wake then task.wait(0.4) end
+        wake = false
+        nextAt = os.clock() + 20
+        pcall(sweepDaily)
+        pcall(sweepHalloween)
+        pcall(sweepGlobal)
+        return 0.3
+    end)
+end
+
 local ANIM_EVENTS = {
     crate = { "CrateOpening", "LuckyBlockOpening" },
     summon = { "MythicSummoned" },
@@ -8321,7 +8714,7 @@ if game.PlaceId == LOBBY_PLACE and flags.lossNotice then
         BackgroundTransparency = 1,
         AutoButtonColor = false,
         Active = false,
-        Text = "Back to lobby cuz u lost 4x in a row",
+        Text = "Back to lobby cuz u lost " .. (flags.lossNoticeN or 4) .. "x in a row",
         TextColor3 = C.text,
         TextSize = 30,
         TextWrapped = true,

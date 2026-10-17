@@ -125,7 +125,7 @@ local MAP_OPTIONS = {
     { label = "Wild Desert", value = "Wild Desert" },
     { label = "Camera Lab", value = "Camera Lab" },
     { label = "Toilet Bunker", value = "ToiletBunker" },
-    { label = "Spooky Town", value = "Spooky Town" },
+    { label = "Spooky Town", value = "SpookyTown" },
     { label = "Endless", value = "Endless" },
 }
 local PLAYER_OPTIONS = {
@@ -1059,7 +1059,7 @@ local function loadSettings()
         flags.macroSelected = ""
     end
     do
-        local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "CanyonBridge" }
+        local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "CanyonBridge", ["Spooky Town"] = "SpookyTown" }
         if legacy[flags.playMap] then flags.playMap = legacy[flags.playMap] end
     end
     if not inOptions(MAP_OPTIONS, flags.playMap) then flags.playMap = "" end
@@ -3565,9 +3565,6 @@ do
         add(value)
         add((value:gsub("(%l)(%u)", "%1 %2")))
         add((value:gsub("%s+", "")))
-        if normName(value) == "spookytown" then
-            add("Spoky Town"); add("SpookyTown"); add("SpokyTown")
-        end
         return list
     end
 
@@ -7517,161 +7514,6 @@ end
 do
     local page = tabs["AFK"].page
     local feat = visualFeature(page, "Auto Claim Quests", "autoQuest", 0)
-
-    local INFO = {
-        { "Global quests", "Hourly, Daily and Weekly" },
-        { "Halloween quests", "Easy and Hard" },
-        { "Daily quests", "The three daily tasks" },
-    }
-    local NOT_YET = {
-        { "Season quests", "Not included yet" },
-        { "Group chest", "Not included yet" },
-    }
-    local board
-
-    local function addRow(par, y, name, desc, dim)
-        local row = make("Frame", {
-            Size = UDim2.new(1, 0, 0, 36),
-            Position = UDim2.new(0, 0, 0, y),
-            BackgroundColor3 = C.control,
-            BackgroundTransparency = 0.3,
-            BorderSizePixel = 0,
-        }, par)
-        make("TextLabel", {
-            Size = UDim2.new(0.5, -12, 1, 0),
-            Position = UDim2.new(0, 12, 0, 0),
-            BackgroundTransparency = 1,
-            Text = name,
-            TextColor3 = dim and C.dim or C.text,
-            TextSize = 12,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, row)
-        make("TextLabel", {
-            Size = UDim2.new(0.5, -12, 1, 0),
-            Position = UDim2.new(0.5, 0, 0, 0),
-            BackgroundTransparency = 1,
-            Text = desc,
-            TextColor3 = dim and C.dim or C.muted,
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            TextXAlignment = Enum.TextXAlignment.Right,
-        }, row)
-    end
-
-    local function buildBoard()
-        if board then return end
-        board = make("Frame", {
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundColor3 = Color3.fromRGB(10, 10, 11),
-            BorderSizePixel = 0,
-            Active = true,
-            Visible = false,
-            ZIndex = 60,
-        }, MainFrame)
-        make("TextLabel", {
-            Size = UDim2.new(0.7, 0, 0, 36),
-            Position = UDim2.new(0, 14, 0, 4),
-            BackgroundTransparency = 1,
-            Text = "Auto Claim Quests",
-            TextColor3 = C.hi,
-            TextSize = 14,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, board)
-        local closeBtn = make("TextButton", {
-            Size = UDim2.new(0, 70, 0, 26),
-            Position = UDim2.new(1, -84, 0, 9),
-            BackgroundColor3 = C.control,
-            BorderSizePixel = 0,
-            Text = "Close",
-            TextColor3 = C.text,
-            TextSize = 11,
-            Font = Enum.Font.GothamMedium,
-            AutoButtonColor = false,
-        }, board)
-        make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, closeBtn)
-        closeBtn.MouseButton1Click:Connect(function() board.Visible = false end)
-        make("Frame", {
-            Size = UDim2.new(1, -28, 0, 1),
-            Position = UDim2.new(0, 14, 0, 44),
-            BackgroundColor3 = C.line,
-            BorderSizePixel = 0,
-        }, board)
-
-        local body = make("ScrollingFrame", {
-            Size = UDim2.new(1, -28, 1, -56),
-            Position = UDim2.new(0, 14, 0, 52),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            ScrollBarThickness = 3,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-        }, board)
-        local y = 0
-        local function heading(text)
-            make("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 20),
-                Position = UDim2.new(0, 2, 0, y),
-                BackgroundTransparency = 1,
-                Text = text,
-                TextColor3 = C.muted,
-                TextSize = 10,
-                Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, body)
-            y = y + 24
-        end
-        heading("TURNING THIS ON CLAIMS")
-        for _, r in ipairs(INFO) do
-            addRow(body, y, r[1], r[2], false)
-            y = y + 40
-        end
-        y = y + 8
-        heading("NOT INCLUDED")
-        for _, r in ipairs(NOT_YET) do
-            addRow(body, y, r[1], r[2], true)
-            y = y + 40
-        end
-        y = y + 8
-        make("TextLabel", {
-            Size = UDim2.new(1, -4, 0, 44),
-            Position = UDim2.new(0, 2, 0, y),
-            BackgroundTransparency = 1,
-            Text = "A quest is claimed as soon as its goal is reached. Checked every 20 seconds and whenever the game updates its quests.",
-            TextColor3 = C.dim,
-            TextSize = 10,
-            Font = Enum.Font.GothamMedium,
-            TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top,
-        }, body)
-        body.CanvasSize = UDim2.new(0, 0, 0, y + 50)
-    end
-
-    local badge = make("TextButton", {
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(1, -78, 0.5, -10),
-        BackgroundColor3 = C.control,
-        BorderSizePixel = 0,
-        Text = "",
-        AutoButtonColor = false,
-        ZIndex = 3,
-    }, feat.card)
-    make("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
-    make("UIStroke", { Color = C.muted, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text = "!",
-        TextColor3 = C.text,
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4,
-    }, badge)
-    badge.MouseButton1Click:Connect(function()
-        buildBoard()
-        board.Visible = true
-    end)
 
     local tried = {}
 

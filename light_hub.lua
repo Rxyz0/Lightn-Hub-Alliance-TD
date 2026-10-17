@@ -21,6 +21,50 @@ local HEADER_H, SIDEBAR_W = 34, 108
 
 local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
 
+-- Di luar lobby dan match (misalnya game lain), tanya dulu lewat notifikasi Roblox di pojok
+-- kanan bawah (tanpa gambar). Script baru dimuat setelah pemain menekan tombol: Yes = lanjut
+-- dimuat, No = script berhenti. Selama belum ditekan, script menunggu dan notifikasinya
+-- ditampilkan lagi kalau sudah hilang. Kalau notifikasi tidak bisa ditampilkan sama sekali,
+-- script jalan seperti biasa.
+if game.PlaceId ~= LOBBY_PLACE and game.PlaceId ~= MATCH_PLACE then
+    if not game:IsLoaded() then game.Loaded:Wait() end
+    local answer
+    local reply = Instance.new("BindableFunction")
+    reply.OnInvoke = function(choice) answer = choice end
+    local function ask()
+        return pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = "Lightn Hub | Execute",
+                Text = "Still execute LIGHTN HUB?",
+                Button1 = "Yes",
+                Button2 = "No",
+                Callback = reply,
+                Duration = 45,
+            })
+        end)
+    end
+    local shown = false
+    for _ = 1, 20 do
+        shown = ask()
+        if shown then break end
+        task.wait(0.5)
+    end
+    if shown then
+        local t0 = os.clock()
+        while answer == nil do
+            task.wait(0.1)
+            if answer == nil and os.clock() - t0 >= 45 then
+                t0 = os.clock()
+                ask()
+            end
+        end
+    else
+        answer = "Yes"
+    end
+    reply:Destroy()
+    if answer ~= "Yes" then return end
+end
+
 local SKIP_WAVE_OFFSET = 0
 
 local C = {
@@ -2532,42 +2576,51 @@ local function createSlider(par, props, cfg, onChange)
     for k, v in pairs(props) do frame[k] = v end
     styleControl(frame)
 
-    -- area garis (kotak penarik bergerak di dalamnya)
+    -- area garis; kotak penarik berbentuk persegi 14x14; semua bagian diletakkan pada piksel bulat supaya kotak, garis, dan tanda
+    -- selalu persis di tengah satu sama lain (tidak ada setengah piksel yang bikin miring)
     local area = make("Frame", {
         Position = UDim2.new(0, 14, 0, 0),
         Size = UDim2.new(1, -66, 1, 0),
         BackgroundTransparency = 1,
     }, frame)
+    -- garis lurus tanpa tanda: bingkai tipis berisi alur gelap, dan warna tema mengisi bagian
+    -- dalam alur dari kiri sampai ke kotak penarik, jadi warnanya otomatis menyatu dengan kotak
     local line = make("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.new(1, 0, 0, 2),
+        Size = UDim2.new(1, 0, 0, 6),
         BackgroundColor3 = C.controlLine,
         BorderSizePixel = 0,
     }, area)
-    for i = 0, n - 1 do
-        make("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(i / (n - 1), 0, 0.5, 0),
-            Size = UDim2.new(0, 1, 0, 8),
-            BackgroundColor3 = C.controlLine,
-            BorderSizePixel = 0,
-        }, area)
-    end
+    make("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 1, 0.5, 0),
+        Size = UDim2.new(1, -2, 0, 4),
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+    }, area)
     local fill = make("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.new(0, 0, 0, 2),
+        Position = UDim2.new(0, 1, 0.5, 0),
+        Size = UDim2.new(0, 0, 0, 4),
         BackgroundColor3 = C.accent,
         BorderSizePixel = 0,
     }, area)
     local thumb = make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.new(0, 10, 0, 16),
+        Size = UDim2.new(0, 14, 0, 14),
         BackgroundColor3 = T(Color3.fromRGB(226, 226, 228), "bg"),
         BorderSizePixel = 0,
     }, area)
+    -- titik persegi kecil di tengah kotak
+    make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 4, 0, 4),
+        BackgroundColor3 = C.ink,
+        BackgroundTransparency = 0.4,
+        BorderSizePixel = 0,
+    }, thumb)
     local label = make("TextLabel", {
         AnchorPoint = Vector2.new(1, 0),
         Position = UDim2.new(1, -10, 0, 0),
@@ -2582,18 +2635,29 @@ local function createSlider(par, props, cfg, onChange)
 
     local current = snap(cfg.initial or minV)
     local committed = current
-    local function refresh(animate)
+
+    local function areaW()
+        local w = area.AbsoluteSize.X
+        if w <= 0 and props.Size then w = props.Size.X.Offset - 66 end
+        return math.max(1, w)
+    end
+    local function px(frac) return math.floor(frac * areaW() + 0.5) end
+
+    local function layout(animate)
         local frac = (current - minV) / (maxV - minV)
         label.Text = fmt(current)
+        local x = px(frac)
+        local fw = math.max(0, x - 1)
         if animate then
-            tween(thumb, 0.06, { Position = UDim2.new(frac, 0, 0.5, 0) })
-            tween(fill, 0.06, { Size = UDim2.new(frac, 0, 0, 2) })
+            tween(thumb, 0.06, { Position = UDim2.new(0, x, 0.5, 0) })
+            tween(fill, 0.06, { Size = UDim2.new(0, fw, 0, 4) })
         else
-            thumb.Position = UDim2.new(frac, 0, 0.5, 0)
-            fill.Size = UDim2.new(frac, 0, 0, 2)
+            thumb.Position = UDim2.new(0, x, 0.5, 0)
+            fill.Size = UDim2.new(0, fw, 0, 4)
         end
     end
-    refresh(false)
+    layout(false)
+    area:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() layout(false) end)
 
     -- area sentuh: sedikit lebih lebar dari garis supaya ujung-ujungnya mudah dipegang
     local hit = make("TextButton", {
@@ -2606,11 +2670,10 @@ local function createSlider(par, props, cfg, onChange)
 
     local dragging, activeInput, scroller = false, nil, nil
     local function setFromX(x)
-        local w = math.max(1, area.AbsoluteSize.X)
-        local v = snap(minV + math.clamp((x - area.AbsolutePosition.X) / w, 0, 1) * (maxV - minV))
+        local v = snap(minV + math.clamp((x - area.AbsolutePosition.X) / areaW(), 0, 1) * (maxV - minV))
         if v ~= current then
             current = v
-            refresh(true)
+            layout(true)
         end
     end
     local function release()
@@ -2650,7 +2713,7 @@ local function createSlider(par, props, cfg, onChange)
         get = function() return current end,
         set = function(v)
             current = snap(v); committed = current
-            refresh(false)
+            layout(false)
         end,
     }
 end

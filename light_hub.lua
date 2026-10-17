@@ -121,11 +121,12 @@ local DELAY_OPTIONS = {
 
 local MAP_OPTIONS = {
     { label = "City", value = "City" },
-    { label = "Canyon Bridge", value = "CanyonBridge" },
-    { label = "Wild Desert", value = "Wild Desert" },
+    { label = "Canyon Bridge", value = "Canyon" },
+    { label = "Wild Desert", value = "WildDesert" },
     { label = "Camera Lab", value = "Camera Lab" },
     { label = "Toilet Bunker", value = "ToiletBunker" },
-    { label = "Spooky Town", value = "SpookyTown" },
+
+    { label = "Spooky Town", value = "Halloween" },
     { label = "Endless", value = "Endless" },
 }
 local PLAYER_OPTIONS = {
@@ -1059,7 +1060,7 @@ local function loadSettings()
         flags.macroSelected = ""
     end
     do
-        local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "CanyonBridge", ["Spooky Town"] = "SpookyTown" }
+        local legacy = { CameramaLab = "Camera Lab", ["Canyon Bridge"] = "Canyon", CanyonBridge = "Canyon", ["Wild Desert"] = "WildDesert", ["Spooky Town"] = "Halloween", SpookyTown = "Halloween" }
         if legacy[flags.playMap] then flags.playMap = legacy[flags.playMap] end
     end
     if not inOptions(MAP_OPTIONS, flags.playMap) then flags.playMap = "" end
@@ -3540,7 +3541,8 @@ do
                 found[#found + 1] = n
             end
         end
-        for k, v in pairs(res) do
+        local src = type(res.Counts) == "table" and res.Counts or res
+        for k, v in pairs(src) do
             if type(k) == "string" then add(k) end
             if type(v) == "string" then add(v) end
             if type(v) == "table" then
@@ -3600,7 +3602,7 @@ do
             local ok, res = pcall(function()
                 return remote:InvokeServer(name, flags.playPlayers)
             end)
-            if ok and res ~= false then
+            if ok and res ~= false and not (type(res) == "table" and res.Ok == false) then
                 workingName[value] = name
                 joined = true
                 break

@@ -135,12 +135,12 @@ local PLAYER_OPTIONS = {
     { label = "3", value = 3 },
     { label = "4", value = 4 },
 }
-local SPEED_OPTIONS = {
-    { label = "1.5x", value = 1.5 },
-    { label = "2x", value = 2 },
-    { label = "2.5x", value = 2.5 },
-    { label = "3x", value = 3 },
-}
+local SPEED_MIN, SPEED_MAX, SPEED_STEP = 1.5, 3.5, 0.5
+local function snapSpeed(v)
+    if type(v) ~= "number" then return SPEED_MIN end
+    v = math.clamp(v, SPEED_MIN, SPEED_MAX)
+    return SPEED_MIN + math.floor((v - SPEED_MIN) / SPEED_STEP + 0.5) * SPEED_STEP
+end
 local MODE_OPTIONS = {
     { label = "Easy", value = "Easy" },
     { label = "Medium", value = "Medium" },
@@ -1054,7 +1054,7 @@ local function loadSettings()
     if not inOptions(SUMMON_OPTIONS, flags.summonAmount) then flags.summonAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.crateAmount) then flags.crateAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.luckyAmount) then flags.luckyAmount = 1 end
-    if not inOptions(SPEED_OPTIONS, flags.speedValue) then flags.speedValue = 1.5 end
+    flags.speedValue = snapSpeed(flags.speedValue)
     if flags.modeValue ~= "" and not inOptions(MODE_OPTIONS, flags.modeValue) then flags.modeValue = "" end
     if flags.macroSelected ~= "" and not (isfile and isfile(FS.macro(flags.macroSelected))) then
         flags.macroSelected = ""
@@ -2517,6 +2517,144 @@ local function createSegmented(par, props, options, initial, onChange)
     }
 end
 
+local function createSlider(par, props, cfg, onChange)
+    local minV, maxV, step = cfg.min, cfg.max, cfg.step
+    local n = math.floor((maxV - minV) / step + 0.5) + 1
+    local function fmt(v) return string.format("%g", v) .. "x" end
+    local function snap(v)
+        return minV + math.clamp(math.floor((v - minV) / step + 0.5), 0, n - 1) * step
+    end
+
+    local frame = make("Frame", {
+        BackgroundColor3 = C.control,
+        BorderSizePixel = 0,
+    }, par)
+    for k, v in pairs(props) do frame[k] = v end
+    styleControl(frame)
+
+    -- area garis (kotak penarik bergerak di dalamnya)
+    local area = make("Frame", {
+        Position = UDim2.new(0, 14, 0, 0),
+        Size = UDim2.new(1, -66, 1, 0),
+        BackgroundTransparency = 1,
+    }, frame)
+    local line = make("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        Size = UDim2.new(1, 0, 0, 2),
+        BackgroundColor3 = C.controlLine,
+        BorderSizePixel = 0,
+    }, area)
+    for i = 0, n - 1 do
+        make("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(i / (n - 1), 0, 0.5, 0),
+            Size = UDim2.new(0, 1, 0, 8),
+            BackgroundColor3 = C.controlLine,
+            BorderSizePixel = 0,
+        }, area)
+    end
+    local fill = make("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        Size = UDim2.new(0, 0, 0, 2),
+        BackgroundColor3 = C.accent,
+        BorderSizePixel = 0,
+    }, area)
+    local thumb = make("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        Size = UDim2.new(0, 10, 0, 16),
+        BackgroundColor3 = T(Color3.fromRGB(226, 226, 228), "bg"),
+        BorderSizePixel = 0,
+    }, area)
+    local label = make("TextLabel", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 0),
+        Size = UDim2.new(0, 40, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        TextColor3 = C.text,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, frame)
+
+    local current = snap(cfg.initial or minV)
+    local committed = current
+    local function refresh(animate)
+        local frac = (current - minV) / (maxV - minV)
+        label.Text = fmt(current)
+        if animate then
+            tween(thumb, 0.06, { Position = UDim2.new(frac, 0, 0.5, 0) })
+            tween(fill, 0.06, { Size = UDim2.new(frac, 0, 0, 2) })
+        else
+            thumb.Position = UDim2.new(frac, 0, 0.5, 0)
+            fill.Size = UDim2.new(frac, 0, 0, 2)
+        end
+    end
+    refresh(false)
+
+    -- area sentuh: sedikit lebih lebar dari garis supaya ujung-ujungnya mudah dipegang
+    local hit = make("TextButton", {
+        Position = UDim2.new(0, 6, 0, 0),
+        Size = UDim2.new(1, -50, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+    }, frame)
+
+    local dragging, activeInput, scroller = false, nil, nil
+    local function setFromX(x)
+        local w = math.max(1, area.AbsoluteSize.X)
+        local v = snap(minV + math.clamp((x - area.AbsolutePosition.X) / w, 0, 1) * (maxV - minV))
+        if v ~= current then
+            current = v
+            refresh(true)
+        end
+    end
+    local function release()
+        if not dragging then return end
+        dragging, activeInput = false, nil
+        if scroller then scroller.ScrollingEnabled = true; scroller = nil end
+        if current ~= committed then
+            committed = current
+            if onChange then onChange(current) end
+        end
+    end
+
+    hit.InputBegan:Connect(function(input)
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+        dragging, activeInput = true, input
+        scroller = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
+        if scroller then scroller.ScrollingEnabled = false end
+        setFromX(input.Position.X)
+    end)
+    table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        local t = input.UserInputType
+        if t ~= Enum.UserInputType.MouseMovement and t ~= Enum.UserInputType.Touch then return end
+        if t == Enum.UserInputType.Touch and input ~= activeInput then return end
+        setFromX(input.Position.X)
+    end))
+    table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+        if not dragging then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or (t == Enum.UserInputType.Touch and input == activeInput) then
+            release()
+        end
+    end))
+
+    return {
+        get = function() return current end,
+        set = function(v)
+            current = snap(v); committed = current
+            refresh(false)
+        end,
+    }
+end
+
 local function createSelect(par, props, cfg)
     local options, current = cfg.options, cfg.initial
 
@@ -3631,9 +3769,9 @@ do
     end
 
     fSpeed = visualFeature(page, "Auto Set Speed", "autoSpeed", 28, function(body)
-        createSegmented(body, {
-            Size = UDim2.new(0, 220, 1, 0),
-        }, SPEED_OPTIONS, flags.speedValue, function(v)
+        createSlider(body, {
+            Size = UDim2.new(0, 240, 1, 0),
+        }, { min = SPEED_MIN, max = SPEED_MAX, step = SPEED_STEP, initial = flags.speedValue }, function(v)
             setFlag("speedValue", v)
             if flags.autoSpeed then sendSpeed() end
         end)

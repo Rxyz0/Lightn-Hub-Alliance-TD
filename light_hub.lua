@@ -21,11 +21,6 @@ local HEADER_H, SIDEBAR_W = 34, 108
 
 local LOBBY_PLACE, MATCH_PLACE = 99703116573266, 117654154793149
 
--- Di luar lobby dan match (misalnya game lain), tanya dulu lewat notifikasi Roblox di pojok
--- kanan bawah (tanpa gambar). Script baru dimuat setelah pemain menekan tombol: Yes = lanjut
--- dimuat, No = script berhenti. Selama belum ditekan, script menunggu dan notifikasinya
--- ditampilkan lagi kalau sudah hilang. Kalau notifikasi tidak bisa ditampilkan sama sekali,
--- script jalan seperti biasa.
 if game.PlaceId ~= LOBBY_PLACE and game.PlaceId ~= MATCH_PLACE then
     if not game:IsLoaded() then game.Loaded:Wait() end
     local answer
@@ -215,6 +210,8 @@ local settings = {
     antiAfk = true,
     showTimer = true,
     cheapestFirst = true,
+    upgradeOne = false,
+    upgradeAll = false,
     upgradeDelay = 0.5,
     claimEnabled = false,
     skipAnim = false,
@@ -230,7 +227,7 @@ local FLAG_DEFAULTS = {
     autoReplay = false,
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
-    forceLobby = false, forceMinutes = 20, lossLimit = 4, lossNoticeN = 4,
+    lossLimit = 4, lossNoticeN = 4,
     autoSkip = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
@@ -240,6 +237,7 @@ local FLAG_DEFAULTS = {
     antiLag = false,
     autoSeason = false,
     autoQuest = false,
+    webhook = false, webhookUrl = "", webhookMode = "all",
 }
 
 local SPEND_KEYS = { "autoSummon", "autoSpin", "autoCrate", "autoLucky", "autoPotion" }
@@ -1023,6 +1021,8 @@ local function saveSettings()
         theme = settings.theme,
         showTimer = settings.showTimer,
         cheapestFirst = settings.cheapestFirst,
+        upgradeOne = settings.upgradeOne,
+        upgradeAll = settings.upgradeAll,
         upgradeDelay = settings.upgradeDelay,
         claimEnabled = settings.claimEnabled,
         skipAnim = settings.skipAnim,
@@ -1073,6 +1073,8 @@ local function loadSettings()
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
     if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
+    if type(data.upgradeOne) == "boolean" then settings.upgradeOne = data.upgradeOne end
+    if type(data.upgradeAll) == "boolean" then settings.upgradeAll = data.upgradeAll end
     if type(data.claimEnabled) == "boolean" then settings.claimEnabled = data.claimEnabled end
     if type(data.skipAnim) == "boolean" then settings.skipAnim = data.skipAnim end
 
@@ -1365,23 +1367,59 @@ if game.PlaceId == LOBBY_PLACE then
         local pagePos = P.page and P.page.Position
         if pagePos then P.page.Position = pagePos + UDim2.new(0, 0, 0, 10) end
 
-        MainFrame.Visible = true
-        tween(root, 0.35, { GroupTransparency = 1 })
-        task.wait(0.25)
+        local notice = flags.lossNotice
+        if notice then setFlag("lossNotice", false) end
 
-        if sv then tween(sv, 0.3, { BackgroundTransparency = 1 }) end
+        MainFrame.Visible = true
+        tween(root, 0.9, { GroupTransparency = 1 })
+        task.wait(0.8)
+
+        local bodyFrame = P.sidebar and P.sidebar.Parent
+        if notice and bodyFrame then
+            local nf = make("Frame", {
+                Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(10, 10, 11),
+                BorderSizePixel = 0, ZIndex = 110,
+            }, bodyFrame)
+            local nText = make("TextLabel", {
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -22),
+                Size = UDim2.new(1, -56, 0, 90), BackgroundTransparency = 1,
+                Text = "Back to lobby cuz u lost " .. (flags.lossNoticeN or 4) .. "x in a row",
+                TextColor3 = C.text, Font = Enum.Font.GothamBold, TextScaled = true,
+                TextWrapped = true, TextTransparency = 1, ZIndex = 111,
+            }, nf)
+            make("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 12 }, nText)
+            local nOk = make("TextButton", {
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 48),
+                Size = UDim2.new(0, 96, 0, 28), BackgroundColor3 = C.text,
+                BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false,
+                Text = "Okay", TextColor3 = C.ink, TextSize = 13, Font = Enum.Font.GothamBold,
+                TextTransparency = 1, ZIndex = 111,
+            }, nf)
+            tween(nText, 0.6, { TextTransparency = 0 })
+            tween(nOk, 0.6, { BackgroundTransparency = 0, TextTransparency = 0 })
+            local clicked = false
+            nOk.MouseButton1Click:Connect(function() clicked = true end)
+            while not clicked and MainFrame.Parent do task.wait(0.1) end
+            tween(nText, 0.4, { TextTransparency = 1 })
+            tween(nOk, 0.4, { BackgroundTransparency = 1, TextTransparency = 1 })
+            task.wait(0.45)
+            nf:Destroy()
+        end
+
+        if sv then tween(sv, 0.6, { BackgroundTransparency = 1 }) end
+        task.wait(0.5)
         if nv then
             for i, g in ipairs(nv.groups) do
                 if g.label then
-                    task.delay(0.06 * (i - 1), function() tween(g.label, 0.25, { TextTransparency = 0 }) end)
+                    task.delay(0.22 * (i - 1), function() tween(g.label, 0.5, { TextTransparency = 0 }) end)
                 end
             end
+            task.wait(0.22 * (#nv.groups - 1) + 0.6)
         end
-        task.wait(0.35)
 
-        if pv then tween(pv, 0.35, { BackgroundTransparency = 1 }) end
-        if pagePos then tween(P.page, 0.35, { Position = pagePos }) end
-        task.wait(0.4)
+        if pv then tween(pv, 0.8, { BackgroundTransparency = 1 }) end
+        if pagePos then tween(P.page, 0.8, { Position = pagePos }) end
+        task.wait(0.9)
         if sv then sv:Destroy() end
         if pv then pv:Destroy() end
         spin:Disconnect()
@@ -2576,61 +2614,57 @@ local function createSlider(par, props, cfg, onChange)
     for k, v in pairs(props) do frame[k] = v end
     styleControl(frame)
 
-    -- area garis; kotak penarik berbentuk persegi 14x14; semua bagian diletakkan pada piksel bulat supaya kotak, garis, dan tanda
-    -- selalu persis di tengah satu sama lain (tidak ada setengah piksel yang bikin miring)
     local area = make("Frame", {
         Position = UDim2.new(0, 14, 0, 0),
         Size = UDim2.new(1, -66, 1, 0),
         BackgroundTransparency = 1,
     }, frame)
-    -- garis lurus tanpa tanda: bingkai tipis berisi alur gelap, dan warna tema mengisi bagian
-    -- dalam alur dari kiri sampai ke kotak penarik, jadi warnanya otomatis menyatu dengan kotak
+
     local line = make("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 0, 0.5, 0),
-        Size = UDim2.new(1, 0, 0, 6),
+        Size = UDim2.new(1, 0, 0, 8),
         BackgroundColor3 = C.controlLine,
         BorderSizePixel = 0,
     }, area)
     make("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 1, 0.5, 0),
-        Size = UDim2.new(1, -2, 0, 4),
+        Size = UDim2.new(1, -2, 0, 6),
         BackgroundColor3 = C.control,
         BorderSizePixel = 0,
     }, area)
     local fill = make("Frame", {
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 1, 0.5, 0),
-        Size = UDim2.new(0, 0, 0, 4),
+        Size = UDim2.new(0, 0, 0, 6),
         BackgroundColor3 = C.accent,
         BorderSizePixel = 0,
     }, area)
     local thumb = make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Size = UDim2.new(0, 14, 0, 14),
+        Size = UDim2.new(0, 12, 0, 12),
         BackgroundColor3 = T(Color3.fromRGB(226, 226, 228), "bg"),
         BorderSizePixel = 0,
     }, area)
-    -- titik persegi kecil di tengah kotak
+    local thumbStroke = make("UIStroke", { Color = C.accent, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, thumb)
     make("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        Size = UDim2.new(0, 4, 0, 4),
-        BackgroundColor3 = C.ink,
-        BackgroundTransparency = 0.4,
+        Position = UDim2.new(1, -42, 0.5, 0),
+        Size = UDim2.new(0, 1, 0.56, 0),
+        BackgroundColor3 = C.controlLine,
         BorderSizePixel = 0,
-    }, thumb)
+    }, frame)
     local label = make("TextLabel", {
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -10, 0, 0),
+        Position = UDim2.new(1, 0, 0, 0),
         Size = UDim2.new(0, 40, 1, 0),
         BackgroundTransparency = 1,
         Text = "",
         TextColor3 = C.text,
         TextSize = 11,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Right,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Center,
     }, frame)
 
     local current = snap(cfg.initial or minV)
@@ -2650,19 +2684,18 @@ local function createSlider(par, props, cfg, onChange)
         local fw = math.max(0, x - 1)
         if animate then
             tween(thumb, 0.06, { Position = UDim2.new(0, x, 0.5, 0) })
-            tween(fill, 0.06, { Size = UDim2.new(0, fw, 0, 4) })
+            tween(fill, 0.06, { Size = UDim2.new(0, fw, 0, 6) })
         else
             thumb.Position = UDim2.new(0, x, 0.5, 0)
-            fill.Size = UDim2.new(0, fw, 0, 4)
+            fill.Size = UDim2.new(0, fw, 0, 6)
         end
     end
     layout(false)
     area:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() layout(false) end)
 
-    -- area sentuh: sedikit lebih lebar dari garis supaya ujung-ujungnya mudah dipegang
     local hit = make("TextButton", {
-        Position = UDim2.new(0, 6, 0, 0),
-        Size = UDim2.new(1, -50, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(1, -44, 1, 0),
         BackgroundTransparency = 1,
         Text = "",
         AutoButtonColor = false,
@@ -2679,6 +2712,8 @@ local function createSlider(par, props, cfg, onChange)
     local function release()
         if not dragging then return end
         dragging, activeInput = false, nil
+        tween(thumb, 0.1, { Size = UDim2.new(0, 12, 0, 12) })
+        label.TextColor3 = C.text
         if scroller then scroller.ScrollingEnabled = true; scroller = nil end
         if current ~= committed then
             committed = current
@@ -2690,6 +2725,8 @@ local function createSlider(par, props, cfg, onChange)
         local t = input.UserInputType
         if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
         dragging, activeInput = true, input
+        tween(thumb, 0.1, { Size = UDim2.new(0, 14, 0, 14) })
+        label.TextColor3 = C.accent
         scroller = frame:FindFirstAncestorWhichIsA("ScrollingFrame")
         if scroller then scroller.ScrollingEnabled = false end
         setFromX(input.Position.X)
@@ -3216,6 +3253,7 @@ local nav = {
         { name = "Macro", pages = { { "Macro", "Macro" }, { "Share", "Sharing" } } },
         { name = "Endless", pages = { { "Endless", "Endless" } } },
         { name = "Rewards", pages = { { "AFK", "Rewards" } } },
+        { name = "Webhook", pages = { { "Webhook", "Webhook" } } },
     },
     settings = { name = "Settings", pages = { { "Settings", "Settings" }, { "Profile", "Profile" } } },
     byPage = {}, top = {}, cur = nil, lastMain = "Main", lastSettings = "Settings",
@@ -3595,6 +3633,289 @@ do
     end)
     renderHistory()
 
+    do
+        local wh = {}
+        ui.webhook = wh
+        local req = (syn and syn.request) or (http and http.request) or http_request or request
+            or (fluxus and fluxus.request)
+        local HOSTS = { ["discord.com"] = true, ["discordapp.com"] = true, ["ptb.discord.com"] = true, ["canary.discord.com"] = true }
+        function wh.validUrl(url)
+            if type(url) ~= "string" then return false end
+            local host = url:match("^https://([^/]+)/api/webhooks/%d+/[%w_%-]+$")
+            return host ~= nil and HOSTS[host] == true
+        end
+        function wh.available() return req ~= nil end
+
+        local COLORS = { win = 5763719, lose = 15548997, alert = 16766720, test = 5793266 }
+        local queue, working = {}, false
+        local function worker()
+            if working then return end
+            working = true
+            task.spawn(function()
+                while #queue > 0 do
+                    local item = table.remove(queue, 1)
+                    local ok, res = pcall(req, {
+                        Url = item.url,
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode(item.payload),
+                    })
+                    local code = ok and type(res) == "table" and (res.StatusCode or res.status_code) or nil
+                    if code == 429 and (item.tries or 0) < 3 then
+                        item.tries = (item.tries or 0) + 1
+                        local wait = 2
+                        pcall(function()
+                            local body = HttpService:JSONDecode(res.Body or "{}")
+                            wait = math.clamp(tonumber(body.retry_after) or 2, 1, 15)
+                        end)
+                        table.insert(queue, 1, item)
+                        task.wait(wait)
+                    else
+                        local good = code ~= nil and code >= 200 and code < 300
+                        if item.cb then item.cb(good, code) end
+                        task.wait(1)
+                    end
+                end
+                working = false
+            end)
+        end
+
+        local function fmt(n)
+            local str = tostring(math.floor(tonumber(n) or 0))
+            local rev = string.reverse(str)
+            rev = string.gsub(rev, "(%d%d%d)", "%1,")
+            rev = string.gsub(string.reverse(rev), "^,", "")
+            return rev
+        end
+
+        local function push(kind, desc, force, cb)
+            if not req then
+                if cb then cb(false, nil) end
+                return
+            end
+            if not force then
+                if not flags.webhook then return end
+                if kind ~= "alert" and flags.webhookMode == "alerts" then return end
+            end
+            if not wh.validUrl(flags.webhookUrl) then
+                if cb then cb(false, nil) end
+                return
+            end
+            if #queue >= 20 then return end
+            queue[#queue + 1] = {
+                url = flags.webhookUrl,
+                cb = cb,
+                payload = {
+                    username = "Lightn Hub",
+                    allowed_mentions = { parse = {} },
+                    embeds = { {
+                        title = "Lightn Hub Webhook",
+                        description = desc,
+                        color = COLORS[kind] or COLORS.test,
+                        footer = { text = "Lightn Hub" },
+                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+                    } },
+                },
+            }
+            worker()
+        end
+
+        function wh.send(kind, title, fields, force, cb)
+            local lines = { "**Username:** " .. LocalPlayer.Name, "**" .. title .. "**" }
+            for _, f in ipairs(fields or {}) do
+                lines[#lines + 1] = "**" .. f[1] .. ":** " .. tostring(f[2])
+            end
+            push(kind, table.concat(lines, "\n"), force, cb)
+        end
+
+        local KINDS = { "Coin", "Pumpkins", "Ticket", "XP" }
+        local TOTAL_FILE = FS.data("WebhookTotals_" .. tostring(LocalPlayer.UserId))
+        local totals = { matches = 0, wins = 0, Coin = 0, Pumpkins = 0, Ticket = 0, XP = 0, since = os.time() }
+        pcall(function()
+            if canFile and isfile(TOTAL_FILE) then
+                local d = HttpService:JSONDecode(readfile(TOTAL_FILE))
+                if type(d) == "table" then
+                    for k in pairs(totals) do
+                        if type(d[k]) == "number" then totals[k] = d[k] end
+                    end
+                end
+            end
+        end)
+        local function saveTotals()
+            if canFile then pcall(function() writefile(TOTAL_FILE, HttpService:JSONEncode(totals)) end) end
+        end
+
+        local function readRewards()
+            local got = {}
+            local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+            local root = pg and pg:FindFirstChild("GameEndUI")
+            if not root then return got end
+            local entries = {}
+            for _, d in ipairs(root:GetDescendants()) do
+                if d:IsA("TextLabel") and d.Name == "Amount" and string.sub(d.Text, 1, 1) == "+" and isShown(d) then
+                    local n = tonumber((string.gsub(d.Text, "[^%d]", "")))
+                    if n and n > 0 then
+                        local ctx, p = "", d
+                        for _ = 1, 4 do
+                            p = p and p.Parent
+                            if p and p ~= root then ctx = ctx .. " " .. string.lower(p.Name) end
+                        end
+                        if d.Parent then
+                            for _, sib in ipairs(d.Parent:GetChildren()) do
+                                ctx = ctx .. " " .. string.lower(sib.Name)
+                                if sib:IsA("ImageLabel") then ctx = ctx .. " " .. string.lower(sib.Image) end
+                            end
+                        end
+                        local kind
+                        if string.find(ctx, "coin", 1, true) or string.find(ctx, "cash", 1, true) or string.find(ctx, "money", 1, true) then
+                            kind = "Coin"
+                        elseif string.find(ctx, "pump", 1, true) then
+                            kind = "Pumpkins"
+                        elseif string.find(ctx, "ticket", 1, true) then
+                            kind = "Ticket"
+                        elseif string.find(ctx, "xp", 1, true) or string.find(ctx, "experience", 1, true) then
+                            kind = "XP"
+                        end
+                        entries[#entries + 1] = { n = n, kind = kind }
+                    end
+                end
+            end
+            local left = { "Coin", "Pumpkins", "Ticket" }
+            for _, e in ipairs(entries) do
+                if e.kind then
+                    got[e.kind] = (got[e.kind] or 0) + e.n
+                    for i, k in ipairs(left) do
+                        if k == e.kind then table.remove(left, i) break end
+                    end
+                end
+            end
+            local unknown = {}
+            for _, e in ipairs(entries) do
+                if not e.kind then unknown[#unknown + 1] = e end
+            end
+            while #left > #unknown do
+                local idx = table.find(left, "Pumpkins") or #left
+                table.remove(left, idx)
+            end
+            for i, e in ipairs(unknown) do
+                if left[i] then got[left[i]] = (got[left[i]] or 0) + e.n end
+            end
+            return got
+        end
+
+        local function mapText()
+            local name = workspace:GetAttribute("MapDisplayName") or workspace:GetAttribute("MapId")
+            if not name then return "Unknown" end
+            local mode = workspace:GetAttribute("MapMode")
+            return mode and (tostring(name) .. " (" .. tostring(mode) .. ")") or tostring(name)
+        end
+
+        function wh.onMatch(win, streak, timeText)
+            if not flags.webhook then return end
+            task.delay(1.2, function()
+                local got = readRewards()
+                totals.matches = totals.matches + 1
+                if win then totals.wins = totals.wins + 1 end
+                for _, k in ipairs(KINDS) do
+                    if got[k] then totals[k] = totals[k] + got[k] end
+                end
+                saveTotals()
+                local lines = {
+                    "**Username:** " .. LocalPlayer.Name,
+                    "**Result:** " .. (win and "Victory" or "Defeat"),
+                    "**Map select:** " .. mapText(),
+                    "**Win streak:** " .. tostring(streak),
+                    "**Time match:** " .. tostring(timeText),
+                }
+                local rewardLines = {}
+                for _, k in ipairs(KINDS) do
+                    if got[k] then rewardLines[#rewardLines + 1] = k .. ": +" .. fmt(got[k]) end
+                end
+                if #rewardLines > 0 then
+                    lines[#lines + 1] = ""
+                    lines[#lines + 1] = "**— Reward earned —**"
+                    for _, l in ipairs(rewardLines) do lines[#lines + 1] = l end
+                end
+                push(win and "win" or "lose", table.concat(lines, "\n"))
+            end)
+        end
+
+        local function sendTotals(resetNote)
+            local lines = {
+                "**Username:** " .. LocalPlayer.Name,
+                "**Matches:** " .. totals.matches .. " (" .. totals.wins .. " wins)",
+                "**Since:** <t:" .. math.floor(totals.since) .. ":R>",
+            }
+            if resetNote then lines[#lines + 1] = "**" .. resetNote .. "**" end
+            local any = false
+            for _, k in ipairs(KINDS) do
+                if totals[k] > 0 then
+                    if not any then
+                        lines[#lines + 1] = ""
+                        lines[#lines + 1] = "**— Total —**"
+                        any = true
+                    end
+                    lines[#lines + 1] = k .. ": " .. fmt(totals[k])
+                end
+            end
+            if not any then lines[#lines + 1] = "No rewards recorded yet" end
+            push("test", table.concat(lines, "\n"), true, function(ok)
+                notify("Webhook", ok and "Total sent" or "Couldn't send total", 3)
+            end)
+        end
+
+        local lastCmd = 0
+        local function onChat(text)
+            if type(text) ~= "string" then return end
+            local t = string.lower(text):gsub("^%s+", ""):gsub("%s+$", "")
+            if t ~= "/total" and t ~= "/total reset" then return end
+            if os.clock() - lastCmd < 1.5 then return end
+            lastCmd = os.clock()
+            if not flags.webhook then
+                notify("Webhook", "Turn on Send notifications first", 4)
+                return
+            end
+            if not wh.validUrl(flags.webhookUrl) then
+                notify("Webhook", "Save a webhook URL first", 4)
+                return
+            end
+            if t == "/total reset" then
+                local since = os.time()
+                totals = { matches = 0, wins = 0, Coin = 0, Pumpkins = 0, Ticket = 0, XP = 0, since = since }
+                saveTotals()
+                sendTotals("Totals reset")
+            else
+                sendTotals()
+            end
+        end
+        table.insert(conns, LocalPlayer.Chatted:Connect(onChat))
+        pcall(function()
+            local TextChatService = game:GetService("TextChatService")
+            table.insert(conns, TextChatService.SendingMessage:Connect(function(m) onChat(m.Text) end))
+        end)
+
+        task.spawn(function()
+            local hooked = {}
+            for _ = 1, 40 do
+                pcall(function()
+                    local cg = game:GetService("CoreGui")
+                    local chat = cg:FindFirstChild("ExperienceChat")
+                    if chat then
+                        for _, d in ipairs(chat:GetDescendants()) do
+                            if d:IsA("TextBox") and not hooked[d] then
+                                hooked[d] = true
+                                table.insert(conns, d.FocusLost:Connect(function(enter)
+                                    if enter then onChat(d.Text) end
+                                end))
+                            end
+                        end
+                    end
+                end)
+                task.wait(3)
+            end
+        end)
+    end
+
     local function streakNow() return tonumber(LocalPlayer:GetAttribute("WinStreak")) or 0 end
     local lastWave = { cur = nil, max = nil }
     local streakStart, armed, ended, keyVerdict, lastRecord = streakNow(), false, false, nil, 0
@@ -3655,6 +3976,7 @@ do
             time = TimerLabel.Text,
         })
         lastWave.last, lastWave.seq = win, (lastWave.seq or 0) + 1
+        ui.webhook.onMatch(win, s, TimerLabel.Text)
         while #history > HISTORY_MAX do table.remove(history) end
         if canFile then
             pcall(function() writefile(HISTORY_FILE, HttpService:JSONEncode(history)) end)
@@ -3831,9 +4153,9 @@ do
         return pcall(function() ev:FireServer(flags.speedValue) end)
     end
 
-    fSpeed = visualFeature(page, "Auto Set Speed", "autoSpeed", 28, function(body)
+    fSpeed = visualFeature(page, "Auto Set Speed", "autoSpeed", 30, function(body)
         createSlider(body, {
-            Size = UDim2.new(0, 240, 1, 0),
+            Size = UDim2.new(1, 0, 1, 0),
         }, { min = SPEED_MIN, max = SPEED_MAX, step = SPEED_STEP, initial = flags.speedValue }, function(v)
             setFlag("speedValue", v)
             if flags.autoSpeed then sendSpeed() end
@@ -4110,10 +4432,9 @@ do
     })
 
     local fLoss = { setNote = function() end }
-    local fForce = { setNote = function() end }
     do
         local TextService = game:GetService("TextService")
-        local panel = createCard(page, 76)
+        local panel = createCard(page, 40)
         panel.Visible = false
 
         local function miniToggle(pos, initial, onChange)
@@ -4216,9 +4537,6 @@ do
             setFlag("lossStreak", 0)
             fLoss.setNote("")
         end, "Back to lobby after", "lossLimit", 1, 20, "losses in a row")
-        fForce = addRow(40, "forceLobby", function(v)
-            setFlag("forceLobby", v)
-        end, "Back to lobby after", "forceMinutes", 1, 240, "min in a match")
 
         if flags.lossReturn and (flags.lossStreak or 0) > 0 then
             fLoss.setNote("Losses " .. flags.lossStreak .. "/" .. (flags.lossLimit or 4))
@@ -4263,6 +4581,7 @@ do
     end
 
     local acted, counted, lossTries, seqBase = false, false, 0, (lastWave.seq or 0)
+    local actedAt = 0
     runLoop(function()
         local wantLobby = flags.autoLobby
         local wantReplay = flags.autoReplay and not wantLobby
@@ -4306,6 +4625,8 @@ do
                     fReplay.set(false)
                     fLoss.setNote("")
                     notify("Lost " .. limitN .. " in a row", "Returning to lobby", 6)
+                    ui.webhook.send("alert", "Back to lobby", { { "Reason", "Lost " .. limitN .. " in a row" } })
+                    if flags.webhook then task.wait(1.5) end
                     wantLobby, f = true, fLobby
                 else
                     fLoss.setNote("Losses " .. n .. "/" .. limitN)
@@ -4314,6 +4635,9 @@ do
                 setFlag("lossStreak", 0)
                 fLoss.setNote("")
             end
+        end
+        if acted and os.clock() - actedAt >= 10 then
+            acted = false
         end
         if acted then
             f.setNote(wantLobby and "Back to lobby" or "Voted replay", C.text)
@@ -4328,6 +4652,7 @@ do
         end
         local ok = pcall(function() ev:FireServer() end)
         acted = ok
+        actedAt = os.clock()
         if ok then
             f.setNote(wantLobby and "Back to lobby" or "Voted replay", C.text)
         else
@@ -4336,36 +4661,6 @@ do
         return 1.5
     end)
 
-    local TeleportService = game:GetService("TeleportService")
-    local startAt, lastTry, wasForce = os.clock(), -100, false
-    runLoop(function()
-        if not inMatch then
-            fForce.setNote(flags.forceLobby and "Match only" or "")
-            return 3
-        end
-        if not flags.forceLobby then
-            wasForce = false
-            fForce.setNote("")
-            return 1
-        end
-        if not wasForce then
-            wasForce = true
-            startAt = os.clock()
-        end
-        local limit = (tonumber(flags.forceMinutes) or 20) * 60
-        local left = limit - (os.clock() - startAt)
-        if left > 0 then
-            fForce.setNote(string.format("Lobby in %d:%02d", math.floor(left / 60), math.floor(left % 60)))
-            return 1
-        end
-        fForce.setNote("Teleporting...", C.warn)
-        if os.clock() - lastTry > 25 then
-            lastTry = os.clock()
-            notify("Time limit reached", "Teleporting to lobby", 5)
-            pcall(function() TeleportService:Teleport(LOBBY_PLACE, LocalPlayer) end)
-        end
-        return 1
-    end)
 end
 
 local counts, summonPrices, tickets = nil, nil, nil
@@ -5121,34 +5416,169 @@ end
 
 do
     local page = tabs["Endless"].page
+    local TextService = game:GetService("TextService")
     local upg
-    upg = createFeature(page, "Auto Upgrade", {
-        bodyHeight = 28,
+    upg = createFeature(page, "Auto Upgrade Unit", {
         onToggle = function(v)
             run.upgrade = v
             if not v then upg.setNote("") end
         end,
     })
 
-    createSelect(upg.body, {
-        Size = UDim2.new(0, 120, 1, 0),
+    local panel = createCard(page, 132)
+    panel.Visible = false
+
+    local function gearIcon(par, size, color, holeColor)
+        local holder = make("Frame", {
+            Size = UDim2.new(0, size, 0, size),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundTransparency = 1,
+        }, par)
+        local parts = {}
+        local barH = math.max(2, math.floor(size * 0.2 + 0.5))
+        for _, rot in ipairs({ 0, 45, 90, 135 }) do
+            parts[#parts + 1] = make("Frame", {
+                Size = UDim2.new(0, size, 0, barH), AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0), Rotation = rot,
+                BackgroundColor3 = color, BorderSizePixel = 0,
+            }, holder)
+        end
+        local ring = make("Frame", {
+            Size = UDim2.new(0, math.floor(size * 0.6 + 0.5), 0, math.floor(size * 0.6 + 0.5)),
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundColor3 = color, BorderSizePixel = 0,
+        }, holder)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
+        parts[#parts + 1] = ring
+        local hole = make("Frame", {
+            Size = UDim2.new(0, math.max(2, math.floor(size * 0.27 + 0.5)), 0, math.max(2, math.floor(size * 0.27 + 0.5))),
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundColor3 = holeColor, BorderSizePixel = 0,
+        }, holder)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, hole)
+        return holder, parts
+    end
+
+    local gearHolder, gearParts
+    do
+        local tw = TextService:GetTextSize("Auto Upgrade Unit", 12, Enum.Font.GothamMedium, Vector2.new(300, 30)).X
+        local slot = make("Frame", {
+            Size = UDim2.new(0, 16, 0, 16),
+            Position = UDim2.new(0, 12 + tw + 8, 0.5, -8),
+            BackgroundTransparency = 1,
+        }, upg.card)
+        gearHolder, gearParts = gearIcon(slot, 12, C.muted, T(Color3.fromRGB(22, 22, 25), "bg"))
+        local hit = make("TextButton", {
+            Size = UDim2.new(0, 28, 0, 30),
+            Position = UDim2.new(0, 12 + tw + 2, 0, 2),
+            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 3,
+        }, upg.card)
+        local function tint(c) for _, f in ipairs(gearParts) do tween(f, 0.12, { BackgroundColor3 = c }) end end
+        hit.MouseEnter:Connect(function() tint(C.text) end)
+        hit.MouseLeave:Connect(function() if not panel.Visible then tint(C.muted) end end)
+        hit.MouseButton1Click:Connect(function()
+            panel.Visible = not panel.Visible
+            tween(gearHolder, 0.2, { Rotation = panel.Visible and 45 or 0 })
+            tint(panel.Visible and C.text or C.muted)
+        end)
+    end
+
+    local function miniToggle(pos, initial, onChange)
+        local state = initial and true or false
+        local dim = false
+        local track = make("Frame", {
+            Size = UDim2.new(0, 26, 0, 14), Position = pos,
+            BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"), BorderSizePixel = 0,
+        }, panel)
+        local stroke = make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, track)
+        local knob = make("Frame", {
+            Size = UDim2.new(0, 8, 0, 8), Position = UDim2.new(0, 3, 0.5, -4),
+            BackgroundColor3 = C.muted, BorderSizePixel = 0,
+        }, track)
+        local hit = make("TextButton", {
+            Size = UDim2.new(1, 8, 1, 8), Position = UDim2.new(0, -4, 0, -4),
+            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2,
+        }, track)
+        local api = {}
+        local function render(animate)
+            local on = state and not dim
+            local tc = on and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+            local kc = on and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
+            local kp = on and UDim2.new(1, -11, 0.5, -4) or UDim2.new(0, 3, 0.5, -4)
+            local sc = on and tc or C.controlLine
+            local tr = dim and 0.55 or 0
+            if animate then
+                tween(track, 0.12, { BackgroundColor3 = tc, BackgroundTransparency = tr })
+                tween(stroke, 0.12, { Color = sc })
+                tween(knob, 0.12, { BackgroundColor3 = kc, Position = kp, BackgroundTransparency = tr })
+            else
+                track.BackgroundColor3, track.BackgroundTransparency = tc, tr
+                stroke.Color = sc
+                knob.BackgroundColor3, knob.Position, knob.BackgroundTransparency = kc, kp, tr
+            end
+        end
+        hit.MouseButton1Click:Connect(function()
+            if dim then return end
+            state = not state
+            render(true)
+            onChange(state)
+        end)
+        function api.setDim(d)
+            dim = d and true or false
+            render(true)
+        end
+        render(false)
+        return api
+    end
+
+    local function rowLabel(text, x, y)
+        local lbl = make("TextLabel", {
+            Size = UDim2.new(0, 220, 0, 26), Position = UDim2.new(0, x, 0, y),
+            BackgroundTransparency = 1, Text = text, TextColor3 = C.muted, TextSize = 10,
+            Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
+        }, panel)
+        return lbl
+    end
+
+    rowLabel("Upgrade delay", 12, 8)
+    createSelect(panel, {
+        Size = UDim2.new(0, 110, 0, 26),
+        Position = UDim2.new(1, -122, 0, 8),
     }, {
         options = DELAY_OPTIONS,
         initial = settings.upgradeDelay,
-        prefix = "Delay ",
         onChange = function(v)
             settings.upgradeDelay = v
             saveSettings()
         end,
     })
 
-    createPill(upg.body, {
-        Size = UDim2.new(1, -128, 1, 0),
-        Position = UDim2.new(0, 128, 0, 0),
-    }, "Cheapest first", settings.cheapestFirst, function(v)
+    local tOne, tAll, tCheap
+    local lOne = rowLabel("Upgrade units one by one", 46, 42)
+    local lCheap = rowLabel("Cheapest first", 46, 70)
+    local lAll = rowLabel("Upgrade all unit", 46, 98)
+    local function applyDim()
+        local d = settings.upgradeAll
+        tOne.setDim(d)
+        tCheap.setDim(d)
+        lOne.TextColor3 = d and C.dim or C.muted
+        lCheap.TextColor3 = d and C.dim or C.muted
+    end
+    tOne = miniToggle(UDim2.new(0, 12, 0, 48), settings.upgradeOne, function(v)
+        settings.upgradeOne = v
+        saveSettings()
+    end)
+    tCheap = miniToggle(UDim2.new(0, 12, 0, 76), settings.cheapestFirst, function(v)
         settings.cheapestFirst = v
         saveSettings()
     end)
+    tAll = miniToggle(UDim2.new(0, 12, 0, 104), settings.upgradeAll, function(v)
+        settings.upgradeAll = v
+        saveSettings()
+        applyDim()
+    end)
+    applyDim()
 
     local failures, blocked = {}, {}
 
@@ -5169,27 +5599,67 @@ do
         return tostring(t:GetAttribute("Level")) .. ":" .. tostring(t:GetAttribute("UpgradePrice"))
     end
 
-    local function pickTarget(towers, cash)
-        local candidates = {}
+    local lastUp = {}
+
+    local function gather(towers)
+        local list = {}
         for _, t in ipairs(towers) do
             local price = t:GetAttribute("UpgradePrice")
             if type(price) == "number" and price > 0 then
                 local b = blocked[t]
                 local isBlocked = b and b.sig == signature(t) and (tick() - b.time) < 30
                 if not isBlocked then
-                    table.insert(candidates, { tower = t, price = price })
+                    table.insert(list, { tower = t, price = price })
                 end
             end
         end
+        return list
+    end
 
-        if #candidates == 0 then return nil, "MAX" end
-        if settings.cheapestFirst then
-            table.sort(candidates, function(a, b) return a.price < b.price end)
+    local function pickTarget(list, cash)
+        if #list == 0 then return nil, "MAX" end
+        local byPrice, rotate = settings.cheapestFirst, settings.upgradeOne
+        if byPrice or rotate then
+            table.sort(list, function(a, b)
+                if rotate then
+                    local la, lb = lastUp[a.tower] or 0, lastUp[b.tower] or 0
+                    if la ~= lb then return la < lb end
+                end
+                if byPrice and a.price ~= b.price then return a.price < b.price end
+                return false
+            end)
         end
-
-        local first = candidates[1]
+        local first = list[1]
         if cash >= first.price then return first.tower end
         return nil, "WAIT"
+    end
+
+    local function attempt(remote, target)
+        local sig = signature(target)
+        local ok, res = pcall(function() return remote:InvokeServer(target) end)
+        if ok and res == true then
+            failures[target] = nil
+            lastUp[target] = tick()
+            return true
+        end
+        local f = failures[target]
+        if not f or f.sig ~= sig then f = { sig = sig, count = 0 } end
+        f.count = f.count + 1
+        failures[target] = f
+        if f.count >= 3 then
+            blocked[target] = { sig = sig, time = tick() }
+            failures[target] = nil
+        end
+        return false
+    end
+
+    local function showMaxed()
+        if not upg.maxed then
+            upg.maxed = true
+            notify("Auto Upgrade", "All towers maxed", 3)
+        end
+        upg.setNote("All towers maxed", C.muted)
+        return 1
     end
 
     runLoop(function()
@@ -5207,33 +5677,37 @@ do
             return 1
         end
 
-        local target, reason = pickTarget(towers, getStat("Cash"))
+        local list = gather(towers)
+        local cash = getStat("Cash")
+
+        if settings.upgradeAll then
+            if #list == 0 then return showMaxed() end
+            table.sort(list, function(a, b) return a.price < b.price end)
+            local did = 0
+            for _, c in ipairs(list) do
+                if not run.upgrade or cash < c.price then break end
+                attempt(remote, c.tower)
+                cash = cash - c.price
+                did = did + 1
+                task.wait(0.05)
+            end
+            if did > 0 then
+                upg.maxed = false
+                upg.setNote("")
+                return settings.upgradeDelay
+            end
+            upg.setNote("Not enough cash", C.warn)
+            return math.max(0.1, math.min(settings.upgradeDelay, 0.5))
+        end
+
+        local target, reason = pickTarget(list, cash)
         if target then
             upg.maxed = false
             upg.setNote("")
-            local sig = signature(target)
-            local ok, res = pcall(function() return remote:InvokeServer(target) end)
-
-            if ok and res == true then
-                failures[target] = nil
-            else
-                local f = failures[target]
-                if not f or f.sig ~= sig then f = { sig = sig, count = 0 } end
-                f.count = f.count + 1
-                failures[target] = f
-                if f.count >= 3 then
-                    blocked[target] = { sig = sig, time = tick() }
-                    failures[target] = nil
-                end
-            end
+            attempt(remote, target)
             return settings.upgradeDelay
         elseif reason == "MAX" then
-            if not upg.maxed then
-                upg.maxed = true
-                notify("Auto Upgrade", "All towers maxed", 3)
-            end
-            upg.setNote("All towers maxed", C.muted)
-            return 1
+            return showMaxed()
         end
         upg.setNote("Not enough cash", C.warn)
         return math.max(0.1, math.min(settings.upgradeDelay, 0.5))
@@ -7861,6 +8335,99 @@ runLoop(function()
 end)
 
 do
+    local page = tabs["Webhook"].page
+    local MASK = "Webhook saved"
+
+    make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
+        Text = "Webhook", TextColor3 = C.text, TextSize = 20, Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder(page),
+    }, page)
+
+    local fOn = createFeature(page, "Send notifications", {
+        initial = flags.webhook,
+        onToggle = function(v) setFlag("webhook", v) end,
+    })
+
+    local urlCard = createCard(page, 46)
+    local urlBox = createInput(urlCard, {
+        Size = UDim2.new(1, -92, 0, 28),
+        Position = UDim2.new(0, 12, 0, 9),
+    }, "Paste webhook URL")
+    local saveBtn
+    local function flash(btn, text, color, base)
+        btn.Text = text
+        btn.TextColor3 = color or C.text
+        task.delay(1.6, function()
+            if btn.Parent then
+                btn.Text = base
+                btn.TextColor3 = C.text
+            end
+        end)
+    end
+    local function showSaved()
+        if flags.webhookUrl ~= "" and ui.webhook.validUrl(flags.webhookUrl) then urlBox.Text = MASK end
+    end
+    local function commit()
+        local t = (urlBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if t == "" or t == MASK then
+            flash(saveBtn, flags.webhookUrl ~= "" and "Saved" or "Paste URL", flags.webhookUrl ~= "" and C.text or C.warn, "Save")
+            return
+        end
+        if ui.webhook.validUrl(t) then
+            setFlag("webhookUrl", t)
+            urlBox:ReleaseFocus()
+            urlBox.Text = MASK
+            flash(saveBtn, "Saved", C.text, "Save")
+        else
+            flash(saveBtn, "Invalid", C.warn, "Save")
+        end
+    end
+    showSaved()
+    urlBox.Focused:Connect(function()
+        if urlBox.Text == MASK then urlBox.Text = "" end
+    end)
+    urlBox.FocusLost:Connect(function(enter)
+        if enter then commit() end
+    end)
+    saveBtn = createButton(urlCard, {
+        Size = UDim2.new(0, 60, 0, 28),
+        Position = UDim2.new(1, -72, 0, 9),
+    }, "Save", commit)
+
+    local testCard = createCard(page, 46)
+    local testBtn
+    testBtn = createButton(testCard, {
+        Size = UDim2.new(1, -24, 0, 28),
+        Position = UDim2.new(0, 12, 0, 9),
+    }, "Send test", function()
+        if not ui.webhook.available() then
+            flash(testBtn, "Not supported", C.warn, "Send test")
+            return
+        end
+        if not ui.webhook.validUrl(flags.webhookUrl) then
+            flash(testBtn, "Save a URL first", C.warn, "Send test")
+            return
+        end
+        testBtn.Text = "Sending..."
+        ui.webhook.send("test", "Test message", { { "Status", "Webhook works" } }, true, function(ok, code)
+            flash(testBtn, ok and "Sent" or ("Failed" .. (code and (" " .. code) or "")), ok and C.text or C.warn, "Send test")
+        end)
+    end)
+
+    local modeCard = createCard(page, 46)
+    createSegmented(modeCard, {
+        Size = UDim2.new(1, -24, 0, 28),
+        Position = UDim2.new(0, 12, 0, 9),
+    }, {
+        { label = "All results", value = "all" },
+        { label = "Alerts only", value = "alerts" },
+    }, flags.webhookMode == "alerts" and "alerts" or "all", function(v)
+        setFlag("webhookMode", v)
+    end)
+end
+
+do
     local page = tabs["Settings"].page
 
     local themeCard = createFeature(page, "Theme", { noToggle = true, bodyHeight = 28 })
@@ -8743,57 +9310,6 @@ do
 end
 
 if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
-
-if game.PlaceId == LOBBY_PLACE and flags.lossNotice then
-    setFlag("lossNotice", false)
-    local nGui = make("ScreenGui", {
-        Name = GUI_NAME .. "Notice",
-        ResetOnSpawn = false,
-        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        DisplayOrder = 80,
-    }, parent)
-    local nLabel = make("TextButton", {
-        Size = UDim2.new(1, -40, 0, 90),
-        Position = UDim2.new(0.5, 0, 0.5, -24),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1,
-        AutoButtonColor = false,
-        Active = false,
-        Text = "Back to lobby cuz u lost " .. (flags.lossNoticeN or 4) .. "x in a row",
-        TextColor3 = C.text,
-        TextSize = 30,
-        TextWrapped = true,
-        Font = Enum.Font.GothamBold,
-        TextTransparency = 1,
-        TextStrokeColor3 = Color3.new(0, 0, 0),
-        TextStrokeTransparency = 1,
-    }, nGui)
-    local nOk = make("TextButton", {
-        Size = UDim2.new(0, 110, 0, 30),
-        Position = UDim2.new(0.5, 0, 0.5, 40),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = C.text,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        AutoButtonColor = false,
-        Text = "Okay",
-        TextColor3 = C.ink,
-        TextSize = 14,
-        Font = Enum.Font.GothamBold,
-        TextTransparency = 1,
-    }, nGui)
-    tween(nLabel, 0.5, { TextTransparency = 0, TextStrokeTransparency = 0.5 })
-    tween(nOk, 0.5, { BackgroundTransparency = 0, TextTransparency = 0 })
-    local gone = false
-    local function dismiss()
-        if gone then return end
-        gone = true
-        tween(nLabel, 0.4, { TextTransparency = 1, TextStrokeTransparency = 1 })
-        tween(nOk, 0.4, { BackgroundTransparency = 1, TextTransparency = 1 })
-        task.delay(0.5, function() nGui:Destroy() end)
-    end
-    nOk.MouseButton1Click:Connect(dismiss)
-end
 
 selectTab("Main")
 EVENT.parts.nav = nav

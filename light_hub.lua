@@ -3713,7 +3713,35 @@ do
             return rev
         end
 
-        local function push(kind, desc, force, cb)
+        local function cut(v, n)
+            v = tostring(v)
+            local len = utf8.len(v)
+            if len and len > n then
+                return string.sub(v, 1, utf8.offset(v, n - 2) - 1) .. "..."
+            end
+            return v
+        end
+
+        local function dress(kind, e)
+            if e.title then e.title = cut(e.title, 250) end
+            if e.description then e.description = cut(e.description, 4000) end
+            if e.fields then
+                for _, f in ipairs(e.fields) do
+                    f.name = cut(f.name, 250)
+                    f.value = cut(f.value ~= "" and f.value or "-", 1000)
+                end
+            end
+            local shown = LocalPlayer.DisplayName ~= LocalPlayer.Name
+                and (LocalPlayer.DisplayName .. " (@" .. LocalPlayer.Name .. ")") or LocalPlayer.Name
+            e.color = e.color or COLORS[kind] or COLORS.test
+            e.author = { name = cut(shown, 250) }
+            e.thumbnail = { url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png" }
+            e.footer = e.footer or { text = "Lightn Hub" }
+            e.timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            return e
+        end
+
+        local function push(kind, e, force, cb)
             if not req then
                 if cb then cb(false, nil) end
                 return
@@ -3733,27 +3761,47 @@ do
                 payload = {
                     username = "Lightn Hub",
                     allowed_mentions = { parse = {} },
-                    embeds = { {
-                        title = "Lightn Hub Webhook",
-                        description = desc,
-                        color = COLORS[kind] or COLORS.test,
-                        footer = { text = "Lightn Hub" },
-                        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-                    } },
+                    embeds = { dress(kind, e) },
                 },
             }
             worker()
         end
 
         function wh.send(kind, title, fields, force, cb)
-            local lines = { "**Username:** " .. LocalPlayer.Name, "**" .. title .. "**" }
+            local e = { title = title, fields = {} }
             for _, f in ipairs(fields or {}) do
-                lines[#lines + 1] = "**" .. f[1] .. ":** " .. tostring(f[2])
+                e.fields[#e.fields + 1] = { name = tostring(f[1]), value = "`" .. tostring(f[2]) .. "`", inline = true }
             end
-            push(kind, table.concat(lines, "\n"), force, cb)
+            push(kind, e, force, cb)
         end
 
         local KINDS = { "Coin", "Pumpkins", "Ticket", "XP" }
+        local SHOW = {
+            Coin = { "Coin", "🪙" },
+            Pumpkins = { "Pumpkin", "🎃" },
+            Ticket = { "Ticket", "🎟️" },
+            XP = { "XP", "✨" },
+        }
+        local function rewardBlock(src, plus)
+            local rows, wName, wNum = {}, 0, 0
+            for _, k in ipairs(KINDS) do
+                local n = src[k]
+                if n and n > 0 then
+                    local info = SHOW[k] or { k, "" }
+                    local num = (plus and "+" or "") .. fmt(n)
+                    rows[#rows + 1] = { info[1], num, info[2] }
+                    wName = math.max(wName, #info[1])
+                    wNum = math.max(wNum, #num)
+                end
+            end
+            if #rows == 0 then return nil end
+            local lines = {}
+            for _, r in ipairs(rows) do
+                lines[#lines + 1] = r[1] .. string.rep(" ", wName - #r[1]) .. "  "
+                    .. string.rep(" ", wNum - #r[2]) .. r[2] .. "  " .. r[3]
+            end
+            return "```\n" .. table.concat(lines, "\n") .. "\n```"
+        end
         local TOTAL_FILE = FS.data("WebhookTotals_" .. tostring(LocalPlayer.UserId))
         local totals = { matches = 0, wins = 0, Coin = 0, Pumpkins = 0, Ticket = 0, XP = 0, since = os.time() }
         pcall(function()
@@ -3833,23 +3881,21 @@ do
                     if got[k] then totals[k] = totals[k] + got[k] end
                 end
                 saveTotals()
-                local lines = {
-                    "**Username:** " .. LocalPlayer.Name,
-                    "**Result:** " .. (win and "Victory" or "Defeat"),
-                    "**Map select:** " .. mapText(),
-                    "**Win streak:** " .. tostring(streak),
-                    "**Time match:** " .. tostring(timeText),
+                local rewardText = rewardBlock(got, true)
+                local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
+                local e = {
+                    title = win and "Victory" or "Defeat",
+                    fields = {
+                        { name = "Map", value = "`" .. mapText() .. "`", inline = true },
+                        { name = "Win Streak", value = "`" .. tostring(streak) .. "`", inline = true },
+                        { name = "Time", value = "`" .. tostring(timeText) .. "`", inline = true },
+                    },
+                    footer = { text = "Lightn Hub  |  " .. totals.matches .. " matches, " .. totals.wins .. " wins (" .. rate .. "%)" },
                 }
-                local rewardLines = {}
-                for _, k in ipairs(KINDS) do
-                    if got[k] then rewardLines[#rewardLines + 1] = k .. ": +" .. fmt(got[k]) end
+                if rewardText then
+                    e.fields[#e.fields + 1] = { name = "Rewards", value = rewardText, inline = false }
                 end
-                if #rewardLines > 0 then
-                    lines[#lines + 1] = ""
-                    lines[#lines + 1] = "**— Reward earned —**"
-                    for _, l in ipairs(rewardLines) do lines[#lines + 1] = l end
-                end
-                push(win and "win" or "lose", table.concat(lines, "\n"))
+                push(win and "win" or "lose", e)
                 end)
                 pending = pending - 1
                 if not okRun then warn("[Webhook] onMatch error:", err) end
@@ -3857,25 +3903,19 @@ do
         end
 
         local function sendTotals(resetNote)
-            local lines = {
-                "**Username:** " .. LocalPlayer.Name,
-                "**Matches:** " .. totals.matches .. " (" .. totals.wins .. " wins)",
-                "**Since:** <t:" .. math.floor(totals.since) .. ":R>",
+            local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
+            local block = rewardBlock(totals, false)
+            local e = {
+                title = resetNote and "Totals Reset" or "Total Summary",
+                color = 3447003,
+                fields = {
+                    { name = "Matches", value = "`" .. tostring(totals.matches) .. "`", inline = true },
+                    { name = "Wins", value = "`" .. totals.wins .. " (" .. rate .. "%)`", inline = true },
+                    { name = "Since", value = "<t:" .. math.floor(totals.since) .. ":R>", inline = true },
+                    { name = "Total Rewards", value = block or "No rewards recorded yet", inline = false },
+                },
             }
-            if resetNote then lines[#lines + 1] = "**" .. resetNote .. "**" end
-            local any = false
-            for _, k in ipairs(KINDS) do
-                if totals[k] > 0 then
-                    if not any then
-                        lines[#lines + 1] = ""
-                        lines[#lines + 1] = "**— Total —**"
-                        any = true
-                    end
-                    lines[#lines + 1] = k .. ": " .. fmt(totals[k])
-                end
-            end
-            if not any then lines[#lines + 1] = "No rewards recorded yet" end
-            push("test", table.concat(lines, "\n"), true, function(ok)
+            push("test", e, true, function(ok)
                 notify("Webhook", ok and "Total sent" or "Couldn't send total", 3)
             end)
         end

@@ -3648,36 +3648,61 @@ do
 
         local COLORS = { win = 5763719, lose = 15548997, alert = 16766720, test = 5793266 }
         local queue, working = {}, false
+        local pending, holdUntil = 0, 0
         local function worker()
             if working then return end
             working = true
             task.spawn(function()
                 while #queue > 0 do
                     local item = table.remove(queue, 1)
-                    local ok, res = pcall(req, {
-                        Url = item.url,
-                        Method = "POST",
-                        Headers = { ["Content-Type"] = "application/json" },
-                        Body = HttpService:JSONEncode(item.payload),
-                    })
-                    local code = ok and type(res) == "table" and (res.StatusCode or res.status_code) or nil
-                    if code == 429 and (item.tries or 0) < 3 then
-                        item.tries = (item.tries or 0) + 1
-                        local wait = 2
-                        pcall(function()
-                            local body = HttpService:JSONDecode(res.Body or "{}")
-                            wait = math.clamp(tonumber(body.retry_after) or 2, 1, 15)
-                        end)
-                        table.insert(queue, 1, item)
-                        task.wait(wait)
+                    local okBody, body = pcall(HttpService.JSONEncode, HttpService, item.payload)
+                    if not okBody then
+                        if item.cb then pcall(item.cb, false, nil) end
                     else
-                        local good = code ~= nil and code >= 200 and code < 300
-                        if item.cb then item.cb(good, code) end
-                        task.wait(1)
+                        local ok, res = pcall(req, {
+                            Url = item.url,
+                            Method = "POST",
+                            Headers = { ["Content-Type"] = "application/json" },
+                            Body = body,
+                        })
+                        local code = ok and type(res) == "table" and (res.StatusCode or res.status_code) or nil
+                        item.tries = (item.tries or 0) + 1
+                        local retryable = code == nil or code == 429 or code >= 500
+                        if retryable and item.tries <= 3 then
+                            local wait = 2 * item.tries
+                            if code == 429 then
+                                pcall(function()
+                                    local b = HttpService:JSONDecode(res.Body or "{}")
+                                    wait = math.clamp(tonumber(b.retry_after) or 2, 1, 15)
+                                end)
+                            end
+                            table.insert(queue, 1, item)
+                            task.wait(wait)
+                        else
+                            local good = code ~= nil and code >= 200 and code < 300
+                            if not good then warn("[Webhook] failed, code =", code) end
+                            if item.cb then pcall(item.cb, good, code) end
+                            task.wait(0.5)
+                        end
                     end
                 end
                 working = false
             end)
+        end
+
+        function wh.hold(sec)
+            holdUntil = math.max(holdUntil, os.clock() + (tonumber(sec) or 0))
+        end
+
+        function wh.flush(maxWait)
+            local deadline = os.clock() + (tonumber(maxWait) or 8)
+            while os.clock() < deadline do
+                if pending <= 0 and #queue == 0 and not working and os.clock() >= holdUntil then
+                    return true
+                end
+                task.wait(0.1)
+            end
+            return false
         end
 
         local function fmt(n)
@@ -3701,7 +3726,7 @@ do
                 if cb then cb(false, nil) end
                 return
             end
-            if #queue >= 20 then return end
+            if #queue >= 20 then table.remove(queue, 1) end
             queue[#queue + 1] = {
                 url = flags.webhookUrl,
                 cb = cb,
@@ -3767,7 +3792,9 @@ do
                             end
                         end
                         local kind
-                        if string.find(ctx, "coin", 1, true) or string.find(ctx, "cash", 1, true) or string.find(ctx, "money", 1, true) then
+                        if string.find(ctx, "result", 1, true) then
+                            kind = "Result"
+                        elseif string.find(ctx, "coin", 1, true) or string.find(ctx, "cash", 1, true) or string.find(ctx, "money", 1, true) then
                             kind = "Coin"
                         elseif string.find(ctx, "pump", 1, true) then
                             kind = "Pumpkins"
@@ -3776,29 +3803,13 @@ do
                         elseif string.find(ctx, "xp", 1, true) or string.find(ctx, "experience", 1, true) then
                             kind = "XP"
                         end
+                        if not kind then warn("[Webhook] reward tidak dikenal:", ctx, n) end
                         entries[#entries + 1] = { n = n, kind = kind }
                     end
                 end
             end
-            local left = { "Coin", "Pumpkins", "Ticket" }
             for _, e in ipairs(entries) do
-                if e.kind then
-                    got[e.kind] = (got[e.kind] or 0) + e.n
-                    for i, k in ipairs(left) do
-                        if k == e.kind then table.remove(left, i) break end
-                    end
-                end
-            end
-            local unknown = {}
-            for _, e in ipairs(entries) do
-                if not e.kind then unknown[#unknown + 1] = e end
-            end
-            while #left > #unknown do
-                local idx = table.find(left, "Pumpkins") or #left
-                table.remove(left, idx)
-            end
-            for i, e in ipairs(unknown) do
-                if left[i] then got[left[i]] = (got[left[i]] or 0) + e.n end
+                if e.kind then got[e.kind] = (got[e.kind] or 0) + e.n end
             end
             return got
         end
@@ -3812,7 +3823,9 @@ do
 
         function wh.onMatch(win, streak, timeText)
             if not flags.webhook then return end
+            pending = pending + 1
             task.delay(1.2, function()
+                local okRun, err = pcall(function()
                 local got = readRewards()
                 totals.matches = totals.matches + 1
                 if win then totals.wins = totals.wins + 1 end
@@ -3837,6 +3850,9 @@ do
                     for _, l in ipairs(rewardLines) do lines[#lines + 1] = l end
                 end
                 push(win and "win" or "lose", table.concat(lines, "\n"))
+                end)
+                pending = pending - 1
+                if not okRun then warn("[Webhook] onMatch error:", err) end
             end)
         end
 
@@ -3920,7 +3936,7 @@ do
     local lastWave = { cur = nil, max = nil }
     local streakStart, armed, ended, keyVerdict, lastRecord = streakNow(), false, false, nil, 0
 
-    local WIN_WORDS = { "victory", "you win", "mission complete", "stage clear" }
+    local WIN_WORDS = { "triumph", "victory", "you win", "mission complete", "stage clear" }
     local LOSE_WORDS = { "defeat", "you lose", "game over", "mission failed" }
     local function hasAny(txt, list)
         for _, w in ipairs(list) do
@@ -3999,6 +4015,7 @@ do
             if isEnd and not ended then
                 ended = true
                 keyVerdict = v
+                if flags.webhook then ui.webhook.hold(4) end
                 task.delay(1.5, recordMatch)
             elseif isEnd then
                 keyVerdict = keyVerdict or v
@@ -4626,7 +4643,7 @@ do
                     fLoss.setNote("")
                     notify("Lost " .. limitN .. " in a row", "Returning to lobby", 6)
                     ui.webhook.send("alert", "Back to lobby", { { "Reason", "Lost " .. limitN .. " in a row" } })
-                    if flags.webhook then task.wait(1.5) end
+                    if flags.webhook then ui.webhook.flush(8) end
                     wantLobby, f = true, fLobby
                 else
                     fLoss.setNote("Losses " .. n .. "/" .. limitN)
@@ -4650,6 +4667,7 @@ do
             f.setNote("", C.muted)
             return 2
         end
+        if flags.webhook then ui.webhook.flush(8) end
         local ok = pcall(function() ev:FireServer() end)
         acted = ok
         actedAt = os.clock()

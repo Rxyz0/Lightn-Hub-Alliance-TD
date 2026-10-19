@@ -3488,151 +3488,6 @@ do
     local inLobby = (game.PlaceId == LOBBY_PLACE)
     local inMatch = (game.PlaceId == MATCH_PLACE)
 
-    local statCard = createCard(page, 50)
-    local cells = createCells(statCard, {
-        { caption = "WAVE", value = "-", weight = 1.35 },
-        { caption = "UNITS", value = "-", weight = 1 },
-        { caption = "SELL", value = "0", weight = 1 },
-        { caption = "UPGRADE", value = "0", weight = 1.1 },
-    }, 7, 12)
-    statLabels.wave = cells[1].value
-    statLabels.units = cells[2].value
-    statLabels.sells = cells[3].value
-    statLabels.upgrades = cells[4].value
-
-    local HISTORY_FILE = FS.data("History")
-    local HISTORY_MAX = 15
-    local history = {}
-    if canFile then
-        pcall(function()
-            if isfile(HISTORY_FILE) then
-                local d = HttpService:JSONDecode(readfile(HISTORY_FILE))
-                if type(d) == "table" then
-                    for _, e in ipairs(d) do
-                        if #history >= HISTORY_MAX then break end
-                        if type(e) == "table" and type(e.win) == "boolean" then
-                            history[#history + 1] = {
-                                win = e.win,
-                                wave = tostring(e.wave or "?/?"),
-                                time = tostring(e.time or ""),
-                            }
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    local histOpen = false
-    local histCard = createCard(page, 34)
-    histCard.ClipsDescendants = true
-    local histHead = make("TextButton", {
-        Size = UDim2.new(1, 0, 0, 34),
-        BackgroundTransparency = 1,
-        Text = "",
-        AutoButtonColor = false,
-    }, histCard)
-    make("TextLabel", {
-        Size = UDim2.new(0, 110, 0, 34),
-        Position = UDim2.new(0, 12, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "Win / Lose",
-        TextColor3 = C.text,
-        TextSize = 12,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, histHead)
-    local histSummary = make("TextLabel", {
-        Size = UDim2.new(1, -150, 0, 34),
-        Position = UDim2.new(0, 124, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = C.muted,
-        TextSize = 10,
-        Font = Enum.Font.RobotoMono,
-        TextXAlignment = Enum.TextXAlignment.Right,
-    }, histHead)
-    local histArrow = createChevron(histHead, -14)
-    local histRows = make("Frame", {
-        Size = UDim2.new(1, -24, 0, 24),
-        Position = UDim2.new(0, 12, 0, 34),
-        BackgroundTransparency = 1,
-        Visible = false,
-    }, histCard)
-
-    local function renderHistory()
-        local w, l = 0, 0
-        for _, e in ipairs(history) do
-            if e.win then w = w + 1 else l = l + 1 end
-        end
-        histSummary.Text = #history > 0 and (w .. "W  " .. l .. "L") or ""
-
-        for _, c in ipairs(histRows:GetChildren()) do c:Destroy() end
-        if #history == 0 then
-            make("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 22),
-                BackgroundTransparency = 1,
-                Text = "No matches yet",
-                TextColor3 = C.dim,
-                TextSize = 11,
-                Font = Enum.Font.GothamMedium,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, histRows)
-        end
-        for i, e in ipairs(history) do
-            local row = make("Frame", {
-                Size = UDim2.new(1, 0, 0, 22),
-                Position = UDim2.new(0, 0, 0, (i - 1) * 24),
-                BackgroundColor3 = T(Color3.fromRGB(24, 24, 27), "bg"),
-                BorderSizePixel = 0,
-            }, histRows)
-            make("TextLabel", {
-                Size = UDim2.new(0.3, -8, 1, 0),
-                Position = UDim2.new(0, 8, 0, 0),
-                BackgroundTransparency = 1,
-                Text = e.win and "Win" or "Lose",
-                TextColor3 = e.win and C.hi or C.muted,
-                TextSize = 11,
-                Font = Enum.Font.GothamBold,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, row)
-            make("TextLabel", {
-                Size = UDim2.new(0.3, 0, 1, 0),
-                Position = UDim2.new(0.3, 0, 0, 0),
-                BackgroundTransparency = 1,
-                Text = e.wave,
-                TextColor3 = C.text,
-                TextSize = 11,
-                Font = Enum.Font.RobotoMono,
-            }, row)
-            make("TextLabel", {
-                Size = UDim2.new(0.4, -8, 1, 0),
-                Position = UDim2.new(0.6, 0, 0, 0),
-                BackgroundTransparency = 1,
-                Text = e.time,
-                TextColor3 = C.muted,
-                TextSize = 11,
-                Font = Enum.Font.RobotoMono,
-                TextXAlignment = Enum.TextXAlignment.Right,
-            }, row)
-        end
-
-        histArrow.Rotation = histOpen and 180 or 0
-        histRows.Visible = histOpen
-        if histOpen then
-            local h = math.max(1, #history) * 24
-            histRows.Size = UDim2.new(1, -24, 0, h)
-            histCard.Size = UDim2.new(1, 0, 0, 34 + h + 8)
-        else
-            histCard.Size = UDim2.new(1, 0, 0, 34)
-        end
-    end
-    histHead.MouseButton1Click:Connect(function()
-        histOpen = not histOpen
-        renderHistory()
-    end)
-    renderHistory()
-
     do
         local wh = {}
         ui.webhook = wh
@@ -3731,12 +3586,8 @@ do
                     f.value = cut(f.value ~= "" and f.value or "-", 1000)
                 end
             end
-            local shown = LocalPlayer.DisplayName ~= LocalPlayer.Name
-                and (LocalPlayer.DisplayName .. " (@" .. LocalPlayer.Name .. ")") or LocalPlayer.Name
             e.color = e.color or COLORS[kind] or COLORS.test
-            e.author = { name = cut(shown, 250) }
             e.thumbnail = { url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png" }
-            e.footer = e.footer or { text = "Lightn Hub" }
             e.timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             return e
         end
@@ -3748,7 +3599,6 @@ do
             end
             if not force then
                 if not flags.webhook then return end
-                if kind ~= "alert" and flags.webhookMode == "alerts" then return end
             end
             if not wh.validUrl(flags.webhookUrl) then
                 if cb then cb(false, nil) end
@@ -3869,6 +3719,14 @@ do
             return mode and (tostring(name) .. " (" .. tostring(mode) .. ")") or tostring(name)
         end
 
+        local function isEndless()
+            for _, k in ipairs({ "MapId", "MapDisplayName", "MapMode" }) do
+                local v = workspace:GetAttribute(k)
+                if v and string.find(string.lower(tostring(v)), "endless", 1, true) then return true end
+            end
+            return false
+        end
+
         function wh.onMatch(win, streak, timeText)
             if not flags.webhook then return end
             pending = pending + 1
@@ -3882,18 +3740,18 @@ do
                 end
                 saveTotals()
                 local rewardText = rewardBlock(got, true)
-                local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
+                local endless = isEndless()
                 local e = {
-                    title = win and "Victory" or "Defeat",
-                    fields = {
-                        { name = "Map", value = "`" .. mapText() .. "`", inline = true },
-                        { name = "Win Streak", value = "`" .. tostring(streak) .. "`", inline = true },
-                        { name = "Time", value = "`" .. tostring(timeText) .. "`", inline = true },
-                    },
-                    footer = { text = "Lightn Hub  |  " .. totals.matches .. " matches, " .. totals.wins .. " wins (" .. rate .. "%)" },
+                    color = endless and COLORS.test or nil,
+                    description = "## Result ATD Match\n"
+                        .. (endless and "\n" or ("**-- " .. (win and "WIN" or "LOSE") .. " --**\n\n"))
+                        .. "**Usn:** " .. LocalPlayer.Name .. "\n"
+                        .. "**Map:** " .. mapText() .. "\n"
+                        .. "**Time match:** " .. tostring(timeText),
+                    fields = {},
                 }
                 if rewardText then
-                    e.fields[#e.fields + 1] = { name = "Rewards", value = rewardText, inline = false }
+                    e.fields[#e.fields + 1] = { name = "-- Reward --", value = rewardText, inline = false }
                 end
                 push(win and "win" or "lose", e)
                 end)
@@ -4026,18 +3884,8 @@ do
         else
             win = false
         end
-        table.insert(history, 1, {
-            win = win,
-            wave = (lastWave.cur and tostring(lastWave.cur) or "?") .. "/" .. (lastWave.max and tostring(lastWave.max) or "?"),
-            time = TimerLabel.Text,
-        })
         lastWave.last, lastWave.seq = win, (lastWave.seq or 0) + 1
         ui.webhook.onMatch(win, s, TimerLabel.Text)
-        while #history > HISTORY_MAX do table.remove(history) end
-        if canFile then
-            pcall(function() writefile(HISTORY_FILE, HttpService:JSONEncode(history)) end)
-        end
-        renderHistory()
     end
 
     if inMatch then
@@ -8396,12 +8244,6 @@ do
     local page = tabs["Webhook"].page
     local MASK = "Webhook saved"
 
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
-        Text = "Webhook", TextColor3 = C.text, TextSize = 20, Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder(page),
-    }, page)
-
     local fOn = createFeature(page, "Send notifications", {
         initial = flags.webhook,
         onToggle = function(v) setFlag("webhook", v) end,
@@ -8471,17 +8313,6 @@ do
         ui.webhook.send("test", "Test message", { { "Status", "Webhook works" } }, true, function(ok, code)
             flash(testBtn, ok and "Sent" or ("Failed" .. (code and (" " .. code) or "")), ok and C.text or C.warn, "Send test")
         end)
-    end)
-
-    local modeCard = createCard(page, 46)
-    createSegmented(modeCard, {
-        Size = UDim2.new(1, -24, 0, 28),
-        Position = UDim2.new(0, 12, 0, 9),
-    }, {
-        { label = "All results", value = "all" },
-        { label = "Alerts only", value = "alerts" },
-    }, flags.webhookMode == "alerts" and "alerts" or "all", function(v)
-        setFlag("webhookMode", v)
     end)
 end
 
@@ -9110,23 +8941,11 @@ do
                 max = lastMax
             end
             waveNow.cur, waveNow.max = cur, max
-            statLabels.wave.Text = max and (tostring(cur) .. "/" .. tostring(max)) or tostring(cur)
         else
             waveNow.cur, waveNow.max = nil, nil
             lastMax = nil
-            statLabels.wave.Text = "-"
         end
 
-        local pu = LocalPlayer:FindFirstChild("PlacedUnits")
-        local maxU = LocalPlayer:GetAttribute("MaxPlacedUnits")
-        local unitsText = pu and tostring(pu.Value) or "-"
-        if pu and type(maxU) == "number" then
-            unitsText = unitsText .. "/" .. tostring(maxU)
-        end
-        statLabels.units.Text = unitsText
-
-        statLabels.sells.Text = tostring(stats.sells)
-        statLabels.upgrades.Text = tostring(stats.upgrades)
         return 0.5
     end)
 end
@@ -9176,10 +8995,12 @@ local function layoutMini()
         return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     end
     local x = 34 + (ui.titleDX or 0) + tw(TitleLabel.Text, 12)
-    local waveW = math.max(44, tw("00/00", 14) + 4)
-    MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
-    MiniWave.Size = UDim2.new(0, waveW, 1, -1)
-    x = x + 14 + waveW
+    if game.PlaceId ~= LOBBY_PLACE then
+        local waveW = math.max(44, tw("00/00", 14) + 4)
+        MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
+        MiniWave.Size = UDim2.new(0, waveW, 1, -1)
+        x = x + 14 + waveW
+    end
     ui.streakBox.Position = UDim2.new(0, x + 14, 0, 0)
     ui.streakBox.Size = UDim2.new(0, 44, 1, -1)
     x = x + 14 + 44
@@ -9214,7 +9035,7 @@ local function setMinimized(mini)
     MinLine.Visible = not mini
     MinBox.Visible = mini
     VersionLabel.Visible = not mini
-    MiniWave.Visible = mini
+    MiniWave.Visible = mini and game.PlaceId ~= LOBBY_PLACE
     ui.showMini(mini)
     MiniBarTrack.Visible = mini
     if mini then layoutMini() else restoreFull() end

@@ -3504,12 +3504,33 @@ do
         local COLORS = { win = 5763719, lose = 15548997, alert = 16766720, test = 5793266 }
         local queue, working = {}, false
         local pending, holdUntil = 0, 0
+        local thumbUrl, thumbTries = nil, 0
+        local function fetchThumb()
+            if thumbUrl or thumbTries >= 3 or not req then return end
+            thumbTries = thumbTries + 1
+            local ok, res = pcall(req, {
+                Url = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" .. tostring(LocalPlayer.UserId)
+                    .. "&size=150x150&format=Png&isCircular=false",
+                Method = "GET",
+            })
+            if ok and type(res) == "table" and type(res.Body) == "string" then
+                pcall(function()
+                    local d = HttpService:JSONDecode(res.Body)
+                    local u = d.data and d.data[1] and d.data[1].imageUrl
+                    if type(u) == "string" and string.sub(u, 1, 8) == "https://" then thumbUrl = u end
+                end)
+            end
+        end
         local function worker()
             if working then return end
             working = true
             task.spawn(function()
                 while #queue > 0 do
                     local item = table.remove(queue, 1)
+                    fetchThumb()
+                    if thumbUrl then
+                        pcall(function() item.payload.embeds[1].thumbnail = { url = thumbUrl } end)
+                    end
                     local okBody, body = pcall(HttpService.JSONEncode, HttpService, item.payload)
                     if not okBody then
                         if item.cb then pcall(item.cb, false, nil) end
@@ -3609,7 +3630,6 @@ do
                 url = flags.webhookUrl,
                 cb = cb,
                 payload = {
-                    username = "Lightn Hub",
                     allowed_mentions = { parse = {} },
                     embeds = { dress(kind, e) },
                 },
@@ -7081,7 +7101,17 @@ do
         for _, a in ipairs(src) do
             if type(a) == "table" then
                 local d = type(a.d) == "number" and a.d or nil
-                if a.t == "P" and type(a.n) == "string" and isNums(a.p, 3) and a.i then
+                local waveNo = type(a.Wave) == "number" and a.Wave or 0
+                if a.Kind == "Place" and type(a.Unit) == "string" and isNums(a.CFrame, 12) and a.Handle ~= nil then
+                    towers[tostring(a.Handle)] = { n = a.Unit, p = { a.CFrame[1], a.CFrame[2], a.CFrame[3] } }
+                    out[#out + 1] = { t = "place", n = a.Unit, w = waveNo, cf = a.CFrame }
+                elseif (a.Kind == "Upgrade" or a.Kind == "Sell") and a.Handle ~= nil and towers[tostring(a.Handle)] then
+                    local tw = towers[tostring(a.Handle)]
+                    out[#out + 1] = {
+                        t = (a.Kind == "Upgrade") and "up" or "sell", n = tw.n, w = waveNo,
+                        p = { tw.p[1], tw.p[2], tw.p[3] },
+                    }
+                elseif a.t == "P" and type(a.n) == "string" and isNums(a.p, 3) and a.i then
                     towers[a.i] = { n = a.n, p = a.p }
                     out[#out + 1] = {
                         t = "place", n = a.n, d = d, w = 0,
@@ -7100,7 +7130,7 @@ do
         end
         return {
             v = 1,
-            name = type(data.Name) == "string" and data.Name or "imported",
+            name = type(data.Name) == "string" and data.Name or (type(data.Map) == "string" and data.Map or "imported"),
             actions = out,
         }
     end

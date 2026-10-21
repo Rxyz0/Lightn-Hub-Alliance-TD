@@ -1208,9 +1208,13 @@ local function invoke(name, ...)
     if name == "PlaceTower" and placeHook.register and typeof(args[2]) == "CFrame" then
         task.spawn(placeHook.register, args[1], args[2])
     end
-    return pcall(function()
+    local okc, resc = pcall(function()
         return remote:InvokeServer(table.unpack(args, 1, args.n))
     end)
+    if okc and (name == "SummonUnits" or name == "OpenCrate") and placeHook.scan then
+        task.spawn(placeHook.scan, name, resc, args[1])
+    end
+    return okc, resc
 end
 
 local function accepted(ok, res)
@@ -1496,12 +1500,13 @@ do
             BorderSizePixel = 0,
             Active = true,
         }, wrap)
+        make("UICorner", { CornerRadius = UDim.new(0, 0) }, toast)
         local stroke = make("UIStroke", {
             Color = C.controlLine, Thickness = 1, Transparency = 1,
             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
         }, toast)
         local accent = make("Frame", {
-            Size = UDim2.new(0, 3, 1, 0),
+            Size = UDim2.new(0, 4, 1, 0),
             BackgroundColor3 = C.accent, BackgroundTransparency = 1, BorderSizePixel = 0,
         }, toast)
         local content = make("Frame", {
@@ -1547,12 +1552,12 @@ do
         order[#order + 1] = entry
         while #order > MAX_TOASTS do dismiss(order[1]) end
 
-        tween(toast, 0.3, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.08 })
+        tween(toast, 0.3, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0 })
         tween(stroke, 0.3, { Transparency = 0 })
         tween(accent, 0.3, { BackgroundTransparency = 0 })
         tween(title, 0.3, { TextTransparency = 0 })
         tween(body, 0.3, { TextTransparency = 0 })
-        tween(bar, 0.3, { BackgroundTransparency = 0.35 })
+        tween(bar, 0.3, { BackgroundTransparency = 0.2 })
         tween(bar, dur, { Size = UDim2.new(0, 0, 0, 2) })
 
         toast.InputBegan:Connect(function(input)
@@ -3892,6 +3897,7 @@ do
             task.delay(1.2, function()
                 local okRun, err = pcall(function()
                 local got = readRewards()
+                local sNow = tonumber(LocalPlayer:GetAttribute("WinStreak")) or tonumber(streak) or 0
                 totals.matches = totals.matches + 1
                 if win then totals.wins = totals.wins + 1 end
                 for _, k in ipairs(KINDS) do
@@ -3906,6 +3912,7 @@ do
                         .. (endless and "\n" or ("**-- " .. (win and "WIN" or "LOSE") .. " --**\n\n"))
                         .. "**Username:** " .. LocalPlayer.Name .. "\n"
                         .. "**Map:** " .. mapText() .. "\n"
+                        .. "**Win streak:** \u{1F525} " .. tostring(sNow) .. "\n"
                         .. "**Match time:** " .. tostring(timeText),
                     fields = {},
                 }
@@ -3918,6 +3925,136 @@ do
                 if not okRun then warn("[Webhook] onMatch error:", err) end
             end)
         end
+
+        local function pctOf(t)
+            for k, v in pairs(t) do
+                if type(k) == "string" and type(v) == "number" and v > 0 then
+                    local lk = string.lower(k)
+                    if string.find(lk, "percent", 1, true) then return v end
+                    if lk == "chance" or lk == "rate" or lk == "odds" or lk == "probability"
+                        or lk == "droprate" or lk == "dropchance" or lk == "summonchance" then
+                        if v <= 1 then return v * 100 end
+                        return v
+                    end
+                end
+            end
+            return nil
+        end
+        local function unitNameOf(t)
+            for _, k in ipairs({ "UnitName", "TowerName", "DisplayName", "Name", "Unit", "Tower", "Id", "ID" }) do
+                local v = t[k]
+                if type(v) == "string" and v ~= "" then return v end
+            end
+            return nil
+        end
+        local function findRare(res)
+            local found, seen, budget = {}, {}, 400
+            local function walk(v, depth)
+                if type(v) ~= "table" or depth > 5 or seen[v] or budget <= 0 then return end
+                seen[v] = true
+                budget = budget - 1
+                local pct, nm = pctOf(v), unitNameOf(v)
+                if pct and nm then
+                    if pct < 1 then found[#found + 1] = { name = nm, pct = pct } end
+                    return
+                end
+                for _, x in pairs(v) do walk(x, depth + 1) end
+            end
+            walk(res, 0)
+            return found
+        end
+        local function pctText(p)
+            local t = string.format("%.3f", p)
+            t = string.gsub(t, "0+$", "")
+            t = string.gsub(t, "%.$", "")
+            return t .. "%"
+        end
+
+        function wh.scan(source, res, arg)
+            if not flags.webhook or type(res) ~= "table" then return end
+            local ok, hits = pcall(findRare, res)
+            if not ok or #hits == 0 then return end
+            local merged, order = {}, {}
+            for _, h in ipairs(hits) do
+                local m = merged[h.name]
+                if not m then
+                    m = { name = h.name, pct = h.pct, n = 0 }
+                    merged[h.name] = m
+                    order[#order + 1] = m
+                end
+                m.n = m.n + 1
+            end
+            local lines = {}
+            for _, m in ipairs(order) do
+                lines[#lines + 1] = m.name .. (m.n > 1 and (" x" .. m.n) or "") .. "  (" .. pctText(m.pct) .. ")"
+            end
+            local src = source == "SummonUnits" and "Summon" or "Crate"
+            if source == "OpenCrate" and type(arg) == "string" and arg ~= "" then src = "Crate: " .. arg end
+            push("alert", {
+                color = 16766720,
+                description = "## Rare Unit Drop\n"
+                    .. "**Username:** " .. LocalPlayer.Name .. "\n"
+                    .. "**Source:** " .. src,
+                fields = { { name = "-- Unit (under 1%) --", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
+            })
+        end
+        placeHook.scan = wh.scan
+
+        local crateDefs
+        local function crateChance(id, unit)
+            if crateDefs == nil then
+                local ok, m = pcall(function()
+                    return require(ReplicatedStorage.Modules.Crates)
+                end)
+                crateDefs = (ok and type(m) == "table") and (type(m.Crates) == "table" and m.Crates or m) or false
+            end
+            local d = crateDefs and crateDefs[id]
+            if type(d) ~= "table" or type(d.Rewards) ~= "table" then return nil, nil end
+            for _, r in pairs(d.Rewards) do
+                if type(r) == "table" and r.UnitName == unit and type(r.Chance) == "number" then
+                    return r.Chance, d.DisplayName
+                end
+            end
+            return nil, d.DisplayName
+        end
+
+        function wh.crateRare(id, rewards)
+            if not flags.webhook or type(rewards) ~= "table" then return end
+            local merged, order, label = {}, {}, nil
+            for _, nm in pairs(rewards) do
+                if type(nm) == "string" then
+                    local pct, disp = crateChance(id, nm)
+                    label = label or disp
+                    if pct and pct > 0 and pct < 1 then
+                        local m = merged[nm]
+                        if not m then
+                            m = { name = nm, pct = pct, n = 0 }
+                            merged[nm] = m
+                            order[#order + 1] = m
+                        end
+                        m.n = m.n + 1
+                    end
+                end
+            end
+            if #order == 0 then return end
+            local lines = {}
+            for _, m in ipairs(order) do
+                lines[#lines + 1] = m.name .. (m.n > 1 and (" x" .. m.n) or "") .. "  (" .. pctText(m.pct) .. ")"
+            end
+            push("alert", {
+                color = 16766720,
+                description = "## Rare Unit Drop\n"
+                    .. "**Username:** " .. LocalPlayer.Name .. "\n"
+                    .. "**Source:** Crate: " .. tostring(label or id),
+                fields = { { name = "-- Unit (under 1%) --", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
+            })
+        end
+
+        bindEvent("CrateOpening", function(info)
+            if type(info) == "table" and info.OpenerUserId == LocalPlayer.UserId then
+                pcall(wh.crateRare, info.CrateId, info.Rewards)
+            end
+        end)
 
         local function sendTotals(resetNote)
             local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
@@ -5786,7 +5923,7 @@ do
     local page = tabs["Endless"].page
     local mouse = LocalPlayer:GetMouse()
 
-    local spots = { uttm = {}, mowers = {}, home = {} }
+    local spots = { uttm = {}, mowers = {}, home = {}, homeUttm = {} }
 
     local function readLocs(src)
         local out = {}
@@ -5827,6 +5964,14 @@ do
         if ok and type(data) == "table" then
             spots.uttm = readLocs(data.uttm)
             spots.home = readUnits(data.home)
+            if type(data.homeUttm) == "table" then
+                for _, h in ipairs(data.homeUttm) do
+                    if type(h) == "table" and type(h.slot) == "number" and type(h.x) == "number"
+                        and type(h.y) == "number" and type(h.z) == "number" then
+                        spots.homeUttm[#spots.homeUttm + 1] = { slot = h.slot, x = h.x, y = h.y, z = h.z }
+                    end
+                end
+            end
             if type(data.mowers) == "table" then
                 for _, m in ipairs(data.mowers) do
                     if type(m) == "table" and type(m.id) == "number" then
@@ -6043,15 +6188,81 @@ do
     local lastUttmUse = nil
     local uttmBusy = false
 
-    local function findUttm()
+    local uttmSlot = setmetatable({}, { __mode = "k" })
+    local uttmPos = setmetatable({}, { __mode = "k" })
+    local uttmFreeze = 0
+    local uttmSel = 1
+
+    local function uttmList()
+        local alive = {}
         local folder = workspace:FindFirstChild("Towers")
-        if not folder then return nil end
-        for _, t in ipairs(folder:GetChildren()) do
-            if t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
-                return t
+        if folder then
+            for _, t in ipairs(folder:GetChildren()) do
+                if t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                    alive[#alive + 1] = t
+                end
             end
         end
+        local used = {}
+        for _, t in ipairs(alive) do
+            if uttmSlot[t] then used[uttmSlot[t]] = true end
+        end
+        local out = {}
+        for _, t in ipairs(alive) do
+            if not uttmSlot[t] and uttmFreeze == 0 then
+                local n = 1
+                while used[n] do n = n + 1 end
+                uttmSlot[t] = n
+                used[n] = true
+            end
+            if uttmSlot[t] then out[#out + 1] = t end
+        end
+        table.sort(out, function(a, b) return uttmSlot[a] < uttmSlot[b] end)
+        return out
+    end
+
+    local function findUttm(n)
+        local list = uttmList()
+        if n == nil then return list[1] end
+        for _, t in ipairs(list) do
+            if uttmSlot[t] == n then return t end
+        end
         return nil
+    end
+
+    local function uttmSlotOf(t) return uttmSlot[t] end
+
+    local function adoptSlot(slot, old)
+        local t0 = os.clock()
+        while os.clock() - t0 < 1.2 do
+            local folder = workspace:FindFirstChild("Towers")
+            if folder then
+                for _, t in ipairs(folder:GetChildren()) do
+                    if t ~= old and t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId
+                        and not uttmSlot[t] then
+                        uttmSlot[t] = slot
+                        uttmPos[t] = uttmPos[old]
+                        return t
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+        return old
+    end
+
+    local function noteUttmPlace(comps)
+        task.spawn(function()
+            for _ = 1, 14 do
+                task.wait(0.25)
+                for _, t in ipairs(uttmList()) do
+                    if not uttmPos[t] then
+                        uttmPos[t] = { comps[1], comps[2], comps[3] }
+                        return
+                    end
+                end
+            end
+        end)
     end
 
     local droneState = env.LightHubDrone
@@ -6059,6 +6270,7 @@ do
         droneState = { on = nil }
         env.LightHubDrone = droneState
     end
+    if not droneState.by then droneState.by = setmetatable({}, { __mode = "k" }) end
     droneState.active = true
     droneState.internal = false
 
@@ -6072,7 +6284,13 @@ do
                     local args = table.pack(...)
                     if args[1] == "Drones" then
                         local res = table.pack(old(self, ...))
-                        if res[1] ~= false then droneState.on = not droneState.on end
+                        if res[1] ~= false then
+                            droneState.on = not droneState.on
+                            local tw = args[2]
+                            if typeof(tw) == "Instance" and droneState.by then
+                                droneState.by[tw] = not droneState.by[tw]
+                            end
+                        end
                         return table.unpack(res, 1, res.n)
                     end
                 end
@@ -6097,6 +6315,11 @@ do
                 return v
             end
         end
+        local v = droneState.by[tw]
+        if v ~= nil then return v end
+        for other, on in pairs(droneState.by) do
+            if other ~= tw and on and other.Parent then return false end
+        end
         return cameraInDrone() or droneState.on == true
     end
 
@@ -6105,7 +6328,10 @@ do
         local ok, res = invoke("CinemaRelocate", "Drones", tw, nil)
         droneState.internal = false
         local good = ok and not (type(res) == "table" and (res.Success == false or res.success == false))
-        if good then droneState.on = newState end
+        if good then
+            droneState.on = newState
+            droneState.by[tw] = newState
+        end
         return good
     end
 
@@ -6119,34 +6345,25 @@ do
         return string.find(string.lower(t), "drone", 1, true) ~= nil
     end
 
-    local function uttmTeleport(s)
-        if uttmBusy then return end
-        uttmBusy = true
-        task.spawn(function()
-            local tw = findUttm()
-            if not tw then
-                uttmSay("UTTM not found", C.warn)
-                uttmBusy = false
-                return
-            end
-            uttmSay("Working...", C.muted)
-
-            local droneOff = false
+    local function uttmMove(tw0, x, y, z, note)
+        local slot = uttmSlot[tw0]
+        local tw = tw0
+        local placed, started, droneOff = false, false, false
+        uttmFreeze = uttmFreeze + 1
+        pcall(function()
             if isDroneOn(tw) then
-                uttmSay("Drone off...", C.muted)
+                note("Drone off...")
                 if toggleDrone(tw, false) then droneOff = true end
                 task.wait(0.7)
             end
-
-            local started = false
             for _ = 1, 5 do
                 local ok, res = invoke("CinemaRelocate", "Start", tw, nil)
                 if accepted(ok, res) then
                     started = true
                     break
                 end
-                if not droneOff and (msgSaysDrone(res) or cameraInDrone() or droneState.on == true) then
-                    uttmSay("Drone off...", C.muted)
+                if not droneOff and (msgSaysDrone(res) or isDroneOn(tw)) then
+                    note("Drone off...")
                     if toggleDrone(tw, false) then droneOff = true end
                     task.wait(0.7)
                 elseif droneOff then
@@ -6155,29 +6372,82 @@ do
                     break
                 end
             end
-
-            local placed = false
             if started then
-                local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(s.x, s.y, s.z))
+                local ok2, res2 = invoke("CinemaRelocate", "Place", tw, CFrame.new(x, y, z))
                 placed = accepted(ok2, res2)
                 if placed then
                     lastUttmUse = os.clock()
-                    uttmSay("Teleported to " .. s.n, C.text)
-                else
-                    uttmSay("Couldn't place it there", C.warn)
+                    uttmPos[tw] = { x, y, z }
+                    if slot then tw = adoptSlot(slot, tw) end
                 end
-            else
-                local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
-                uttmSay("On cooldown" .. ago, C.warn)
             end
-
             if droneOff then
                 task.wait(0.6)
-                toggleDrone(findUttm() or tw, true)
-                if placed then uttmSay("Teleported, drone back on", C.text) end
+                toggleDrone(tw, true)
+            end
+        end)
+        uttmFreeze = uttmFreeze - 1
+        return placed, started, droneOff
+    end
+
+    local function uttmTeleport(s)
+        if uttmBusy then return end
+        uttmBusy = true
+        task.spawn(function()
+            local tw = findUttm(uttmSel) or findUttm()
+            if not tw then
+                uttmSay("UTTM not found", C.warn)
+                uttmBusy = false
+                return
+            end
+            local label = "UTTM " .. tostring(uttmSlot[tw] or 1)
+            uttmSay("Working...", C.muted)
+            local placed, started, droneOff = uttmMove(tw, s.x, s.y, s.z, function(t) uttmSay(t, C.muted) end)
+            if placed then
+                uttmSay(label .. " > " .. s.n .. (droneOff and ", drone back on" or ""), C.text)
+            elseif started then
+                uttmSay("Couldn't place it there", C.warn)
+            else
+                local ago = lastUttmUse and (" (used " .. math.floor(os.clock() - lastUttmUse) .. "s ago)") or ""
+                uttmSay(label .. " on cooldown" .. ago, C.warn)
             end
             uttmBusy = false
         end)
+    end
+
+    local function uttmHome(list)
+        local moved, total = 0, 0
+        local t0 = os.clock()
+        while uttmBusy and os.clock() - t0 < 12 do task.wait(0.2) end
+        uttmBusy = true
+        pcall(function()
+            for _, h in ipairs(list) do
+                local tw = findUttm(h.slot)
+                if tw then
+                    total = total + 1
+                    for attempt = 1, 3 do
+                        local okp, p = pcall(function() return tw:GetPivot().Position end)
+                        if okp and math.sqrt((p.X - h.x) ^ 2 + (p.Z - h.z) ^ 2) <= 2.5 then
+                            moved = moved + 1
+                            break
+                        end
+                        local placed, started = uttmMove(tw, h.x, h.y, h.z, function() end)
+                        if placed then
+                            moved = moved + 1
+                            break
+                        end
+                        if not started and attempt < 3 then
+                            task.wait(4)
+                            tw = findUttm(h.slot) or tw
+                        elseif started then
+                            break
+                        end
+                    end
+                end
+            end
+        end)
+        uttmBusy = false
+        return moved, total
     end
 
     local uttmRebuild
@@ -6185,16 +6455,33 @@ do
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
 
+        local list = uttmList()
+        local base = 0
+        if #list >= 2 then
+            local opts = {}
+            for _, t in ipairs(list) do
+                opts[#opts + 1] = { label = "UTTM " .. uttmSlot[t], value = uttmSlot[t] }
+            end
+            createSegmented(uttmRows, {
+                Size = UDim2.new(1, 0, 0, 28),
+                Position = UDim2.new(0, 0, 0, 0),
+            }, opts, uttmSel, function(v)
+                uttmSel = v
+                uttmSay("UTTM " .. v .. " selected", C.text)
+                if refreshUttmFloat then refreshUttmFloat() end
+            end)
+            base = 34
+        end
         createCollapse(uttmRows, {
             Size = UDim2.new(1, 0, 0, 28),
-            Position = UDim2.new(0, 0, 0, 0),
+            Position = UDim2.new(0, 0, 0, base),
         }, "Locations", #spots.uttm, uttmOpen, function(v)
             uttmOpen = v
             uttmRebuild()
         end)
-        local y = 28
+        local y = base + 28
         if uttmOpen then
-            y = 36
+            y = base + 36
             for i, sp in ipairs(spots.uttm) do
                 addLocRow(uttmRows, spots.uttm, sp, y, uttmTeleport,
                     function(msg) uttmSay(msg, C.text) end, uttmRebuild)
@@ -6223,6 +6510,22 @@ do
     uttmFloat = createFloat("UTTM teleport", UDim2.new(1, -340, 0, 90))
     refreshUttmFloat = function()
         local items = {}
+        local list = uttmList()
+        if #list >= 2 then
+            items[#items + 1] = { text = "U" .. uttmSel, c1 = UTTM_BLUE, c2 = UTTM_VIOLET, fn = function()
+                local cur = uttmList()
+                local nxt = cur[1] and uttmSlot[cur[1]] or 1
+                for i, t in ipairs(cur) do
+                    if uttmSlot[t] == uttmSel then
+                        nxt = uttmSlot[cur[i % #cur + 1]]
+                        break
+                    end
+                end
+                uttmSel = nxt
+                uttmSay("UTTM " .. nxt .. " selected", C.text)
+                uttmRebuild()
+            end }
+        end
         for i, sp in ipairs(spots.uttm) do
             items[#items + 1] = { text = "Tp-" .. i, fn = function() uttmTeleport(sp) end,
                 c1 = UTTM_BLUE, c2 = UTTM_VIOLET }
@@ -6231,15 +6534,28 @@ do
     end
     refreshUttmFloat()
 
+    local lastUttmN = -1
     runLoop(function()
-        local found = findUttm() ~= nil
+        local list = uttmList()
+        local found = #list > 0
         if uttmCard.Visible ~= found then uttmCard.Visible = found end
-        return 1
+        if #list ~= lastUttmN then
+            lastUttmN = #list
+            local ok = false
+            for _, t in ipairs(list) do
+                if uttmSlot[t] == uttmSel then ok = true end
+            end
+            if not ok and list[1] then uttmSel = uttmSlot[list[1]] end
+            uttmRebuild()
+        end
+        return 0.25
     end)
 
     EP.page, EP.spots, EP.saveSpots = page, spots, saveSpots
     EP.UTTM_BLUE, EP.UTTM_VIOLET = UTTM_BLUE, UTTM_VIOLET
     EP.findUttm, EP.pushMacro = findUttm, pushMacro
+    EP.uttmList, EP.uttmSlotOf, EP.uttmPos = uttmList, uttmSlotOf, uttmPos
+    EP.noteUttmPlace, EP.uttmHome = noteUttmPlace, uttmHome
     EP.isBusy = function() return uttmBusy end
     EP.readUnits = readUnits
     EP.droneOn = isDroneOn
@@ -6542,22 +6858,48 @@ do
 
         local function snapshotHome()
             spots.home = {}
+            spots.homeUttm = {}
             local exact = 0
             for _, u in ipairs(myTowers()) do
                 if u.exact then exact = exact + 1 end
                 spots.home[#spots.home + 1] = locOf(u)
+            end
+            for _, t in ipairs(EP.uttmList()) do
+                local ok, p = pcall(function() return t:GetPivot().Position end)
+                if ok then
+                    local rec = EP.uttmPos[t]
+                    local x, y, z = p.X, groundOf(p), p.Z
+                    if rec and flat(p, rec[1], rec[3]) <= 3 then x, y, z = rec[1], rec[2], rec[3] end
+                    spots.homeUttm[#spots.homeUttm + 1] = { slot = EP.uttmSlotOf(t), x = x, y = y, z = z }
+                end
             end
             saveSpots()
             return #spots.home, exact
         end
 
         local function backHome()
-            if #spots.home == 0 then
+            local hu = spots.homeUttm or {}
+            if #spots.home == 0 and #hu == 0 then
                 say("No default saved", C.warn)
                 notify("Unit Replace", "Save a default layout first", 3)
                 return
             end
-            execute("Default", spots.home)
+            local uMoved, uTotal, uDone = 0, 0, #hu == 0
+            if #hu > 0 then
+                task.spawn(function()
+                    uMoved, uTotal = EP.uttmHome(hu)
+                    uDone = true
+                end)
+            end
+            if #spots.home > 0 then execute("Default", spots.home) end
+            local t0 = os.clock()
+            while not uDone and os.clock() - t0 < 45 do task.wait(0.2) end
+            if #hu > 0 then
+                local prev = mowerNote.Text
+                local msg = "UTTM " .. uMoved .. "/" .. uTotal
+                if #spots.home > 0 and prev ~= "" then msg = prev .. ", " .. msg end
+                say(msg, (uMoved == uTotal) and C.text or C.warn)
+            end
         end
 
         local function placeMower(m)
@@ -6601,7 +6943,11 @@ do
 
         placeHook.handler = function(nm, a1, a2)
             if nm == "PlaceTower" then
-                if type(a1) ~= "string" or typeof(a2) ~= "CFrame" or a1 == UTTM_NAME then return end
+                if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
+                if a1 == UTTM_NAME then
+                    EP.noteUttmPlace({ a2:GetComponents() })
+                    return
+                end
                 local comps = { a2:GetComponents() }
                 for _ = 1, 8 do
                     task.wait(0.25)
@@ -6741,7 +7087,7 @@ do
                 Size = UDim2.new(0, 60, 0, 28),
                 Position = UDim2.new(0, 110, 0, 32),
             }, "Back", backHome, GREEN_A, GREEN_B, true)
-            local hasHome = #spots.home > 0
+            local hasHome = #spots.home > 0 or #spots.homeUttm > 0
             local homeBtn
             local confirmEdit
             homeBtn = createFxButton(rows, {
@@ -6752,6 +7098,7 @@ do
                 local n, exact = snapshotHome()
                 local msg = n .. " units"
                 if exact < n then msg = msg .. ", " .. (n - exact) .. " estimated" end
+                if #spots.homeUttm > 0 then msg = msg .. ", " .. #spots.homeUttm .. " UTTM" end
                 say("Default saved (" .. msg .. ")", C.text)
                 notify("Unit Replace", "Default saved: " .. msg, 4)
                 rebuildMower()
@@ -6763,7 +7110,7 @@ do
                     Size = UDim2.new(1, -250, 0, 28),
                     Position = UDim2.new(0, 246, 0, 32),
                     BackgroundTransparency = 1,
-                    Text = #spots.home .. " units",
+                    Text = #spots.home .. " units" .. (#spots.homeUttm > 0 and (" + " .. #spots.homeUttm .. " UTTM") or ""),
                     TextColor3 = C.dim,
                     TextSize = 10,
                     Font = Enum.Font.GothamMedium,
@@ -6950,10 +7297,12 @@ do
     end
 
     local function uttmSpin()
-        local tw = findUttm()
-        if not tw then return false end
-        local ok, res = invoke("CinemaRelocate", "Spin", tw, nil)
-        return accepted(ok, res)
+        local any = false
+        for _, tw in ipairs(EP.uttmList()) do
+            local ok, res = invoke("CinemaRelocate", "Spin", tw, nil)
+            if accepted(ok, res) then any = true end
+        end
+        return any
     end
 
     local function spwUse()
@@ -7223,6 +7572,7 @@ do
                 if not isNums(a.p, 3) then return false end
             elseif a.t == "drone" then
                 if a.on ~= nil and type(a.on) ~= "boolean" then return false end
+                if a.s ~= nil and type(a.s) ~= "number" then return false end
             elseif a.t == "target" then
                 if not isNums(a.p, 3) then return false end
                 if a.m ~= nil and type(a.m) ~= "string" and type(a.m) ~= "number" then return false end
@@ -7401,7 +7751,7 @@ do
                 if now ~= before then break end
             end
             if now == before then now = not before end
-            act = { t = "drone", n = tw.Name, on = now, w = w }
+            act = { t = "drone", n = tw.Name, on = now, w = w, s = EP.uttmSlotOf and EP.uttmSlotOf(tw) or nil }
         elseif nm == "ChangeTargetMode" then
             if typeof(a1) ~= "Instance" then return end
             local okp, pos = pcall(function() return a1:GetPivot().Position end)
@@ -7832,7 +8182,7 @@ do
                 end
             end
         elseif a.t == "drone" then
-            local tw = EP.findUttm and EP.findUttm()
+            local tw = EP.findUttm and (EP.findUttm(a.s) or (a.s == nil and EP.findUttm() or nil))
             if not tw then
                 fPlay.setNote("Waiting for " .. a.n, C.muted)
             elseif not EP.setDrone then
@@ -8284,9 +8634,12 @@ do
         if type(slots) ~= "table" then return end
         for _, q in ipairs(slots) do
             if type(q) == "table" and type(q.InstanceId) == "string" and type(q.Index) == "number"
-                and type(q.Progress) == "number" and type(q.Target) == "number"
-                and q.Claimed ~= true and q.Progress >= q.Target then
-                fn(q)
+                and q.Claimed ~= true then
+                local done = q.Completed == true or q.Ready == true or q.Claimable == true
+                if type(q.Progress) == "number" and type(q.Target) == "number" and q.Progress >= q.Target then
+                    done = true
+                end
+                if done then fn(q) end
             end
         end
     end
@@ -8294,7 +8647,18 @@ do
     local function sweepDaily()
         if not RF("ClaimQuest") then return end
         local ok, st = invoke("GetQuestState")
-        if ok and type(st) == "table" then
+        if not ok or type(st) ~= "table" then return end
+        local tiers = st.Tiers or (type(st.State) == "table" and st.State.Tiers) or nil
+        if type(tiers) == "table" then
+            local order = st.Order or (type(st.State) == "table" and st.State.Order) or nil
+            if type(order) ~= "table" then order = { "Hourly", "Daily", "Weekly" } end
+            for _, name in ipairs(order) do
+                local t = tiers[name]
+                if type(t) == "table" then
+                    eachReady(t.Slots or t.Quests, function(q) claim("ClaimQuest", name, q.Index, q.InstanceId) end)
+                end
+            end
+        else
             eachReady(st.Slots, function(q) claim("ClaimQuest", q.Index, q.InstanceId) end)
         end
     end
@@ -8322,18 +8686,64 @@ do
         return nil
     end
 
+    local globalVariant = nil
+
+    local function globalState()
+        local ok, st = invoke("GetGlobalQuestState")
+        if ok and type(st) == "table" and type(st.Tiers) == "table" then return st end
+        return nil
+    end
+
+    local function tierReady(t)
+        if type(t) ~= "table" or t.Claimed == true or t.Available == false or t.Eligible == false
+            or type(t.Progress) ~= "number" then
+            return false
+        end
+        local target = tonumber(t.Target) or tonumber(string.match(tostring(t.QuestId or ""), "(%d+)$"))
+        return target ~= nil and t.Progress >= target
+    end
+
+    local function tierDone(name)
+        local st = globalState()
+        local t = st and st.Tiers[name]
+        return type(t) ~= "table" or t.Claimed == true
+    end
+
     local function sweepGlobal()
         if not RF("ClaimGlobalQuest") then return end
-        local ok, st = invoke("GetGlobalQuestState")
-        if not ok or type(st) ~= "table" or type(st.Tiers) ~= "table" then return end
-        for _, name in ipairs(type(st.Order) == "table" and st.Order or { "Hourly", "Daily", "Weekly" }) do
+        local st = globalState()
+        if not st then return end
+        local order = type(st.Order) == "table" and st.Order or { "Hourly", "Daily", "Weekly" }
+        for _, name in ipairs(order) do
             local t = st.Tiers[name]
-            if type(t) == "table" and t.Claimed ~= true and t.Available ~= false and t.Eligible ~= false
-                and type(t.Progress) == "number" then
-
-                local target = tonumber(t.Target) or tonumber(string.match(tostring(t.QuestId or ""), "(%d+)$"))
-                local id = globalId(t)
-                if target and id and t.Progress >= target then claim("ClaimGlobalQuest", name, id) end
+            if tierReady(t) and flags.autoQuest then
+                local key = "global|" .. name .. "|" .. tostring(t.QuestId) .. "|" .. tostring(t.StartedAt)
+                if not (tried[key] and os.clock() - tried[key] < 45) then
+                    tried[key] = os.clock()
+                    local id = globalId(t)
+                    local variants = {
+                        function() return invoke("ClaimGlobalQuest", name, id) end,
+                        function() return invoke("ClaimGlobalQuest", name) end,
+                        function() return invoke("ClaimGlobalQuest") end,
+                        function() return invoke("ClaimGlobalQuest", "All") end,
+                        function() return invoke("ClaimGlobalQuest", t.QuestId) end,
+                        function() return invoke("ClaimGlobalQuest", name, t.QuestId) end,
+                    }
+                    local order2 = {}
+                    if globalVariant then order2[1] = globalVariant end
+                    for k = 1, #variants do
+                        if k ~= globalVariant then order2[#order2 + 1] = k end
+                    end
+                    for _, k in ipairs(order2) do
+                        pcall(variants[k])
+                        task.wait(0.6)
+                        if tierDone(name) then
+                            globalVariant = k
+                            break
+                        end
+                    end
+                    task.wait(0.3)
+                end
             end
         end
     end

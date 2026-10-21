@@ -209,6 +209,7 @@ local settings = {
     theme = "Default",
     antiAfk = true,
     showTimer = true,
+    notifications = true,
     cheapestFirst = true,
     upgradeOne = false,
     upgradeAll = false,
@@ -254,7 +255,12 @@ for k, v in pairs(FLAG_DEFAULTS) do flags[k] = v end
 local run = { claim = false, upgrade = false }
 local conns = {}
 
+local toastImpl
 local function notify(sub, txt, dur)
+    if settings.notifications == false then return end
+    if toastImpl then
+        if pcall(toastImpl, sub, txt, dur) then return end
+    end
     pcall(function()
         StarterGui:SetCore("SendNotification", {
             Title = "Lightn Hub | " .. sub,
@@ -1020,6 +1026,7 @@ local function saveSettings()
         antiAfk = settings.antiAfk,
         theme = settings.theme,
         showTimer = settings.showTimer,
+        notifications = settings.notifications,
         cheapestFirst = settings.cheapestFirst,
         upgradeOne = settings.upgradeOne,
         upgradeAll = settings.upgradeAll,
@@ -1071,6 +1078,7 @@ local function loadSettings()
 
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
+    if type(data.notifications) == "boolean" then settings.notifications = data.notifications end
     if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.upgradeOne) == "boolean" then settings.upgradeOne = data.upgradeOne end
@@ -1425,6 +1433,137 @@ if game.PlaceId == LOBBY_PLACE then
         spin:Disconnect()
         root:Destroy()
     end)
+end
+
+do
+    local holder = make("Frame", {
+        AnchorPoint = Vector2.new(1, 1),
+        Position = UDim2.new(1, -12, 1, -12),
+        Size = UDim2.new(0, 252, 1, -24),
+        BackgroundTransparency = 1,
+        ZIndex = 200,
+    }, ScreenGui)
+    make("UIListLayout", {
+        Padding = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Bottom,
+        HorizontalAlignment = Enum.HorizontalAlignment.Right,
+    }, holder)
+
+    local live, order, serial = {}, {}, 0
+    local MAX_TOASTS = 4
+
+    local function dismiss(entry)
+        if not entry or entry.gone then return end
+        entry.gone = true
+        live[entry.key] = nil
+        for i, e in ipairs(order) do
+            if e == entry then table.remove(order, i) break end
+        end
+        local t = entry.toast
+        tween(t, 0.25, { Position = UDim2.new(0, 26, 0, 0), BackgroundTransparency = 1 })
+        for _, d in ipairs(entry.fades) do tween(d.obj, 0.2, d.goal) end
+        task.delay(0.3, function() if entry.wrap then entry.wrap:Destroy() end end)
+    end
+
+    toastImpl = function(sub, txt, dur)
+        sub, txt = tostring(sub or ""), tostring(txt or "")
+        local key = sub .. "\n" .. txt
+        dur = math.clamp(tonumber(dur) or 3, 2, 10)
+
+        local old = live[key]
+        if old and not old.gone then
+            old.stamp = os.clock()
+            old.dur = dur
+            tween(old.bar, 0.05, { Size = UDim2.new(1, 0, 0, 2) })
+            tween(old.bar, dur, { Size = UDim2.new(0, 0, 0, 2) })
+            return
+        end
+
+        serial = serial + 1
+        local wrap = make("Frame", {
+            Size = UDim2.new(0, 252, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+            LayoutOrder = serial,
+        }, holder)
+        local toast = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0),
+            Position = UDim2.new(0, 26, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundColor3 = T(Color3.fromRGB(16, 16, 18), "bg"),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Active = true,
+        }, wrap)
+        local stroke = make("UIStroke", {
+            Color = C.controlLine, Thickness = 1, Transparency = 1,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        }, toast)
+        local accent = make("Frame", {
+            Size = UDim2.new(0, 3, 1, 0),
+            BackgroundColor3 = C.accent, BackgroundTransparency = 1, BorderSizePixel = 0,
+        }, toast)
+        local content = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+        }, toast)
+        make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, content)
+        make("UIPadding", {
+            PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 10),
+            PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 0),
+        }, content)
+        local title = make("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, Text = sub, TextColor3 = C.text, TextSize = 12,
+            Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+            TextWrapped = true, TextTransparency = 1, LayoutOrder = 1,
+        }, content)
+        local body = make("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, Text = txt, TextColor3 = C.muted, TextSize = 11,
+            Font = Enum.Font.GothamMedium, TextXAlignment = Enum.TextXAlignment.Left,
+            TextWrapped = true, TextTransparency = 1, LayoutOrder = 2,
+        }, content)
+        if txt == "" then body.Visible = false end
+        local gap = make("Frame", { Size = UDim2.new(1, 0, 0, 6), BackgroundTransparency = 1, LayoutOrder = 3 }, content)
+        local bar = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = C.accent,
+            BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = 4,
+        }, content)
+
+        local entry = {
+            key = key, wrap = wrap, toast = toast, bar = bar, dur = dur, stamp = os.clock(), gone = false,
+            fades = {
+                { obj = stroke, goal = { Transparency = 1 } },
+                { obj = accent, goal = { BackgroundTransparency = 1 } },
+                { obj = title, goal = { TextTransparency = 1 } },
+                { obj = body, goal = { TextTransparency = 1 } },
+                { obj = bar, goal = { BackgroundTransparency = 1 } },
+            },
+        }
+        live[key] = entry
+        order[#order + 1] = entry
+        while #order > MAX_TOASTS do dismiss(order[1]) end
+
+        tween(toast, 0.3, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.08 })
+        tween(stroke, 0.3, { Transparency = 0 })
+        tween(accent, 0.3, { BackgroundTransparency = 0 })
+        tween(title, 0.3, { TextTransparency = 0 })
+        tween(body, 0.3, { TextTransparency = 0 })
+        tween(bar, 0.3, { BackgroundTransparency = 0.35 })
+        tween(bar, dur, { Size = UDim2.new(0, 0, 0, 2) })
+
+        toast.InputBegan:Connect(function(input)
+            local t = input.UserInputType
+            if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then dismiss(entry) end
+        end)
+        task.spawn(function()
+            while not entry.gone and os.clock() - entry.stamp < entry.dur do task.wait(0.1) end
+            dismiss(entry)
+        end)
+    end
 end
 
 local function fluidLayer(colors, alphas)
@@ -3763,11 +3902,11 @@ do
                 local endless = isEndless()
                 local e = {
                     color = endless and COLORS.test or nil,
-                    description = "## Result ATD Match\n"
+                    description = "## ATD Match Result\n"
                         .. (endless and "\n" or ("**-- " .. (win and "WIN" or "LOSE") .. " --**\n\n"))
-                        .. "**Usn:** " .. LocalPlayer.Name .. "\n"
+                        .. "**Username:** " .. LocalPlayer.Name .. "\n"
                         .. "**Map:** " .. mapText() .. "\n"
-                        .. "**Time match:** " .. tostring(timeText),
+                        .. "**Match time:** " .. tostring(timeText),
                     fields = {},
                 }
                 if rewardText then
@@ -8360,6 +8499,14 @@ do
         ui.applyTheme(v)
     end)
 
+    createFeature(page, "Notifications", {
+        initial = settings.notifications,
+        onToggle = function(v)
+            settings.notifications = v
+            saveSettings()
+        end,
+    })
+
     createFeature(page, "Show Timer", {
         initial = settings.showTimer,
         onToggle = function(v)
@@ -9116,7 +9263,6 @@ CloseBtn.MouseButton1Click:Connect(function()
         end)
         return
     end
-    notify("Terminated", "Lightn Hub closed. All features stopped.", 2)
     cleanup()
 end)
 

@@ -3674,8 +3674,9 @@ do
                     fetchThumb()
                     if thumbUrl then
                         pcall(function()
-                            local a = item.payload.embeds[1].author
-                            if a then a.icon_url = thumbUrl end
+                            local em = item.payload.embeds[1]
+                            if em.author then em.author.icon_url = thumbUrl end
+                            if em.thumbnail then em.thumbnail.url = thumbUrl end
                         end)
                     end
                     local okBody, body = pcall(HttpService.JSONEncode, HttpService, item.payload)
@@ -3755,10 +3756,16 @@ do
                 end
             end
             e.color = e.color or COLORS[kind] or COLORS.test
-            e.author = e.author or {
-                name = "@" .. LocalPlayer.Name,
-                icon_url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png",
-            }
+            local headshot = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png"
+            if e.author == false then
+                e.author = nil
+            elseif not e.author then
+                e.author = { name = "@" .. LocalPlayer.Name, icon_url = headshot }
+            end
+            if e.thumb then
+                e.thumbnail = { url = headshot }
+                e.thumb = nil
+            end
             e.footer = e.footer or { text = "LIGHTN HUB v" .. VERSION }
             e.timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             return e
@@ -3798,10 +3805,10 @@ do
 
         local KINDS = { "Coin", "Pumpkins", "Ticket", "XP" }
         local SHOW = {
-            Coin = "Coin",
-            Pumpkins = "Pumpkin",
-            Ticket = "Ticket",
-            XP = "XP",
+            Coin = { "Coin", "🪙" },
+            Pumpkins = { "Pumpkin", "🎃" },
+            Ticket = { "Ticket", "🎟️" },
+            XP = { "XP", "✨" },
         }
         -- plus = true: diff code block, every line renders green on all Discord clients
         local function rewardBlock(src, plus)
@@ -3809,9 +3816,10 @@ do
             for _, k in ipairs(KINDS) do
                 local n = src[k]
                 if n and n > 0 then
-                    local name, num = SHOW[k] or k, fmt(n)
-                    rows[#rows + 1] = { name, num }
-                    wName = math.max(wName, #name)
+                    local info = SHOW[k] or { k, "" }
+                    local num = fmt(n)
+                    rows[#rows + 1] = { info[1], num, info[2] }
+                    wName = math.max(wName, #info[1])
                     wNum = math.max(wNum, #num)
                 end
             end
@@ -3819,7 +3827,7 @@ do
             local lines = {}
             for _, r in ipairs(rows) do
                 lines[#lines + 1] = (plus and "+ " or "") .. r[1] .. string.rep(" ", wName - #r[1]) .. "   "
-                    .. string.rep(" ", wNum - #r[2]) .. r[2]
+                    .. string.rep(" ", wNum - #r[2]) .. r[2] .. "  " .. r[3]
             end
             return "```" .. (plus and "diff" or "") .. "\n" .. table.concat(lines, "\n") .. "\n```"
         end
@@ -3921,22 +3929,25 @@ do
                 saveTotals()
                 local rewardText = rewardBlock(got, true)
                 local endless = isEndless()
+                local verdict = endless and "♾️ ENDLESS" or (win and "🏆 WIN" or "💀 LOSE")
+                local desc = "## ATD Match Result\n"
+                    .. "### " .. verdict .. "\n"
+                    .. "||@" .. LocalPlayer.Name .. "||\n\n🗺️ **Map**  \u{00B7}  `" .. mapText() .. "`\n"
+                    .. "🔥 **Streak**  \u{00B7}  `" .. tostring(sNow) .. "`\n"
+                    .. "⏱️ **Time**  \u{00B7}  `" .. tostring(timeText) .. "`"
+                if endless and waveNow.cur then
+                    desc = desc .. "\n**Wave**  \u{00B7}  `" .. tostring(waveNow.cur) .. "`"
+                end
                 local e = {
                     color = endless and COLORS.test or nil,
-                    description = "## " .. (endless and "Endless" or (win and "Victory" or "Defeat")),
-                    fields = {
-                        { name = "Map", value = "`" .. mapText() .. "`", inline = true },
-                        { name = "Streak", value = "`" .. tostring(sNow) .. "`", inline = true },
-                        { name = "Time", value = "`" .. tostring(timeText) .. "`", inline = true },
-                    },
+                    description = desc,
+                    author = false,
+                    fields = {},
                 }
-                if endless and waveNow.cur then
-                    e.fields[#e.fields + 1] = { name = "Wave", value = "`" .. tostring(waveNow.cur) .. "`", inline = true }
-                end
                 if rewardText then
-                    e.fields[#e.fields + 1] = { name = "Rewards", value = rewardText, inline = false }
+                    e.fields[#e.fields + 1] = { name = "🎁 Reward", value = rewardText, inline = false }
                 end
-                e.fields[#e.fields + 1] = { name = "Total", value = totalValue(), inline = false }
+                e.fields[#e.fields + 1] = { name = "📊 Total", value = totalValue(), inline = false }
                 push(win and "win" or "lose", e)
                 end)
                 pending = pending - 1

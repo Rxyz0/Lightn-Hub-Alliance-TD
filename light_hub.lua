@@ -3673,7 +3673,10 @@ do
                     local item = table.remove(queue, 1)
                     fetchThumb()
                     if thumbUrl then
-                        pcall(function() item.payload.embeds[1].thumbnail = { url = thumbUrl } end)
+                        pcall(function()
+                            local a = item.payload.embeds[1].author
+                            if a then a.icon_url = thumbUrl end
+                        end)
                     end
                     local okBody, body = pcall(HttpService.JSONEncode, HttpService, item.payload)
                     if not okBody then
@@ -3752,7 +3755,11 @@ do
                 end
             end
             e.color = e.color or COLORS[kind] or COLORS.test
-            e.thumbnail = { url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png" }
+            e.author = e.author or {
+                name = "@" .. LocalPlayer.Name,
+                icon_url = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=150&height=150&format=png",
+            }
+            e.footer = e.footer or { text = "LIGHTN HUB v" .. VERSION }
             e.timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
             return e
         end
@@ -3782,7 +3789,7 @@ do
         end
 
         function wh.send(kind, title, fields, force, cb)
-            local e = { title = title, fields = {} }
+            local e = { description = "## " .. tostring(title), fields = {} }
             for _, f in ipairs(fields or {}) do
                 e.fields[#e.fields + 1] = { name = tostring(f[1]), value = "`" .. tostring(f[2]) .. "`", inline = true }
             end
@@ -3791,30 +3798,30 @@ do
 
         local KINDS = { "Coin", "Pumpkins", "Ticket", "XP" }
         local SHOW = {
-            Coin = { "Coin", "🪙" },
-            Pumpkins = { "Pumpkin", "🎃" },
-            Ticket = { "Ticket", "🎟️" },
-            XP = { "XP", "✨" },
+            Coin = "Coin",
+            Pumpkins = "Pumpkin",
+            Ticket = "Ticket",
+            XP = "XP",
         }
+        -- plus = true: diff code block, every line renders green on all Discord clients
         local function rewardBlock(src, plus)
             local rows, wName, wNum = {}, 0, 0
             for _, k in ipairs(KINDS) do
                 local n = src[k]
                 if n and n > 0 then
-                    local info = SHOW[k] or { k, "" }
-                    local num = (plus and "+" or "") .. fmt(n)
-                    rows[#rows + 1] = { info[1], num, info[2] }
-                    wName = math.max(wName, #info[1])
+                    local name, num = SHOW[k] or k, fmt(n)
+                    rows[#rows + 1] = { name, num }
+                    wName = math.max(wName, #name)
                     wNum = math.max(wNum, #num)
                 end
             end
             if #rows == 0 then return nil end
             local lines = {}
             for _, r in ipairs(rows) do
-                lines[#lines + 1] = r[1] .. string.rep(" ", wName - #r[1]) .. "  "
-                    .. string.rep(" ", wNum - #r[2]) .. r[2] .. "  " .. r[3]
+                lines[#lines + 1] = (plus and "+ " or "") .. r[1] .. string.rep(" ", wName - #r[1]) .. "   "
+                    .. string.rep(" ", wNum - #r[2]) .. r[2]
             end
-            return "```\n" .. table.concat(lines, "\n") .. "\n```"
+            return "```" .. (plus and "diff" or "") .. "\n" .. table.concat(lines, "\n") .. "\n```"
         end
         local TOTAL_FILE = FS.data("WebhookTotals_" .. tostring(LocalPlayer.UserId))
         local totals = { matches = 0, wins = 0, Coin = 0, Pumpkins = 0, Ticket = 0, XP = 0, since = os.time() }
@@ -3830,6 +3837,14 @@ do
         end)
         local function saveTotals()
             if canFile then pcall(function() writefile(TOTAL_FILE, HttpService:JSONEncode(totals)) end) end
+        end
+
+        local function totalValue()
+            local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
+            local block = rewardBlock(totals, false)
+            return "**" .. fmt(totals.matches) .. "** matches  \u{00B7}  **" .. fmt(totals.wins) .. "** wins (" .. rate .. "%)"
+                .. (block and ("\n" .. block) or "")
+                .. "\n-# since <t:" .. math.floor(totals.since) .. ":R>"
         end
 
         local function readRewards()
@@ -3908,17 +3923,20 @@ do
                 local endless = isEndless()
                 local e = {
                     color = endless and COLORS.test or nil,
-                    description = "## ATD Match Result\n"
-                        .. (endless and "\n" or ("**-- " .. (win and "WIN" or "LOSE") .. " --**\n\n"))
-                        .. "**Username:** " .. LocalPlayer.Name .. "\n"
-                        .. "**Map:** " .. mapText() .. "\n"
-                        .. "**Win streak:** \u{1F525} " .. tostring(sNow) .. "\n"
-                        .. "**Match time:** " .. tostring(timeText),
-                    fields = {},
+                    description = "## " .. (endless and "Endless" or (win and "Victory" or "Defeat")),
+                    fields = {
+                        { name = "Map", value = "`" .. mapText() .. "`", inline = true },
+                        { name = "Streak", value = "`" .. tostring(sNow) .. "`", inline = true },
+                        { name = "Time", value = "`" .. tostring(timeText) .. "`", inline = true },
+                    },
                 }
-                if rewardText then
-                    e.fields[#e.fields + 1] = { name = "-- Reward --", value = rewardText, inline = false }
+                if endless and waveNow.cur then
+                    e.fields[#e.fields + 1] = { name = "Wave", value = "`" .. tostring(waveNow.cur) .. "`", inline = true }
                 end
+                if rewardText then
+                    e.fields[#e.fields + 1] = { name = "Rewards", value = rewardText, inline = false }
+                end
+                e.fields[#e.fields + 1] = { name = "Total", value = totalValue(), inline = false }
                 push(win and "win" or "lose", e)
                 end)
                 pending = pending - 1
@@ -3992,10 +4010,8 @@ do
             if source == "OpenCrate" and type(arg) == "string" and arg ~= "" then src = "Crate: " .. arg end
             push("alert", {
                 color = 16766720,
-                description = "## Rare Unit Drop\n"
-                    .. "**Username:** " .. LocalPlayer.Name .. "\n"
-                    .. "**Source:** " .. src,
-                fields = { { name = "-- Unit (under 1%) --", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
+                description = "## Rare Drop\n-# " .. src,
+                fields = { { name = "Units under 1%", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
             })
         end
         placeHook.scan = wh.scan
@@ -4043,10 +4059,8 @@ do
             end
             push("alert", {
                 color = 16766720,
-                description = "## Rare Unit Drop\n"
-                    .. "**Username:** " .. LocalPlayer.Name .. "\n"
-                    .. "**Source:** Crate: " .. tostring(label or id),
-                fields = { { name = "-- Unit (under 1%) --", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
+                description = "## Rare Drop\n-# Crate: " .. tostring(label or id),
+                fields = { { name = "Units under 1%", value = "```\n" .. table.concat(lines, "\n") .. "\n```", inline = false } },
             })
         end
 
@@ -4057,16 +4071,11 @@ do
         end)
 
         local function sendTotals(resetNote)
-            local rate = math.floor(totals.wins / math.max(totals.matches, 1) * 100 + 0.5)
-            local block = rewardBlock(totals, false)
             local e = {
-                title = resetNote and "Totals Reset" or "Total Summary",
                 color = 3447003,
+                description = "## " .. (resetNote and "Total reset" or "Total"),
                 fields = {
-                    { name = "Matches", value = "`" .. tostring(totals.matches) .. "`", inline = true },
-                    { name = "Wins", value = "`" .. totals.wins .. " (" .. rate .. "%)`", inline = true },
-                    { name = "Since", value = "<t:" .. math.floor(totals.since) .. ":R>", inline = true },
-                    { name = "Total Rewards", value = block or "No rewards recorded yet", inline = false },
+                    { name = "Summary", value = totalValue(), inline = false },
                 },
             }
             push("test", e, true, function(ok)
@@ -5457,6 +5466,7 @@ do
     local card = createFeature(page, "Units", { noToggle = true, bodyHeight = 64 })
     card.card.LayoutOrder = -2
     local selected, statusUntil, selling = nil, 0, false
+    local leaveOne, modeChev = false, nil
 
     local function say(t, color)
         statusUntil = os.clock() + 4
@@ -5524,7 +5534,11 @@ do
         end
         local amount
         if all then
-            amount = #group.ids
+            amount = leaveOne and (#group.ids - 1) or #group.ids
+            if amount < 1 then
+                say("Only 1 left, nothing to sell", C.warn)
+                return nil
+            end
         else
             amount = tonumber(amountBox.Text)
             if not amount or amount < 1 then
@@ -5588,7 +5602,8 @@ do
         armed = btn
         btn.Text = "Sure?"
         btn.TextColor3 = C.warn
-        say((all and "Sell all " or "Sell ") .. amount .. " " .. group.n .. "?", C.warn)
+        say(((all and not leaveOne) and "Sell all " or "Sell ") .. amount .. " " .. group.n
+            .. ((all and leaveOne) and " (leave 1)?" or "?"), C.warn)
         task.delay(3, function()
             if armed == btn then disarm() end
         end)
@@ -5598,10 +5613,27 @@ do
         Position = UDim2.new(0, 98, 0, 36),
     }, "Sell", function() press(sellBtn, false) end)
     allBtn = createButton(card.body, {
-        Size = UDim2.new(0.5, -52, 0, 28),
+        Size = UDim2.new(0.5, -82, 0, 28),
         Position = UDim2.new(0.5, 52, 0, 36),
     }, "Sell all", function() press(allBtn, true) end)
     base[sellBtn], base[allBtn] = "Sell", "Sell all"
+
+    local modeBtn = createButton(card.body, {
+        Size = UDim2.new(0, 26, 0, 28),
+        Position = UDim2.new(1, -26, 0, 36),
+    }, "", function()
+        openList(allBtn, {
+            { label = "Sell all", value = false },
+            { label = "Leave 1", value = true },
+        }, leaveOne, function(v)
+            disarm()
+            leaveOne = v
+            local t = v and "Leave 1" or "Sell all"
+            allBtn.Text = t
+            base[allBtn] = t
+        end, modeChev)
+    end)
+    modeChev = createChevron(modeBtn, -7)
 
     runLoop(function()
         refresh(false)

@@ -83,49 +83,101 @@ C.accent = C.white
 local theme = { name = "Default", rev = {} }
 local toTheme, fromTheme, T, setPalette
 do
-    -- every non-default theme recolors the neutral grays through its own ramp
+    local function rgb(r, g, b)
+        return Color3.fromRGB(math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
+    end
+    -- piecewise-linear lookup: stops = { {lightness, r, g, b}, ... } sorted by lightness
+    local function ramp(stops, l)
+        if l <= stops[1][1] then
+            local s = stops[1]
+            return rgb(s[2], s[3], s[4])
+        end
+        for i = 2, #stops do
+            local a, b = stops[i - 1], stops[i]
+            if l <= b[1] then
+                local k = (l - a[1]) / (b[1] - a[1])
+                return rgb(a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k, a[4] + (b[4] - a[4]) * k)
+            end
+        end
+        local s = stops[#stops]
+        return rgb(s[2], s[3], s[4])
+    end
+
+    -- Halloween: dark ramp with orange highlights
+    local H_ACCENT = Color3.fromRGB(255, 140, 24)
+    local H_BONE = Color3.fromRGB(255, 238, 212)
+    local H_STOPS = {
+        { 0, 9, 6, 4 }, { 0.12, 26, 15, 8 }, { 0.22, 46, 27, 12 },
+        { 0.33, 78, 44, 18 }, { 0.6, 168, 128, 86 }, { 1, 222, 190, 148 },
+    }
+    local function hDark(l)
+        return ramp(H_STOPS, math.clamp(l / 215, 0, 1))
+    end
+    local function halloweenFn(kind, l)
+        if kind == "bg" then
+            return (l >= 215) and H_ACCENT or hDark(l)
+        elseif kind == "base" then
+            if l >= 215 then return nil end
+            return hDark(l)
+        elseif kind == "txt" then
+            return (l >= 215) and H_BONE or hDark(l)
+        elseif l >= 150 then
+            local k = (l - 150) / 105
+            return rgb(205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k)
+        end
+        return hDark(l)
+    end
+
+    -- Golden: a light, metallic theme. The UI's lightness is inverted, so dark
+    -- surfaces become cream / gold and the white fills become near-black buttons.
+    local G_BG = {
+        { 0, 255, 250, 234 }, { 10, 255, 249, 228 }, { 20, 250, 238, 190 },
+        { 28, 246, 228, 166 }, { 34, 242, 220, 148 }, { 48, 234, 204, 108 },
+        { 64, 226, 188, 84 }, { 96, 206, 164, 50 }, { 150, 188, 140, 28 },
+        { 196, 92, 66, 18 }, { 214, 38, 27, 7 }, { 232, 26, 19, 5 },
+        { 244, 26, 19, 5 }, { 255, 176, 118, 10 },
+    }
+    local G_TXT = {
+        { 0, 255, 247, 222 }, { 30, 255, 242, 208 }, { 60, 250, 230, 176 },
+        { 84, 140, 98, 24 }, { 130, 78, 53, 8 }, { 190, 66, 46, 10 },
+        { 232, 44, 30, 6 }, { 255, 22, 15, 3 },
+    }
+    local G_GEN = {
+        { 0, 176, 120, 10 }, { 8, 188, 134, 18 }, { 9, 190, 138, 22 },
+        { 24, 226, 180, 56 }, { 26, 232, 188, 62 }, { 34, 236, 196, 80 },
+        { 46, 246, 216, 118 }, { 54, 206, 156, 44 }, { 66, 252, 228, 134 },
+        { 70, 204, 152, 38 }, { 90, 236, 196, 84 }, { 120, 214, 160, 36 },
+        { 150, 250, 226, 140 }, { 185, 255, 238, 176 }, { 215, 255, 247, 212 },
+        { 255, 255, 253, 244 },
+    }
+    local function goldenFn(kind, l)
+        if kind == "bg" then
+            return ramp(G_BG, l)
+        elseif kind == "base" then
+            if l >= 215 then return nil end
+            return ramp(G_BG, l)
+        elseif kind == "txt" then
+            return ramp(G_TXT, l)
+        end
+        return ramp(G_GEN, l)
+    end
+
     local DEFS = {
         Halloween = {
-            accent = Color3.fromRGB(255, 140, 24),
-            bone = Color3.fromRGB(255, 238, 212),
-            stops = {
-                { 0, 9, 6, 4 }, { 0.12, 26, 15, 8 }, { 0.22, 46, 27, 12 },
-                { 0.33, 78, 44, 18 }, { 0.6, 168, 128, 86 }, { 1, 222, 190, 148 },
-            },
-            hot = function(k)
-                return 205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k
-            end,
+            fn = halloweenFn,
+            accent = H_ACCENT,
+            hi = H_BONE,
         },
         Golden = {
-            accent = Color3.fromRGB(240, 186, 52),
-            bone = Color3.fromRGB(255, 244, 214),
-            stops = {
-                { 0, 8, 7, 4 }, { 0.12, 22, 18, 8 }, { 0.22, 41, 33, 12 },
-                { 0.33, 72, 57, 19 }, { 0.6, 172, 146, 86 }, { 1, 232, 214, 166 },
-            },
-            hot = function(k)
-                return 172 + (255 - 172) * k, 122 + (224 - 122) * k, 22 + (122 - 22) * k
-            end,
+            fn = goldenFn,
+            accent = Color3.fromRGB(176, 118, 10),
+            hi = Color3.fromRGB(22, 15, 3),
+            warn = Color3.fromRGB(140, 52, 4),
+            light = true,
         },
     }
     theme.defs = DEFS
 
-    local function rgb(r, g, b)
-        return Color3.fromRGB(math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
-    end
-    local function darkRamp(def, l)
-        local stops = def.stops
-        local t = math.clamp(l / 215, 0, 1)
-        for i = 2, #stops do
-            local a, b = stops[i - 1], stops[i]
-            if t <= b[1] then
-                local k = (t - a[1]) / (b[1] - a[1])
-                return rgb(a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k, a[4] + (b[4] - a[4]) * k)
-            end
-        end
-        local last = stops[#stops]
-        return rgb(last[2], last[3], last[4])
-    end
     local function colorKey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
     end
@@ -135,20 +187,8 @@ do
         if not def then return c end
         local r, g, b = c.R * 255, c.G * 255, c.B * 255
         if math.max(r, g, b) - math.min(r, g, b) > 9 then return c end
-        local l = (r + g + b) / 3
-        local out
-        if kind == "bg" then
-            out = (l >= 215) and def.accent or darkRamp(def, l)
-        elseif kind == "base" then
-            if l >= 215 then return c end
-            out = darkRamp(def, l)
-        elseif kind == "txt" then
-            out = (l >= 215) and def.bone or darkRamp(def, l)
-        elseif l >= 150 then
-            out = rgb(def.hot((l - 150) / 105))
-        else
-            out = darkRamp(def, l)
-        end
+        local out = def.fn(kind, (r + g + b) / 3)
+        if not out then return c end
         local rev = theme.rev[name]
         if not rev then
             rev = {}
@@ -175,8 +215,31 @@ do
         for k, v in pairs(DEF) do
             C[k] = (def and PALETTE_KIND[k]) and toTheme(name, PALETTE_KIND[k], v) or v
         end
-        C.hi = def and def.bone or DEF.white
+        if def and def.warn then C.warn = def.warn end
+        C.hi = def and def.hi or DEF.white
         C.accent = def and def.accent or DEF.white
+    end
+
+    -- gradient used by the sliding bars/cards; Golden gets a bright sheen in the middle
+    function theme.moverSeq(lo, hi)
+        if theme.name == "Golden" then
+            local a, b = toTheme("Golden", "gen", lo), toTheme("Golden", "gen", hi)
+            local shine = b:Lerp(Color3.new(1, 1, 1), 0.6)
+            local soft = a:Lerp(b, 0.65)
+            return ColorSequence.new({
+                ColorSequenceKeypoint.new(0, a),
+                ColorSequenceKeypoint.new(0.3, soft),
+                ColorSequenceKeypoint.new(0.5, shine),
+                ColorSequenceKeypoint.new(0.7, soft),
+                ColorSequenceKeypoint.new(1, a),
+            })
+        end
+        lo, hi = T(lo, "gen"), T(hi, "gen")
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0, lo),
+            ColorSequenceKeypoint.new(0.5, hi),
+            ColorSequenceKeypoint.new(1, lo),
+        })
     end
 end
 
@@ -1617,16 +1680,11 @@ end
 
 local movers = {}
 local function swing(frame, lo, hi, base, amp, speed, phase)
-    lo, hi = T(lo, "gen"), T(hi, "gen")
     local g = make("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, lo),
-            ColorSequenceKeypoint.new(0.5, hi),
-            ColorSequenceKeypoint.new(1, lo),
-        }),
+        Color = theme.moverSeq(lo, hi),
         Rotation = base,
     }, frame)
-    movers[#movers + 1] = { g = g, base = base, amp = amp, speed = speed, phase = phase or 0 }
+    movers[#movers + 1] = { g = g, base = base, amp = amp, speed = speed, phase = phase or 0, lo = lo, hi = hi }
     return g
 end
 
@@ -1643,18 +1701,18 @@ local function titleSeq(t)
         end
         return ColorSequence.new(list)
     elseif theme.name == "Golden" then
-        -- molten gold: warm base that breathes, with a wide pale sheen gliding across
-        local p = (t * 0.22) % 2.2 - 0.6
+        -- dark bronze lettering (the label itself is white, the gradient tints it) with a
+        -- warm glint that slides across; stays readable on the gold header
+        local p = (t * 0.25) % 2.2 - 0.6
         local list = {}
         for i = 0, 10 do
             local x = i / 10
-            local base = 0.5 + 0.5 * math.sin((x * 1.1 - t * 0.18) * math.pi * 2)
-            local k = math.max(0, 1 - math.abs(x - p) / 0.38)
+            local k = math.max(0, 1 - math.abs(x - p) / 0.3)
             k = k * k * (3 - 2 * k)
             list[#list + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(
-                math.floor(176 + 52 * base + 79 * k),
-                math.floor(124 + 58 * base + 106 * k),
-                math.floor(24 + 26 * base + 176 * k)))
+                math.floor(46 + 96 * k),
+                math.floor(30 + 66 * k),
+                math.floor(6 + 20 * k)))
         end
         return ColorSequence.new(list)
     end
@@ -1873,9 +1931,13 @@ do
     local hole = part(4, 4, 0, Color3.fromRGB(14, 14, 16), true)
     local gscale = make("UIScale", { Scale = 1 }, icon)
 
-    function ui.gearTheme(on)
-        for _, p in ipairs(gparts) do p.BackgroundColor3 = on and GEAR_ORANGE or Color3.fromRGB(255, 255, 255) end
-        hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4) or Color3.fromRGB(14, 14, 16)
+    function ui.gearTheme(on, gold)
+        for _, p in ipairs(gparts) do
+            p.BackgroundColor3 = on and GEAR_ORANGE
+                or gold and Color3.fromRGB(44, 30, 6) or Color3.fromRGB(255, 255, 255)
+        end
+        hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4)
+            or gold and Color3.fromRGB(226, 180, 56) or Color3.fromRGB(14, 14, 16)
         gscale.Scale = 1
     end
     ui.gearBtn, ui.gear = btn, icon
@@ -9799,7 +9861,7 @@ function ui.decorRefresh()
     ui.titleDX = (on and decor.gearBuddy == "Pumpkin") and 6 or 0
     TitleRow.Position = UDim2.new(0, 34 + ui.titleDX, 0, 0)
     if ui.minimized and oldDX ~= ui.titleDX and ui.relayoutMini then ui.relayoutMini() end
-    if ui.gearTheme then ui.gearTheme(on) end
+    if ui.gearTheme then ui.gearTheme(on, theme.name == "Golden") end
     for _, r in ipairs(decor.roots) do
         r.Visible = on and not (decor.hideMini[r] and ui.minimized)
     end
@@ -9847,6 +9909,10 @@ do
         setPalette(name)
 
         local skip = {}
+        -- sliding gradients and the title are restyled explicitly below
+        for _, m in ipairs(movers) do skip[m.g] = true end
+        skip[TitleLabel] = true
+        skip[fluid.titleGrad] = true
         for _, root in ipairs(decor.roots) do
             skip[root] = true
             for _, d in ipairs(root:GetDescendants()) do skip[d] = true end
@@ -9868,7 +9934,11 @@ do
         for _, m in ipairs(movers) do
             m.g.Offset = Vector2.new(0, 0)
             m.g.Rotation = m.base
+            m.g.Color = theme.moverSeq(m.lo, m.hi)
         end
+        -- the title is tinted by its gradient, so a light theme needs white text underneath
+        TitleLabel.TextColor3 = theme.defs[name] and theme.defs[name].light and C.white or C.hi
+        fluid.titleGrad.Color = titleSeq(fluid.t)
 
         themePass = themePass + 1
         local my = themePass

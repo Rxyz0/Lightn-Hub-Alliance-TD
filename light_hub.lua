@@ -128,27 +128,26 @@ do
         return hDark(l)
     end
 
-    -- Golden: a light, metallic theme. The UI's lightness is inverted, so dark
-    -- surfaces become cream / gold and the white fills become near-black buttons.
+    -- Golden: dark teal base with metallic gold used only as an accent
+    -- (colors sampled from the Alliance Tower Defense key art)
     local G_BG = {
-        { 0, 255, 250, 234 }, { 10, 255, 249, 228 }, { 20, 250, 238, 190 },
-        { 28, 246, 228, 166 }, { 34, 242, 220, 148 }, { 48, 234, 204, 108 },
-        { 64, 226, 188, 84 }, { 96, 206, 164, 50 }, { 150, 188, 140, 28 },
-        { 196, 92, 66, 18 }, { 214, 38, 27, 7 }, { 232, 26, 19, 5 },
-        { 244, 26, 19, 5 }, { 255, 176, 118, 10 },
+        { 0, 8, 16, 15 }, { 10, 13, 23, 22 }, { 20, 23, 39, 37 },
+        { 28, 28, 46, 43 }, { 34, 32, 52, 49 }, { 48, 43, 68, 62 },
+        { 64, 58, 84, 68 }, { 96, 112, 106, 36 }, { 150, 168, 132, 16 },
+        { 196, 205, 168, 22 }, { 214, 251, 208, 12 }, { 255, 251, 208, 12 },
     }
     local G_TXT = {
-        { 0, 255, 247, 222 }, { 30, 255, 242, 208 }, { 60, 250, 230, 176 },
-        { 84, 140, 98, 24 }, { 130, 78, 53, 8 }, { 190, 66, 46, 10 },
-        { 232, 44, 30, 6 }, { 255, 22, 15, 3 },
+        { 0, 18, 30, 28 }, { 40, 22, 36, 33 }, { 60, 70, 76, 40 },
+        { 84, 98, 100, 52 }, { 130, 158, 152, 86 }, { 190, 212, 204, 138 },
+        { 232, 238, 230, 186 }, { 255, 255, 238, 140 },
     }
     local G_GEN = {
-        { 0, 176, 120, 10 }, { 8, 188, 134, 18 }, { 9, 190, 138, 22 },
-        { 24, 226, 180, 56 }, { 26, 232, 188, 62 }, { 34, 236, 196, 80 },
-        { 46, 246, 216, 118 }, { 54, 206, 156, 44 }, { 66, 252, 228, 134 },
-        { 70, 204, 152, 38 }, { 90, 236, 196, 84 }, { 120, 214, 160, 36 },
-        { 150, 250, 226, 140 }, { 185, 255, 238, 176 }, { 215, 255, 247, 212 },
-        { 255, 255, 253, 244 },
+        { 0, 10, 20, 19 }, { 8, 14, 26, 25 }, { 9, 14, 26, 25 },
+        { 24, 22, 38, 36 }, { 26, 24, 40, 38 }, { 34, 34, 58, 52 },
+        { 46, 36, 60, 54 }, { 54, 84, 72, 22 }, { 66, 52, 84, 70 },
+        { 70, 150, 120, 24 }, { 90, 120, 110, 34 }, { 120, 144, 136, 41 },
+        { 150, 192, 149, 13 }, { 185, 237, 193, 32 }, { 205, 245, 225, 90 },
+        { 215, 241, 236, 131 }, { 255, 255, 248, 200 },
     }
     local function goldenFn(kind, l)
         if kind == "bg" then
@@ -170,10 +169,9 @@ do
         },
         Golden = {
             fn = goldenFn,
-            accent = Color3.fromRGB(176, 118, 10),
-            hi = Color3.fromRGB(22, 15, 3),
-            warn = Color3.fromRGB(140, 52, 4),
-            light = true,
+            accent = Color3.fromRGB(251, 208, 12),
+            hi = Color3.fromRGB(255, 238, 140),
+            whiteTitle = true,
         },
     }
     theme.defs = DEFS
@@ -215,16 +213,15 @@ do
         for k, v in pairs(DEF) do
             C[k] = (def and PALETTE_KIND[k]) and toTheme(name, PALETTE_KIND[k], v) or v
         end
-        if def and def.warn then C.warn = def.warn end
         C.hi = def and def.hi or DEF.white
         C.accent = def and def.accent or DEF.white
     end
 
-    -- gradient used by the sliding bars/cards; Golden gets a bright sheen in the middle
-    function theme.moverSeq(lo, hi)
-        if theme.name == "Golden" then
-            local a, b = toTheme("Golden", "gen", lo), toTheme("Golden", "gen", hi)
-            local shine = b:Lerp(Color3.new(1, 1, 1), 0.6)
+    -- gradient used by the sliding bars/cards; the Golden header is a lit gold bar
+    function theme.moverSeq(lo, hi, role)
+        if theme.name == "Golden" and role == "header" then
+            local a, b = Color3.fromRGB(184, 138, 14), Color3.fromRGB(251, 208, 12)
+            local shine = b:Lerp(Color3.new(1, 1, 1), 0.55)
             local soft = a:Lerp(b, 0.65)
             return ColorSequence.new({
                 ColorSequenceKeypoint.new(0, a),
@@ -241,6 +238,7 @@ do
             ColorSequenceKeypoint.new(1, lo),
         })
     end
+    theme.hdrText = Color3.fromRGB(22, 34, 31)
 end
 
 local DELAY_OPTIONS = {
@@ -1358,10 +1356,10 @@ make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplySt
 if game.PlaceId == LOBBY_PLACE then
     local hw = settings.theme == "Halloween"
     local gd = settings.theme == "Golden"
-    local ACC = hw and Color3.fromRGB(255, 140, 24) or gd and Color3.fromRGB(240, 186, 52) or Color3.fromRGB(226, 226, 230)
-    local TXT = hw and Color3.fromRGB(255, 214, 80) or gd and Color3.fromRGB(255, 232, 160) or Color3.fromRGB(236, 236, 240)
-    local TRACK = hw and Color3.fromRGB(130, 64, 14) or gd and Color3.fromRGB(110, 82, 20) or Color3.fromRGB(92, 92, 98)
-    local DIM = hw and Color3.fromRGB(8, 5, 3) or gd and Color3.fromRGB(7, 6, 3) or Color3.fromRGB(6, 6, 7)
+    local ACC = hw and Color3.fromRGB(255, 140, 24) or gd and Color3.fromRGB(251, 208, 12) or Color3.fromRGB(226, 226, 230)
+    local TXT = hw and Color3.fromRGB(255, 214, 80) or gd and Color3.fromRGB(255, 238, 140) or Color3.fromRGB(236, 236, 240)
+    local TRACK = hw and Color3.fromRGB(130, 64, 14) or gd and Color3.fromRGB(110, 96, 20) or Color3.fromRGB(92, 92, 98)
+    local DIM = hw and Color3.fromRGB(8, 5, 3) or gd and Color3.fromRGB(5, 12, 11) or Color3.fromRGB(6, 6, 7)
     MainFrame.Visible = false
 
     local root = make("CanvasGroup", {
@@ -1701,8 +1699,8 @@ local function titleSeq(t)
         end
         return ColorSequence.new(list)
     elseif theme.name == "Golden" then
-        -- dark bronze lettering (the label itself is white, the gradient tints it) with a
-        -- warm glint that slides across; stays readable on the gold header
+        -- dark teal lettering (the label itself is white, the gradient tints it) with a
+        -- bronze glint that slides across; stays readable on the gold header
         local p = (t * 0.25) % 2.2 - 0.6
         local list = {}
         for i = 0, 10 do
@@ -1710,9 +1708,9 @@ local function titleSeq(t)
             local k = math.max(0, 1 - math.abs(x - p) / 0.3)
             k = k * k * (3 - 2 * k)
             list[#list + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(
-                math.floor(46 + 96 * k),
-                math.floor(30 + 66 * k),
-                math.floor(6 + 20 * k)))
+                math.floor(22 + 104 * k),
+                math.floor(36 + 54 * k),
+                math.floor(32 - 20 * k)))
         end
         return ColorSequence.new(list)
     end
@@ -1780,7 +1778,7 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
             m.g.Offset = Vector2.new(o, o)
         end
     elseif theme.name == "Golden" then
-        -- liquid gold: slow diagonal swells on the backdrop, a sheen that sweeps the bars
+        -- slow diagonal swells on the backdrop, a gold sheen sweeping the header
         local s = math.sin(t * 0.27)
         local c = math.cos(t * 0.19 + 0.8)
         fluid.gradA.Rotation = 32 + s * 16
@@ -1788,9 +1786,15 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
         fluid.gradB.Rotation = 212 - c * 16
         fluid.gradB.Offset = Vector2.new(-c * 0.45, 0)
         for _, m in ipairs(movers) do
-            local o = (t * 0.07 * (0.6 + m.speed) + m.phase * 0.31) % 2 - 1
-            m.g.Rotation = m.base + 14
-            m.g.Offset = Vector2.new(o, 0)
+            if m.role == "header" then
+                -- the gold bar gets a sheen that sweeps across and restarts seamlessly
+                local o = (t * 0.1) % 2 - 1
+                m.g.Rotation = m.base + 14
+                m.g.Offset = Vector2.new(o, 0)
+            else
+                m.g.Rotation = m.base
+                m.g.Offset = Vector2.new(math.sin(t * 0.12 * (0.6 + m.speed) + m.phase) * 0.3, 0)
+            end
         end
     else
         fluid.gradA.Rotation = (t * 4) % 360
@@ -1934,10 +1938,10 @@ do
     function ui.gearTheme(on, gold)
         for _, p in ipairs(gparts) do
             p.BackgroundColor3 = on and GEAR_ORANGE
-                or gold and Color3.fromRGB(44, 30, 6) or Color3.fromRGB(255, 255, 255)
+                or gold and Color3.fromRGB(22, 34, 31) or Color3.fromRGB(255, 255, 255)
         end
         hole.BackgroundColor3 = on and Color3.fromRGB(34, 12, 4)
-            or gold and Color3.fromRGB(226, 180, 56) or Color3.fromRGB(14, 14, 16)
+            or gold and Color3.fromRGB(226, 184, 20) or Color3.fromRGB(14, 14, 16)
         gscale.Scale = 1
     end
     ui.gearBtn, ui.gear = btn, icon
@@ -9833,7 +9837,7 @@ local closeArmed = false
 CloseBtn.MouseButton1Click:Connect(function()
     if not closeArmed then
         closeArmed = true
-        for _, b in ipairs(CloseBars) do b.BackgroundColor3 = C.warn end
+        for _, b in ipairs(CloseBars) do b.BackgroundColor3 = ui.closeWarn or C.warn end
         notify("Close", "Press X again within 3 seconds to close the script", 3)
         task.delay(3, function()
             closeArmed = false
@@ -9849,8 +9853,10 @@ decor.style = "Tree"
 function ui.decorRefresh()
     local on = theme.name == "Halloween"
 
-    local minCol = on and Color3.fromRGB(226, 214, 188) or C.text
-    ui.closeNormal = on and Color3.fromRGB(196, 52, 16) or C.text
+    local gold = theme.name == "Golden"
+    local minCol = on and Color3.fromRGB(226, 214, 188) or gold and theme.hdrText or C.text
+    ui.closeNormal = on and Color3.fromRGB(196, 52, 16) or gold and theme.hdrText or C.text
+    ui.closeWarn = gold and Color3.fromRGB(150, 34, 10) or nil
     MinLine.BackgroundColor3 = minCol
     local mst = MinBox:FindFirstChildOfClass("UIStroke")
     if mst then mst.Color = minCol end
@@ -9932,13 +9938,45 @@ do
             return c
         end
         for _, m in ipairs(movers) do
+            m.role = (m.g.Parent == Header) and "header" or nil
             m.g.Offset = Vector2.new(0, 0)
             m.g.Rotation = m.base
-            m.g.Color = theme.moverSeq(m.lo, m.hi)
+            m.g.Color = theme.moverSeq(m.lo, m.hi, m.role)
         end
-        -- the title is tinted by its gradient, so a light theme needs white text underneath
-        TitleLabel.TextColor3 = theme.defs[name] and theme.defs[name].light and C.white or C.hi
+        -- header texts sit on the gold bar in Golden, so they get a dark ink instead of the palette
+        theme.hdr = theme.hdr or {}
+        for _, d in ipairs(Header:GetDescendants()) do
+            if (d:IsA("TextLabel") or d:IsA("TextButton")) and not skip[d] and d ~= TitleLabel then
+                skip[d] = true
+                local orig = theme.hdr[d]
+                if not orig then
+                    orig = d.TextColor3
+                    if theme.defs[old] then orig = fromTheme(old, "txt", orig) end
+                    theme.hdr[d] = orig
+                end
+                if name == "Golden" then
+                    d.TextColor3 = theme.hdrText
+                else
+                    d.TextColor3 = theme.defs[name] and toTheme(name, "txt", orig) or orig
+                end
+            end
+        end
+        -- the title is tinted by its gradient, so the Golden title needs white text underneath
+        TitleLabel.TextColor3 = (theme.defs[name] and theme.defs[name].whiteTitle) and C.white or C.hi
         fluid.titleGrad.Color = titleSeq(fluid.t)
+        -- keep the backdrop swirl faint in Golden so text stays readable on the dark teal
+        fluid.alpha0 = fluid.alpha0 or { fluid.gradA.Transparency, fluid.gradB.Transparency }
+        local function faint(seq, f)
+            if f == 1 then return seq end
+            local kps = {}
+            for i, k in ipairs(seq.Keypoints) do
+                kps[i] = NumberSequenceKeypoint.new(k.Time, 1 - (1 - k.Value) * f)
+            end
+            return NumberSequence.new(kps)
+        end
+        local keep = (name == "Golden") and 0.5 or 1
+        fluid.gradA.Transparency = faint(fluid.alpha0[1], keep)
+        fluid.gradB.Transparency = faint(fluid.alpha0[2], keep)
 
         themePass = themePass + 1
         local my = themePass

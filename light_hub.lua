@@ -81,73 +81,102 @@ C.hi = C.white
 C.accent = C.white
 
 local theme = { name = "Default", rev = {} }
-local toHalloween, fromHalloween, T, setPalette
+local toTheme, fromTheme, T, setPalette
 do
-    local ACCENT = Color3.fromRGB(255, 140, 24)
-    local BONE = Color3.fromRGB(255, 238, 212)
-    local DARK_STOPS = {
-        { 0, 9, 6, 4 }, { 0.12, 26, 15, 8 }, { 0.22, 46, 27, 12 },
-        { 0.33, 78, 44, 18 }, { 0.6, 168, 128, 86 }, { 1, 222, 190, 148 },
+    -- every non-default theme recolors the neutral grays through its own ramp
+    local DEFS = {
+        Halloween = {
+            accent = Color3.fromRGB(255, 140, 24),
+            bone = Color3.fromRGB(255, 238, 212),
+            stops = {
+                { 0, 9, 6, 4 }, { 0.12, 26, 15, 8 }, { 0.22, 46, 27, 12 },
+                { 0.33, 78, 44, 18 }, { 0.6, 168, 128, 86 }, { 1, 222, 190, 148 },
+            },
+            hot = function(k)
+                return 205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k
+            end,
+        },
+        Golden = {
+            accent = Color3.fromRGB(240, 186, 52),
+            bone = Color3.fromRGB(255, 244, 214),
+            stops = {
+                { 0, 8, 7, 4 }, { 0.12, 22, 18, 8 }, { 0.22, 41, 33, 12 },
+                { 0.33, 72, 57, 19 }, { 0.6, 172, 146, 86 }, { 1, 232, 214, 166 },
+            },
+            hot = function(k)
+                return 172 + (255 - 172) * k, 122 + (224 - 122) * k, 22 + (122 - 22) * k
+            end,
+        },
     }
+    theme.defs = DEFS
+
     local function rgb(r, g, b)
         return Color3.fromRGB(math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
     end
-    local function darkRamp(l)
+    local function darkRamp(def, l)
+        local stops = def.stops
         local t = math.clamp(l / 215, 0, 1)
-        for i = 2, #DARK_STOPS do
-            local a, b = DARK_STOPS[i - 1], DARK_STOPS[i]
+        for i = 2, #stops do
+            local a, b = stops[i - 1], stops[i]
             if t <= b[1] then
                 local k = (t - a[1]) / (b[1] - a[1])
                 return rgb(a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k, a[4] + (b[4] - a[4]) * k)
             end
         end
-        return rgb(222, 190, 148)
+        local last = stops[#stops]
+        return rgb(last[2], last[3], last[4])
     end
     local function colorKey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
     end
 
-    function toHalloween(kind, c)
+    function toTheme(name, kind, c)
+        local def = DEFS[name]
+        if not def then return c end
         local r, g, b = c.R * 255, c.G * 255, c.B * 255
         if math.max(r, g, b) - math.min(r, g, b) > 9 then return c end
         local l = (r + g + b) / 3
         local out
         if kind == "bg" then
-            out = (l >= 215) and ACCENT or darkRamp(l)
+            out = (l >= 215) and def.accent or darkRamp(def, l)
         elseif kind == "base" then
             if l >= 215 then return c end
-            out = darkRamp(l)
+            out = darkRamp(def, l)
         elseif kind == "txt" then
-            out = (l >= 215) and BONE or darkRamp(l)
+            out = (l >= 215) and def.bone or darkRamp(def, l)
         elseif l >= 150 then
-
-            local k = (l - 150) / 105
-            out = rgb(205 + (255 - 205) * k, 78 + (176 - 78) * k, 10 + (32 - 10) * k)
+            out = rgb(def.hot((l - 150) / 105))
         else
-            out = darkRamp(l)
+            out = darkRamp(def, l)
         end
-        theme.rev[kind .. colorKey(out)] = c
+        local rev = theme.rev[name]
+        if not rev then
+            rev = {}
+            theme.rev[name] = rev
+        end
+        rev[kind .. colorKey(out)] = c
         return out
     end
-    function fromHalloween(kind, c)
-        return theme.rev[kind .. colorKey(c)] or c
+    function fromTheme(name, kind, c)
+        local rev = theme.rev[name]
+        return rev and rev[kind .. colorKey(c)] or c
     end
 
     function T(c, kind)
-        if theme.name ~= "Halloween" then return c end
-        return toHalloween(kind or "gen", c)
+        if not DEFS[theme.name] then return c end
+        return toTheme(theme.name, kind or "gen", c)
     end
     local PALETTE_KIND = {
         text = "txt", muted = "txt", dim = "txt", ink = "txt",
         line = "gen", control = "bg", controlLine = "gen", hover = "bg",
     }
     function setPalette(name)
-        local on = (name == "Halloween")
+        local def = DEFS[name]
         for k, v in pairs(DEF) do
-            C[k] = (on and PALETTE_KIND[k]) and toHalloween(PALETTE_KIND[k], v) or v
+            C[k] = (def and PALETTE_KIND[k]) and toTheme(name, PALETTE_KIND[k], v) or v
         end
-        C.hi = on and BONE or DEF.white
-        C.accent = on and ACCENT or DEF.white
+        C.hi = def and def.bone or DEF.white
+        C.accent = def and def.accent or DEF.white
     end
 end
 
@@ -1079,7 +1108,7 @@ local function loadSettings()
     if type(data.antiAfk) == "boolean" then settings.antiAfk = data.antiAfk end
     if type(data.showTimer) == "boolean" then settings.showTimer = data.showTimer end
     if type(data.notifications) == "boolean" then settings.notifications = data.notifications end
-    if data.theme == "Default" or data.theme == "Halloween" then settings.theme = data.theme end
+    if data.theme == "Default" or data.theme == "Halloween" or data.theme == "Golden" then settings.theme = data.theme end
     if type(data.cheapestFirst) == "boolean" then settings.cheapestFirst = data.cheapestFirst end
     if type(data.upgradeOne) == "boolean" then settings.upgradeOne = data.upgradeOne end
     if type(data.upgradeAll) == "boolean" then settings.upgradeAll = data.upgradeAll end
@@ -1265,10 +1294,11 @@ make("UIStroke", { Color = C.line, Thickness = 1, ApplyStrokeMode = Enum.ApplySt
 
 if game.PlaceId == LOBBY_PLACE then
     local hw = settings.theme == "Halloween"
-    local ACC = hw and Color3.fromRGB(255, 140, 24) or Color3.fromRGB(226, 226, 230)
-    local TXT = hw and Color3.fromRGB(255, 214, 80) or Color3.fromRGB(236, 236, 240)
-    local TRACK = hw and Color3.fromRGB(130, 64, 14) or Color3.fromRGB(92, 92, 98)
-    local DIM = hw and Color3.fromRGB(8, 5, 3) or Color3.fromRGB(6, 6, 7)
+    local gd = settings.theme == "Golden"
+    local ACC = hw and Color3.fromRGB(255, 140, 24) or gd and Color3.fromRGB(240, 186, 52) or Color3.fromRGB(226, 226, 230)
+    local TXT = hw and Color3.fromRGB(255, 214, 80) or gd and Color3.fromRGB(255, 232, 160) or Color3.fromRGB(236, 236, 240)
+    local TRACK = hw and Color3.fromRGB(130, 64, 14) or gd and Color3.fromRGB(110, 82, 20) or Color3.fromRGB(92, 92, 98)
+    local DIM = hw and Color3.fromRGB(8, 5, 3) or gd and Color3.fromRGB(7, 6, 3) or Color3.fromRGB(6, 6, 7)
     MainFrame.Visible = false
 
     local root = make("CanvasGroup", {
@@ -1612,6 +1642,21 @@ local function titleSeq(t)
                 math.floor(214 + 41 * k), math.floor(96 + 130 * k), math.floor(18 + 100 * k)))
         end
         return ColorSequence.new(list)
+    elseif theme.name == "Golden" then
+        -- molten gold: warm base that breathes, with a wide pale sheen gliding across
+        local p = (t * 0.22) % 2.2 - 0.6
+        local list = {}
+        for i = 0, 10 do
+            local x = i / 10
+            local base = 0.5 + 0.5 * math.sin((x * 1.1 - t * 0.18) * math.pi * 2)
+            local k = math.max(0, 1 - math.abs(x - p) / 0.38)
+            k = k * k * (3 - 2 * k)
+            list[#list + 1] = ColorSequenceKeypoint.new(x, Color3.fromRGB(
+                math.floor(176 + 52 * base + 79 * k),
+                math.floor(124 + 58 * base + 106 * k),
+                math.floor(24 + 26 * base + 176 * k)))
+        end
+        return ColorSequence.new(list)
     end
     local kps = {}
     local n = 6
@@ -1675,6 +1720,19 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
             local o = math.sin(t * m.speed * 1.5 + m.phase) * 0.5 + flick
             m.g.Rotation = m.base
             m.g.Offset = Vector2.new(o, o)
+        end
+    elseif theme.name == "Golden" then
+        -- liquid gold: slow diagonal swells on the backdrop, a sheen that sweeps the bars
+        local s = math.sin(t * 0.27)
+        local c = math.cos(t * 0.19 + 0.8)
+        fluid.gradA.Rotation = 32 + s * 16
+        fluid.gradA.Offset = Vector2.new(s * 0.45, 0)
+        fluid.gradB.Rotation = 212 - c * 16
+        fluid.gradB.Offset = Vector2.new(-c * 0.45, 0)
+        for _, m in ipairs(movers) do
+            local o = (t * 0.07 * (0.6 + m.speed) + m.phase * 0.31) % 2 - 1
+            m.g.Rotation = m.base + 14
+            m.g.Offset = Vector2.new(o, 0)
         end
     else
         fluid.gradA.Rotation = (t * 4) % 360
@@ -3914,7 +3972,7 @@ do
             return false
         end
 
-        function wh.onMatch(win, streak, timeText)
+        function wh.onMatch(win, streak, timeText, waveAtEnd)
             if not flags.webhook then return end
             pending = pending + 1
             task.delay(1.2, function()
@@ -3929,15 +3987,19 @@ do
                 saveTotals()
                 local rewardText = rewardBlock(got, true)
                 local endless = isEndless()
-                local verdict = endless and "♾️ ENDLESS" or (win and "🏆 WIN" or "💀 LOSE")
+                local verdict
+                if endless then
+                    -- endless has no win/lose, so the result line is the wave reached
+                    local w = tonumber(waveAtEnd) or tonumber(waveNow.cur) or 0
+                    verdict = "Wave: " .. tostring(math.floor(w))
+                else
+                    verdict = win and "🏆 WIN" or "💀 LOSE"
+                end
                 local desc = "## ATD Match Result\n"
                     .. "### " .. verdict .. "\n"
                     .. "||@" .. LocalPlayer.Name .. "||\n\n🗺️ **Map**  \u{00B7}  `" .. mapText() .. "`\n"
                     .. "🔥 **Streak**  \u{00B7}  `" .. tostring(sNow) .. "`\n"
                     .. "⏱️ **Time**  \u{00B7}  `" .. tostring(timeText) .. "`"
-                if endless and waveNow.cur then
-                    desc = desc .. "\n**Wave**  \u{00B7}  `" .. tostring(waveNow.cur) .. "`"
-                end
                 local e = {
                     color = endless and COLORS.test or nil,
                     description = desc,
@@ -4201,7 +4263,7 @@ do
             win = false
         end
         lastWave.last, lastWave.seq = win, (lastWave.seq or 0) + 1
-        ui.webhook.onMatch(win, s, TimerLabel.Text)
+        ui.webhook.onMatch(win, s, TimerLabel.Text, lastWave.cur)
     end
 
     if inMatch then
@@ -8948,6 +9010,7 @@ do
     }, {
         { label = "Default", value = "Default" },
         { label = "Halloween", value = "Halloween" },
+        { label = "Golden", value = "Golden" },
     }, settings.theme, function(v)
         ui.applyTheme(v)
     end)
@@ -9776,9 +9839,9 @@ do
     end
 
     function ui.applyTheme(name)
-        if name ~= "Halloween" then name = "Default" end
+        if not theme.defs[name] then name = "Default" end
         if theme.name == name then return end
-        local to = (name == "Halloween")
+        local old = theme.name
         theme.name = name
         settings.theme = name
         setPalette(name)
@@ -9796,10 +9859,16 @@ do
         skip[MinBox] = true
         for _, d in ipairs(MinBox:GetDescendants()) do skip[d] = true end
         for _, b in ipairs(CloseBars) do skip[b] = true end
-        local map = to and toHalloween or fromHalloween
-    if not to then
-        for _, m in ipairs(movers) do m.g.Offset = Vector2.new(0, 0) end
-    end
+        -- undo the old theme first, then apply the new one (either side may be Default)
+        local function map(kind, c)
+            if theme.defs[old] then c = fromTheme(old, kind, c) end
+            if theme.defs[name] then c = toTheme(name, kind, c) end
+            return c
+        end
+        for _, m in ipairs(movers) do
+            m.g.Offset = Vector2.new(0, 0)
+            m.g.Rotation = m.base
+        end
 
         themePass = themePass + 1
         local my = themePass
@@ -9817,7 +9886,7 @@ do
 
 end
 
-if settings.theme == "Halloween" then ui.applyTheme("Halloween") end
+if settings.theme ~= "Default" then ui.applyTheme(settings.theme) end
 
 selectTab("Main")
 EVENT.parts.nav = nav

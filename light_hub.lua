@@ -3298,6 +3298,7 @@ local function createPill(par, props, text, initial, onChange)
         set = function(v) state = v and true or false; refresh(true) end,
     }
 end
+end -- [fix] unused helpers (createCollapse/createPill) scoped to free local slots
 
 local function createButton(par, props, text, onClick)
     local btn = make("TextButton", {
@@ -3320,7 +3321,6 @@ local function createButton(par, props, text, onClick)
     end)
     return btn
 end
-end -- [fix] unused helpers scoped to free local slots
 
 local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
     c1 = c1 or Color3.fromRGB(70, 150, 240)

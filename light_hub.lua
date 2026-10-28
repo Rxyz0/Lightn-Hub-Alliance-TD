@@ -131,23 +131,23 @@ do
     -- Golden: dark teal base with metallic gold used only as an accent
     -- (colors sampled from the Alliance Tower Defense key art)
     local G_BG = {
-        { 0, 8, 16, 15 }, { 10, 13, 23, 22 }, { 20, 23, 39, 37 },
-        { 28, 28, 46, 43 }, { 34, 32, 52, 49 }, { 48, 43, 68, 62 },
-        { 64, 58, 84, 68 }, { 96, 112, 106, 36 }, { 150, 168, 132, 16 },
-        { 196, 205, 168, 22 }, { 214, 251, 208, 12 }, { 255, 251, 208, 12 },
+        { 0, 24, 38, 32 }, { 10, 36, 52, 42 }, { 20, 54, 72, 50 },
+        { 28, 62, 80, 52 }, { 34, 70, 88, 54 }, { 48, 90, 106, 58 },
+        { 64, 118, 128, 62 }, { 96, 156, 148, 46 }, { 150, 194, 162, 28 },
+        { 196, 224, 188, 30 }, { 214, 251, 208, 12 }, { 255, 251, 208, 12 },
     }
     local G_TXT = {
-        { 0, 18, 30, 28 }, { 40, 22, 36, 33 }, { 60, 70, 76, 40 },
-        { 84, 98, 100, 52 }, { 130, 158, 152, 86 }, { 190, 212, 204, 138 },
-        { 232, 238, 230, 186 }, { 255, 255, 238, 140 },
+        { 0, 18, 30, 28 }, { 40, 22, 36, 33 }, { 60, 120, 124, 62 },
+        { 84, 178, 172, 108 }, { 130, 216, 208, 142 }, { 190, 238, 230, 172 },
+        { 232, 252, 246, 208 }, { 255, 255, 248, 170 },
     }
     local G_GEN = {
-        { 0, 10, 20, 19 }, { 8, 14, 26, 25 }, { 9, 14, 26, 25 },
-        { 24, 22, 38, 36 }, { 26, 24, 40, 38 }, { 34, 34, 58, 52 },
-        { 46, 36, 60, 54 }, { 54, 84, 72, 22 }, { 66, 52, 84, 70 },
-        { 70, 150, 120, 24 }, { 90, 120, 110, 34 }, { 120, 144, 136, 41 },
-        { 150, 192, 149, 13 }, { 185, 237, 193, 32 }, { 205, 245, 225, 90 },
-        { 215, 241, 236, 131 }, { 255, 255, 248, 200 },
+        { 0, 28, 44, 36 }, { 8, 40, 58, 46 }, { 9, 42, 60, 46 },
+        { 24, 84, 92, 42 }, { 26, 88, 96, 42 }, { 34, 106, 108, 40 },
+        { 46, 116, 112, 36 }, { 54, 160, 134, 30 }, { 66, 146, 134, 38 },
+        { 70, 204, 166, 28 }, { 90, 196, 180, 54 }, { 120, 208, 190, 62 },
+        { 150, 232, 206, 64 }, { 185, 244, 226, 116 }, { 205, 252, 240, 164 },
+        { 215, 255, 247, 198 }, { 255, 255, 255, 238 },
     }
     local function goldenFn(kind, l)
         if kind == "bg" then
@@ -220,14 +220,15 @@ do
     -- gradient used by the sliding bars/cards; the Golden header is a lit gold bar
     function theme.moverSeq(lo, hi, role)
         if theme.name == "Golden" and role == "header" then
-            local a, b = Color3.fromRGB(184, 138, 14), Color3.fromRGB(251, 208, 12)
-            local shine = b:Lerp(Color3.new(1, 1, 1), 0.55)
-            local soft = a:Lerp(b, 0.65)
+            local a, b = Color3.fromRGB(196, 150, 16), Color3.fromRGB(255, 214, 30)
+            local shine = Color3.fromRGB(255, 252, 232)
+            local soft = a:Lerp(b, 0.7)
             return ColorSequence.new({
                 ColorSequenceKeypoint.new(0, a),
-                ColorSequenceKeypoint.new(0.3, soft),
-                ColorSequenceKeypoint.new(0.5, shine),
-                ColorSequenceKeypoint.new(0.7, soft),
+                ColorSequenceKeypoint.new(0.22, soft),
+                ColorSequenceKeypoint.new(0.42, shine),
+                ColorSequenceKeypoint.new(0.58, shine),
+                ColorSequenceKeypoint.new(0.78, soft),
                 ColorSequenceKeypoint.new(1, a),
             })
         end
@@ -319,7 +320,7 @@ local FLAG_DEFAULTS = {
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
     lossLimit = 4, lossNoticeN = 4,
-    autoSkip = false,
+    autoSkip = false, skipStop = "",
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
     autoCrate = false, crateAmount = 1, crateType = "",
@@ -1788,7 +1789,7 @@ table.insert(conns, RunService.Heartbeat:Connect(function(dt)
         for _, m in ipairs(movers) do
             if m.role == "header" then
                 -- the gold bar gets a sheen that sweeps across and restarts seamlessly
-                local o = (t * 0.1) % 2 - 1
+                local o = (t * 0.16) % 2 - 1
                 m.g.Rotation = m.base + 14
                 m.g.Offset = Vector2.new(o, 0)
             else
@@ -2692,7 +2693,7 @@ local function createFeature(par, title, opts)
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, card)
 
-    local api = { card = card }
+    local api = { card = card, title = titleLabel }
 
     if bodyH > 0 then
         api.body = make("Frame", {
@@ -2811,6 +2812,46 @@ local function createFeature(par, title, opts)
         if note.Text ~= t then note.Text = t end
         note.TextColor3 = color or C.muted
     end
+    return api
+end
+
+-- Chevron on the left of a card title. Its hit area covers the left half of the header,
+-- so a tap near the arrow can't flip the card's own toggle by accident.
+function ui.dropArrow(card, title, startOpen, onToggle)
+    local api = { open = startOpen and true or false }
+    local chev = createChevron(card, 0)
+    chev.AnchorPoint = Vector2.new(0, 0.5)
+    chev.Position = UDim2.new(0, 12, 0, 17)
+    chev.Rotation = api.open and 180 or 0
+    title.Position = UDim2.new(0, 32, 0, 0)
+    if title.Size.X.Scale > 0 then
+        title.Size = UDim2.new(title.Size.X.Scale, title.Size.X.Offset - 20, title.Size.Y.Scale, title.Size.Y.Offset)
+    else
+        title.Size = UDim2.new(0, math.max(title.Size.X.Offset, 190), title.Size.Y.Scale, title.Size.Y.Offset)
+    end
+    local hit = make("TextButton", {
+        Size = UDim2.new(0.5, 0, 0, 34),
+        BackgroundTransparency = 1,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 4,
+    }, card)
+    local function tint(c)
+        for _, f in ipairs(chev:GetChildren()) do
+            if f:IsA("Frame") then tween(f, 0.12, { BackgroundColor3 = c }) end
+        end
+    end
+    hit.MouseEnter:Connect(function() tint(C.text) end)
+    hit.MouseLeave:Connect(function() tint(C.muted) end)
+    function api.set(v, instant)
+        api.open = v and true or false
+        local rot = api.open and 180 or 0
+        if instant then chev.Rotation = rot else tween(chev, 0.12, { Rotation = rot }) end
+    end
+    hit.MouseButton1Click:Connect(function()
+        api.set(not api.open)
+        if onToggle then onToggle(api.open) end
+    end)
     return api
 end
 
@@ -4586,7 +4627,50 @@ do
         fSpeed.card.LayoutOrder = o + 2
     end
 
-    local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
+    -- waves the skip must NOT fire on, typed as 10-20-30; skipping resumes once the wave moves on
+    local stopSet = {}
+    local function parseStops(text)
+        local set, list = {}, {}
+        for n in string.gmatch(tostring(text or ""), "%d+") do
+            local v = tonumber(n)
+            if v and v >= 1 and v <= 99999 and not set[v] then
+                set[v] = true
+                list[#list + 1] = v
+            end
+        end
+        table.sort(list)
+        return set, table.concat(list, "-")
+    end
+    stopSet = parseStops(flags.skipStop)
+
+    local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 28, function(body)
+        local box = createInput(body, {
+            Size = UDim2.new(1, 0, 1, 0),
+            TextXAlignment = Enum.TextXAlignment.Center,
+        }, "Stop skip at wave  (e.g. 10-20-30)")
+        local _, shown = parseStops(flags.skipStop)
+        box.Text = shown
+        box.FocusLost:Connect(function()
+            local set, text = parseStops(box.Text)
+            stopSet = set
+            box.Text = text
+            setFlag("skipStop", text)
+        end)
+    end)
+
+    local function skipWaveNow()
+        local ws = ReplicatedStorage:FindFirstChild("WaveState")
+        local w = ws and ws:GetAttribute("CurrentWave")
+        if type(w) ~= "number" then w = waveNow.cur end
+        return w
+    end
+    -- true while the current wave is one of the stop waves
+    local function skipHeld()
+        if next(stopSet) == nil then return false, nil end
+        local w = skipWaveNow()
+        if w and stopSet[w] then return true, w end
+        return false, w
+    end
 
     local function findSkipButton(anyState)
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -4642,6 +4726,13 @@ do
         if not ev then
             fSkip.setNote("")
             return 1.5
+        end
+
+        local hold, holdWave = skipHeld()
+        if hold then
+            skipState.pressed = false
+            fSkip.setNote("Holding at wave " .. holdWave, C.warn)
+            return 0.1
         end
 
         local now = os.clock()
@@ -4711,6 +4802,7 @@ do
         if not flags.autoSkip then return end
         local b = skipState.btn
         if not (b and b.Parent) then return end
+        if skipHeld() then return end
         if isShown(b) then
             if not skipState.pressed and os.clock() >= (skipState.nextTry or 0)
                 and os.clock() - (skipState.lastAct or 0) >= 2 then
@@ -4729,6 +4821,7 @@ do
     function skipState.fireNow()
         local now = os.clock()
         if now - (skipState.lastAct or 0) < 2 then return end
+        if skipHeld() then return end
         local ev = RE("SkipWaveVote")
         if not ev then return end
 
@@ -4891,21 +4984,8 @@ do
             fLoss.setNote("Losses " .. flags.lossStreak .. "/" .. (flags.lossLimit or 4))
         end
 
-        local tw = TextService:GetTextSize("Auto Lobby", 12, Enum.Font.GothamMedium, Vector2.new(300, 30)).X
-        local chev = createChevron(fLobby.card, 0)
-        chev.AnchorPoint = Vector2.new(0, 0.5)
-        chev.Position = UDim2.new(0, 12 + tw + 8, 0.5, 0)
-        local chevHit = make("TextButton", {
-            Size = UDim2.new(0, 26, 0, 30),
-            Position = UDim2.new(0, 12 + tw + 1, 0, 2),
-            BackgroundTransparency = 1,
-            Text = "",
-            AutoButtonColor = false,
-            ZIndex = 3,
-        }, fLobby.card)
-        chevHit.MouseButton1Click:Connect(function()
-            panel.Visible = not panel.Visible
-            tween(chev, 0.12, { Rotation = panel.Visible and 180 or 0 })
+        ui.dropArrow(fLobby.card, fLobby.title, false, function(open)
+            panel.Visible = open
         end)
     end
 
@@ -5349,6 +5429,8 @@ do
             onChange = function(v) setFlag("crateType", v) end,
         })
     end)
+
+    fCrate.card.LayoutOrder = -1
 
     local crateFails = 0
     runLoop(function()
@@ -5833,29 +5915,9 @@ do
         return holder, parts
     end
 
-    local gearHolder, gearParts
-    do
-        local tw = TextService:GetTextSize("Auto Upgrade Unit", 12, Enum.Font.GothamMedium, Vector2.new(300, 30)).X
-        local slot = make("Frame", {
-            Size = UDim2.new(0, 16, 0, 16),
-            Position = UDim2.new(0, 12 + tw + 8, 0.5, -8),
-            BackgroundTransparency = 1,
-        }, upg.card)
-        gearHolder, gearParts = gearIcon(slot, 12, C.muted, T(Color3.fromRGB(22, 22, 25), "bg"))
-        local hit = make("TextButton", {
-            Size = UDim2.new(0, 28, 0, 30),
-            Position = UDim2.new(0, 12 + tw + 2, 0, 2),
-            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 3,
-        }, upg.card)
-        local function tint(c) for _, f in ipairs(gearParts) do tween(f, 0.12, { BackgroundColor3 = c }) end end
-        hit.MouseEnter:Connect(function() tint(C.text) end)
-        hit.MouseLeave:Connect(function() if not panel.Visible then tint(C.muted) end end)
-        hit.MouseButton1Click:Connect(function()
-            panel.Visible = not panel.Visible
-            tween(gearHolder, 0.2, { Rotation = panel.Visible and 45 or 0 })
-            tint(panel.Visible and C.text or C.muted)
-        end)
-    end
+    ui.dropArrow(upg.card, upg.title, false, function(open)
+        panel.Visible = open
+    end)
 
     local function miniToggle(pos, initial, onChange)
         local state = initial and true or false
@@ -6289,43 +6351,20 @@ do
         Size = UDim2.new(0, 150, 0, 34),
         Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1,
-        Text = "Teleport",
-        TextColor3 = C.hi,
+        Text = "Teleport UTTM",
+        TextColor3 = C.text,
         TextSize = 12,
-        Font = Enum.Font.GothamBold,
+        Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, uttmCard)
-
-    local TextService = game:GetService("TextService")
-    local prefixW = TextService:GetTextSize("Teleport ", 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
-    local uttmWord = make("TextLabel", {
-        Size = UDim2.new(0, 60, 0, 34),
-        Position = UDim2.new(0, 12 + prefixW, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "UTTM",
-        TextColor3 = C.hi,
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, uttmCard)
-    local UTTM_BLUE = Color3.fromRGB(70, 150, 240)
-    local UTTM_VIOLET = Color3.fromRGB(150, 110, 235)
-    local uttmGrad = make("UIGradient", {
-        Color = ColorSequence.new(UTTM_BLUE, UTTM_VIOLET),
-        Rotation = 0,
-    }, uttmWord)
-    runLoop(function()
-        if uttmCard.Visible then
-            local k = (math.sin(os.clock() * 0.9) + 1) / 2
-            local a = UTTM_BLUE:Lerp(UTTM_VIOLET, k)
-            local b = UTTM_BLUE:Lerp(UTTM_VIOLET, 1 - k)
-            uttmGrad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, a),
-                ColorSequenceKeypoint.new(0.5, a:Lerp(b, 0.5)),
-                ColorSequenceKeypoint.new(1, b),
-            })
-        end
-        return 0.05
+    -- the Endless buttons use the hub's neutral monochrome instead of per-unit colors
+    local UTTM_BLUE = Color3.fromRGB(78, 78, 84)
+    local UTTM_VIOLET = Color3.fromRGB(150, 150, 158)
+    local uttmOpen = false
+    local uttmRebuild
+    ui.dropArrow(uttmCard, uttmTitle, false, function(open)
+        uttmOpen = open
+        uttmRebuild()
     end)
 
     local uttmNote = make("TextLabel", {
@@ -6621,10 +6660,14 @@ do
         return moved, total
     end
 
-    local uttmRebuild
-    local uttmOpen = false
     uttmRebuild = function()
         for _, c in ipairs(uttmRows:GetChildren()) do c:Destroy() end
+        uttmRows.Visible = uttmOpen
+        if not uttmOpen then
+            uttmCard.Size = UDim2.new(1, 0, 0, 34)
+            if refreshUttmFloat then refreshUttmFloat() end
+            return
+        end
 
         local list = uttmList()
         local base = 0
@@ -6643,34 +6686,24 @@ do
             end)
             base = 34
         end
-        createCollapse(uttmRows, {
-            Size = UDim2.new(1, 0, 0, 28),
-            Position = UDim2.new(0, 0, 0, base),
-        }, "Locations", #spots.uttm, uttmOpen, function(v)
-            uttmOpen = v
-            uttmRebuild()
-        end)
-        local y = base + 28
-        if uttmOpen then
-            y = base + 36
-            for i, sp in ipairs(spots.uttm) do
-                addLocRow(uttmRows, spots.uttm, sp, y, uttmTeleport,
-                    function(msg) uttmSay(msg, C.text) end, uttmRebuild)
-                y = y + 32
-            end
-            createButton(uttmRows, {
-                Size = UDim2.new(1, 0, 0, 28),
-                Position = UDim2.new(0, 0, 0, y),
-            }, "+ Add location", function()
-                startPick(function(pos)
-                    table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
-                    saveSpots()
-                    uttmRebuild()
-                    uttmSay("Location added", C.text)
-                end)
-            end)
-            y = y + 28
+        local y = base
+        for i, sp in ipairs(spots.uttm) do
+            addLocRow(uttmRows, spots.uttm, sp, y, uttmTeleport,
+                function(msg) uttmSay(msg, C.text) end, uttmRebuild)
+            y = y + 32
         end
+        createButton(uttmRows, {
+            Size = UDim2.new(1, 0, 0, 28),
+            Position = UDim2.new(0, 0, 0, y),
+        }, "+ Add location", function()
+            startPick(function(pos)
+                table.insert(spots.uttm, { n = nextLocName(spots.uttm), x = pos.X, y = pos.Y, z = pos.Z })
+                saveSpots()
+                uttmRebuild()
+                uttmSay("Location added", C.text)
+            end)
+        end)
+        y = y + 28
         uttmRows.Size = UDim2.new(1, -24, 0, y)
         uttmCard.Size = UDim2.new(1, 0, 0, 34 + y + 10)
         if refreshUttmFloat then refreshUttmFloat() end
@@ -6743,18 +6776,18 @@ do
     local pushMacro = EP.pushMacro
 
     do
-        local GREEN_A, GREEN_B = Color3.fromRGB(46, 128, 94), Color3.fromRGB(128, 212, 164)
-        local RED_A, RED_B = Color3.fromRGB(150, 24, 44), Color3.fromRGB(255, 176, 208)
+        local GREEN_A, GREEN_B = UTTM_BLUE, UTTM_VIOLET
+        local RED_A, RED_B = UTTM_BLUE, UTTM_VIOLET
 
         local mowerCard = createCard(page, 140)
-        make("TextLabel", {
+        local mowerTitle = make("TextLabel", {
             Size = UDim2.new(0, 120, 0, 34),
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
             Text = "Unit Replace",
-            TextColor3 = C.hi,
+            TextColor3 = C.text,
             TextSize = 12,
-            Font = Enum.Font.GothamBold,
+            Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
         }, mowerCard)
         local mowerNote = make("TextLabel", {
@@ -7161,7 +7194,11 @@ do
         end)
 
         local rebuildMower, refreshMowerFloat
-        local replaceOpen = false
+        local mowerOpen = false
+        ui.dropArrow(mowerCard, mowerTitle, false, function(open)
+            mowerOpen = open
+            rebuildMower()
+        end)
 
         local function nextMowerId()
             local n = 1
@@ -7241,6 +7278,11 @@ do
 
         rebuildMower = function()
             for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
+            rows.Visible = mowerOpen
+            if not mowerOpen then
+                mowerCard.Size = UDim2.new(1, 0, 0, 34)
+                return
+            end
 
             rowLabel(0, "Record placement")
             recSwitch = createMiniSwitch(rows, {
@@ -7289,16 +7331,22 @@ do
                 }, rows)
             end
 
-            createCollapse(rows, {
-                Size = UDim2.new(1, 0, 0, 28),
-                Position = UDim2.new(0, 0, 0, 64),
-            }, "Replace list", #spots.mowers, replaceOpen, function(v)
-                replaceOpen = v
-                rebuildMower()
-            end)
+            if #spots.mowers == 0 then
+                make("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 28),
+                    Position = UDim2.new(0, 0, 0, 68),
+                    BackgroundTransparency = 1,
+                    Text = "No replaces yet. Turn on Record placement and place your units.",
+                    TextColor3 = C.dim,
+                    TextSize = 10,
+                    Font = Enum.Font.GothamMedium,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                }, rows)
+            end
 
-            for i, m in ipairs(replaceOpen and spots.mowers or {}) do
-                local y = 100 + (i - 1) * 32
+            for i, m in ipairs(spots.mowers) do
+                local y = 68 + (i - 1) * 32
                 rowLabel(y, "Replace " .. m.id)
                 createFxButton(rows, {
                     Size = UDim2.new(0, 60, 0, 28),
@@ -7335,7 +7383,7 @@ do
                 }, rows)
             end
 
-            local h = replaceOpen and (100 + #spots.mowers * 32) or 92
+            local h = 68 + math.max(1, #spots.mowers) * 32
             rows.Size = UDim2.new(1, -24, 0, h)
             mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
         end
@@ -7564,16 +7612,15 @@ do
             BackgroundTransparency = 1,
             Visible = false,
         }, abilityCard)
-        local wordW = TS:GetTextSize(word, 12, Enum.Font.GothamBold, Vector2.new(400, 40)).X
-        local wl = make("TextLabel", {
+        local wordW = TS:GetTextSize(word, 12, Enum.Font.GothamMedium, Vector2.new(400, 40)).X
+        make("TextLabel", {
             Size = UDim2.new(0, wordW + 4, 1, 0),
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
-            Text = word, TextColor3 = C.hi, TextSize = 12,
-            Font = Enum.Font.GothamBold,
+            Text = word, TextColor3 = C.text, TextSize = 12,
+            Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
         }, frame)
-        local grad = make("UIGradient", { Color = ColorSequence.new(c1, c2), Rotation = 0 }, wl)
         make("TextLabel", {
             Size = UDim2.new(1, -(12 + wordW + 14 + 56), 1, 0),
             Position = UDim2.new(0, 12 + wordW + 10, 0, 0),
@@ -7583,8 +7630,7 @@ do
             TextXAlignment = Enum.TextXAlignment.Left,
             TextTruncate = Enum.TextTruncate.AtEnd,
         }, frame)
-        local row = { frame = frame, sw = makeSwitch(frame, onChange), grad = grad,
-            c1 = c1, c2 = c2, found = found }
+        local row = { frame = frame, sw = makeSwitch(frame, onChange), found = found }
         abilityRows[#abilityRows + 1] = row
         return row
     end
@@ -7612,19 +7658,6 @@ do
     end)
 
     runLoop(function()
-        local k = (math.sin(os.clock() * 0.9) + 1) / 2
-        for _, r in ipairs(abilityRows) do
-            local a, b = r.c1:Lerp(r.c2, k), r.c1:Lerp(r.c2, 1 - k)
-            r.grad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, a),
-                ColorSequenceKeypoint.new(0.5, a:Lerp(b, 0.5)),
-                ColorSequenceKeypoint.new(1, b),
-            })
-        end
-        return 0.05
-    end)
-
-    runLoop(function()
         local n = 0
         for _, r in ipairs(abilityRows) do
             local has = r.found()
@@ -7635,6 +7668,8 @@ do
             end
         end
         local h = n > 0 and (38 + n * 34 + 8) or 34
+        -- "Enable all" only makes sense when two different units have an ability
+        if allBtn.Visible ~= (n >= 2) then allBtn.Visible = n >= 2 end
         if abilityCard.Visible ~= (n > 0) then abilityCard.Visible = n > 0 end
         abilityCard.Size = UDim2.new(1, 0, 0, h)
         refreshAll()
@@ -8447,58 +8482,58 @@ do
     local giftOpen, giftRows = false, 1
     local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
 
-    local CountLabel = make("TextLabel", {
-        Size = UDim2.new(1, -110, 0, 24),
-        BackgroundTransparency = 1,
-        RichText = true,
-        Text = "",
-        TextColor3 = C.hi,
-        TextSize = 14,
-        Font = Enum.Font.RobotoMono,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, feature.body)
+    -- header note: "3/9 claimed" plus the live status while claiming
+    local statusText, statusColor = "", C.muted
+    local function updateNote()
+        local t = claimedCount .. "/" .. GIFT_COUNT .. " claimed"
+        if statusText ~= "" then t = t .. "  \u{00B7}  " .. statusText end
+        feature.setNote(t, statusColor)
+    end
+    local function setStatus(t, color)
+        statusText, statusColor = t or "", color or C.muted
+        updateNote()
+    end
 
-    local DropBtn = make("TextButton", {
-        Size = UDim2.new(0, 100, 0, 24),
-        Position = UDim2.new(1, -100, 0, 0),
-        BackgroundColor3 = C.control,
-        BorderSizePixel = 0,
-        Text = "Rewards",
-        TextColor3 = C.text,
-        TextSize = 11,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        AutoButtonColor = false,
+    -- progress strip: one cell per gift, lit once it has been claimed
+    local Progress = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 6),
+        BackgroundTransparency = 1,
+        Visible = false,
     }, feature.body)
-    make("UIPadding", { PaddingLeft = UDim.new(0, 10) }, DropBtn)
-    make("UIStroke", {
-        Color = C.controlLine,
-        Thickness = 1,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-    }, DropBtn)
-    local DropArrow = createChevron(DropBtn, -8)
-    DropBtn.MouseEnter:Connect(function() DropBtn.BackgroundColor3 = C.hover end)
-    DropBtn.MouseLeave:Connect(function() DropBtn.BackgroundColor3 = C.control end)
+    local cells = {}
+    for i = 1, GIFT_COUNT do
+        cells[i] = make("Frame", {
+            Size = UDim2.new(1 / GIFT_COUNT, -3, 1, 0),
+            Position = UDim2.new((i - 1) / GIFT_COUNT, 0, 0, 0),
+            BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
+            BorderSizePixel = 0,
+        }, Progress)
+    end
 
     local GiftList = make("Frame", {
         Size = UDim2.new(1, 0, 0, 22),
-        Position = UDim2.new(0, 0, 0, 30),
+        Position = UDim2.new(0, 0, 0, 14),
         BackgroundTransparency = 1,
         Visible = false,
     }, feature.body)
 
     local function layoutGifts()
+        feature.body.Visible = giftOpen
+        Progress.Visible = giftOpen
         GiftList.Visible = giftOpen
-        DropArrow.Rotation = giftOpen and 180 or 0
-        local listH = math.max(1, giftRows) * 22
+        local listH = math.max(1, giftRows) * 24
         GiftList.Size = UDim2.new(1, 0, 0, listH)
-        local bodyH = giftOpen and (30 + listH) or 24
+        if not giftOpen then
+            feature.card.Size = UDim2.new(1, 0, 0, 34)
+            return
+        end
+        local bodyH = 14 + listH
         feature.body.Size = UDim2.new(1, -24, 0, bodyH)
         feature.card.Size = UDim2.new(1, 0, 0, 34 + bodyH + 10)
     end
 
-    DropBtn.MouseButton1Click:Connect(function()
-        giftOpen = not giftOpen
+    ui.dropArrow(feature.card, feature.title, false, function(open)
+        giftOpen = open
         layoutGifts()
     end)
 
@@ -8514,41 +8549,49 @@ do
         if sig == giftSig then return end
         giftSig = sig
 
-        CountLabel.Text = tostring(claimedCount) .. "/" .. GIFT_COUNT
-            .. ' <font size="10" face="GothamMedium" color="rgb(130,130,136)">claimed</font>'
+        updateNote()
+        for i, cell in ipairs(cells) do
+            cell.BackgroundColor3 = (i <= claimedCount)
+                and T(Color3.fromRGB(232, 232, 234), "bg")
+                or T(Color3.fromRGB(34, 34, 37), "bg")
+        end
 
         for _, c in ipairs(GiftList:GetChildren()) do c:Destroy() end
         if #entries == 0 then
             make("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 20),
+                Size = UDim2.new(1, 0, 0, 22),
                 BackgroundTransparency = 1,
                 Text = "No rewards yet",
                 TextColor3 = C.dim,
-                TextSize = 11,
+                TextSize = 10,
                 Font = Enum.Font.GothamMedium,
                 TextXAlignment = Enum.TextXAlignment.Left,
             }, GiftList)
         end
         for r, e in ipairs(entries) do
             local row = make("Frame", {
-                Size = UDim2.new(1, 0, 0, 20),
-                Position = UDim2.new(0, 0, 0, (r - 1) * 22),
-                BackgroundColor3 = T(Color3.fromRGB(24, 24, 27), "bg"),
+                Size = UDim2.new(1, 0, 0, 22),
+                Position = UDim2.new(0, 0, 0, (r - 1) * 24),
+                BackgroundColor3 = C.control,
                 BorderSizePixel = 0,
             }, GiftList)
+            make("UIStroke", {
+                Color = C.controlLine, Thickness = 1,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, row)
             make("TextLabel", {
-                Size = UDim2.new(0, 28, 1, 0),
+                Size = UDim2.new(0, 26, 1, 0),
                 Position = UDim2.new(0, 8, 0, 0),
                 BackgroundTransparency = 1,
-                Text = "#" .. e.i,
+                Text = tostring(e.i),
                 TextColor3 = C.muted,
-                TextSize = 11,
+                TextSize = 10,
                 Font = Enum.Font.RobotoMono,
                 TextXAlignment = Enum.TextXAlignment.Left,
             }, row)
             make("TextLabel", {
-                Size = UDim2.new(1, -46, 1, 0),
-                Position = UDim2.new(0, 38, 0, 0),
+                Size = UDim2.new(1, -44, 1, 0),
+                Position = UDim2.new(0, 36, 0, 0),
                 BackgroundTransparency = 1,
                 Text = e.text or "Claimed",
                 TextColor3 = e.text and C.text or C.muted,
@@ -8570,8 +8613,8 @@ do
         rewards[lastClaimIndex] = string.sub(clean, 1, 60)
     end)
 
-    local function setStatus() end
     renderGifts()
+    layoutGifts()
 
     local function popcount(mask)
         local n = 0
@@ -9964,7 +10007,7 @@ do
         -- the title is tinted by its gradient, so the Golden title needs white text underneath
         TitleLabel.TextColor3 = (theme.defs[name] and theme.defs[name].whiteTitle) and C.white or C.hi
         fluid.titleGrad.Color = titleSeq(fluid.t)
-        -- keep the backdrop swirl faint in Golden so text stays readable on the dark teal
+        -- the Golden backdrop keeps most of its swirl so the gold-white glow shows through
         fluid.alpha0 = fluid.alpha0 or { fluid.gradA.Transparency, fluid.gradB.Transparency }
         local function faint(seq, f)
             if f == 1 then return seq end
@@ -9974,7 +10017,7 @@ do
             end
             return NumberSequence.new(kps)
         end
-        local keep = (name == "Golden") and 0.5 or 1
+        local keep = (name == "Golden") and 0.8 or 1
         fluid.gradA.Transparency = faint(fluid.alpha0[1], keep)
         fluid.gradB.Transparency = faint(fluid.alpha0[2], keep)
 

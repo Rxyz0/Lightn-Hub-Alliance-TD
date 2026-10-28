@@ -1143,6 +1143,7 @@ local function setFlag(key, value)
     saveSettings()
 end
 
+do -- [fix] settings loader scoped to free local slots
 local function readSaved()
 
     local mine = FS.settings()
@@ -1220,6 +1221,7 @@ local function loadSettings()
 end
 
 loadSettings()
+end -- [fix] settings loader scoped to free local slots
 
 local env = (getgenv and getgenv()) or _G
 
@@ -3198,6 +3200,7 @@ local function createSelect(par, props, cfg)
     }
 end
 
+do -- [fix] unused helpers (createCollapse/createPill) scoped to free local slots
 local function createCollapse(par, props, title, count, isOpen, onToggle)
     local btn = make("TextButton", {
         BackgroundColor3 = C.control,
@@ -3317,6 +3320,7 @@ local function createButton(par, props, text, onClick)
     end)
     return btn
 end
+end -- [fix] unused helpers scoped to free local slots
 
 local function createFxButton(par, props, text, onClick, c1, c2, reentrant)
     c1 = c1 or Color3.fromRGB(70, 150, 240)
@@ -6259,7 +6263,7 @@ end
 local SPOTS_FILE = FS.data("Spots")
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
-do
+;(function() -- [fix] own function scope: avoids the 200-local limit of the main chunk
     local page = tabs["Endless"].page
     local mouse = LocalPlayer:GetMouse()
 
@@ -6875,9 +6879,9 @@ do
         if isDroneOn(tw) == want then return true end
         return toggleDrone(tw, want)
     end
-end
+end)()
 
-do
+;(function() -- [fix] own function scope: avoids the 200-local limit of the main chunk
     local page, spots, saveSpots = EP.page, EP.spots, EP.saveSpots
     local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
     local pushMacro = EP.pushMacro
@@ -7750,7 +7754,7 @@ do
             codeBox.Text = ""
         end)
     end
-end
+end)()
 
 do
     local page = EP.page
@@ -7945,7 +7949,7 @@ do
     end
 end
 
-do
+;(function() -- [fix] own function scope: avoids the 200-local limit of the main chunk
     local page = tabs["Macro"].page
     local inMatch = (game.PlaceId == MATCH_PLACE)
     local MACRO_INDEX = FS.index()
@@ -8727,7 +8731,7 @@ do
         end
         return 0.7
     end)
-end
+end)()
 
 do
     local page = tabs["AFK"].page

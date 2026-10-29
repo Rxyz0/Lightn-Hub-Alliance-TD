@@ -2285,6 +2285,7 @@ make("UIStroke", { Color = C.controlLine, Thickness = 1 }, ListFrame)
 local openChev = nil
 
 local function closeOverlay()
+    if ui.infoClose then ui.infoClose() end
     Overlay.Visible = false
     ListFrame.Visible = false
     if openChev then
@@ -3578,6 +3579,115 @@ local function visualFeature(par, title, key, bodyHeight, build, soon)
     })
     if build and f.body then build(f.body) end
     return f
+end
+
+-- Info popup: the page behind it is dimmed (the sidebar is not), and a board centered in the
+-- content area lists what a feature does. Width fills the content area, height follows the text.
+do
+    local dim
+    function ui.infoClose()
+        if dim then
+            dim:Destroy()
+            dim = nil
+        end
+    end
+
+    function ui.infoShow(heading, items)
+        ui.infoClose()
+        dim = make("TextButton", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            Active = true,
+            ZIndex = 60,
+        }, PageHolder)
+        tween(dim, 0.18, { BackgroundTransparency = 0.45 })
+        dim.MouseButton1Click:Connect(ui.infoClose)
+
+        local board = make("Frame", {
+            Size = UDim2.new(1, -32, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundColor3 = T(Color3.fromRGB(20, 20, 22), "bg"),
+            BorderSizePixel = 0,
+            ZIndex = 61,
+        }, dim)
+        styleControl(board)
+        make("UIPadding", {
+            PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 14),
+            PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 10),
+        }, board)
+        make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }, board)
+
+        local head = make("Frame", {
+            Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, LayoutOrder = 1, ZIndex = 62,
+        }, board)
+        make("TextLabel", {
+            Size = UDim2.new(1, -30, 1, 0), BackgroundTransparency = 1, Text = heading,
+            TextColor3 = C.text, TextSize = 13, Font = Enum.Font.GothamBold,
+            TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62,
+        }, head)
+        local x = make("TextButton", {
+            Size = UDim2.new(0, 22, 0, 22), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1),
+            BackgroundColor3 = C.control, BorderSizePixel = 0, Text = "", AutoButtonColor = false, ZIndex = 63,
+        }, head)
+        styleControl(x)
+        for _, rot in ipairs({ 45, -45 }) do
+            make("Frame", {
+                Size = UDim2.new(0, 10, 0, 2), AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0), Rotation = rot,
+                BackgroundColor3 = C.muted, BorderSizePixel = 0, ZIndex = 64,
+            }, x)
+        end
+        x.MouseEnter:Connect(function() x.BackgroundColor3 = C.hover end)
+        x.MouseLeave:Connect(function() x.BackgroundColor3 = C.control end)
+        x.MouseButton1Click:Connect(ui.infoClose)
+
+        make("Frame", {
+            Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = C.line, BorderSizePixel = 0, LayoutOrder = 2, ZIndex = 62,
+        }, board)
+        for i, it in ipairs(items) do
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                BackgroundTransparency = 1,
+                Text = "\u{2022}  " .. it.text,
+                TextColor3 = it.dim and C.dim or C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Top,
+                TextWrapped = true,
+                LayoutOrder = 2 + i,
+                ZIndex = 62,
+            }, board)
+        end
+    end
+
+    -- bold "!" in a small control-style box right after a feature's title
+    function ui.addInfo(feat, heading, items)
+        local w = game:GetService("TextService"):GetTextSize(feat.title.Text, 12, Enum.Font.GothamMedium, Vector2.new(300, 34)).X
+        local hit = make("TextButton", {
+            Size = UDim2.new(0, 26, 0, 30),
+            Position = UDim2.new(0, 12 + w + 4, 0, 2),
+            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 6,
+        }, feat.card)
+        local box = make("Frame", {
+            Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 5, 0.5, -8),
+            BackgroundColor3 = C.control, BorderSizePixel = 0,
+        }, hit)
+        styleControl(box)
+        make("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "!",
+            TextColor3 = C.text, TextSize = 12, Font = Enum.Font.GothamBlack,
+        }, box)
+        hit.MouseEnter:Connect(function() box.BackgroundColor3 = C.hover end)
+        hit.MouseLeave:Connect(function() box.BackgroundColor3 = C.control end)
+        hit.MouseButton1Click:Connect(function() ui.infoShow(heading, items) end)
+    end
 end
 
 local tabs = {}
@@ -8826,12 +8936,8 @@ end)()
     local applyClaimState
 
     local feature = createFeature(page, "Auto Claim Playtime Gift", {
-        bodyHeight = 26,
         onToggle = function(v) applyClaimState(v, true) end,
     })
-
-    local giftOpen, giftRows = false, 1
-    local rewards, lastClaimAt, lastClaimIndex, giftSig = {}, nil, nil, nil
 
     -- header note: "3/9 claimed" plus the live status while claiming
     local statusText, statusColor = "", C.muted
@@ -8844,128 +8950,7 @@ end)()
         statusText, statusColor = t or "", color or C.muted
         updateNote()
     end
-
-    -- progress strip: one cell per gift, lit once it has been claimed
-    local Progress = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 6),
-        BackgroundTransparency = 1,
-        Visible = false,
-    }, feature.body)
-    local cells = {}
-    for i = 1, GIFT_COUNT do
-        cells[i] = make("Frame", {
-            Size = UDim2.new(1 / GIFT_COUNT, -3, 1, 0),
-            Position = UDim2.new((i - 1) / GIFT_COUNT, 0, 0, 0),
-            BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
-            BorderSizePixel = 0,
-        }, Progress)
-    end
-
-    local GiftList = make("Frame", {
-        Size = UDim2.new(1, 0, 0, 22),
-        Position = UDim2.new(0, 0, 0, 14),
-        BackgroundTransparency = 1,
-        Visible = false,
-    }, feature.body)
-
-    local function layoutGifts()
-        feature.body.Visible = giftOpen
-        Progress.Visible = giftOpen
-        GiftList.Visible = giftOpen
-        local listH = math.max(1, giftRows) * 24
-        GiftList.Size = UDim2.new(1, 0, 0, listH)
-        if not giftOpen then
-            feature.card.Size = UDim2.new(1, 0, 0, 34)
-            return
-        end
-        local bodyH = 14 + listH
-        feature.body.Size = UDim2.new(1, -24, 0, bodyH)
-        feature.card.Size = UDim2.new(1, 0, 0, 34 + bodyH + 10)
-    end
-
-    ui.dropArrow(feature.card, feature.title, false, function(open)
-        giftOpen = open
-        layoutGifts()
-    end)
-
-    local function renderGifts()
-        local entries, parts = {}, {}
-        for i = 1, GIFT_COUNT do
-            if rewards[i] or i <= claimedCount then
-                entries[#entries + 1] = { i = i, text = rewards[i] }
-                parts[#parts + 1] = i .. ":" .. tostring(rewards[i])
-            end
-        end
-        local sig = claimedCount .. "#" .. table.concat(parts, "|")
-        if sig == giftSig then return end
-        giftSig = sig
-
-        updateNote()
-        for i, cell in ipairs(cells) do
-            cell.BackgroundColor3 = (i <= claimedCount)
-                and T(Color3.fromRGB(232, 232, 234), "bg")
-                or T(Color3.fromRGB(34, 34, 37), "bg")
-        end
-
-        for _, c in ipairs(GiftList:GetChildren()) do c:Destroy() end
-        if #entries == 0 then
-            make("TextLabel", {
-                Size = UDim2.new(1, 0, 0, 22),
-                BackgroundTransparency = 1,
-                Text = "No rewards yet",
-                TextColor3 = C.dim,
-                TextSize = 10,
-                Font = Enum.Font.GothamMedium,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, GiftList)
-        end
-        for r, e in ipairs(entries) do
-            local row = make("Frame", {
-                Size = UDim2.new(1, 0, 0, 22),
-                Position = UDim2.new(0, 0, 0, (r - 1) * 24),
-                BackgroundColor3 = C.control,
-                BorderSizePixel = 0,
-            }, GiftList)
-            make("UIStroke", {
-                Color = C.controlLine, Thickness = 1,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            }, row)
-            make("TextLabel", {
-                Size = UDim2.new(0, 26, 1, 0),
-                Position = UDim2.new(0, 8, 0, 0),
-                BackgroundTransparency = 1,
-                Text = tostring(e.i),
-                TextColor3 = C.muted,
-                TextSize = 10,
-                Font = Enum.Font.RobotoMono,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, row)
-            make("TextLabel", {
-                Size = UDim2.new(1, -44, 1, 0),
-                Position = UDim2.new(0, 36, 0, 0),
-                BackgroundTransparency = 1,
-                Text = e.text or "Claimed",
-                TextColor3 = e.text and C.text or C.muted,
-                TextSize = 11,
-                Font = Enum.Font.GothamMedium,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                TextTruncate = Enum.TextTruncate.AtEnd,
-            }, row)
-        end
-        giftRows = #entries
-        layoutGifts()
-    end
-
-    bindEvent("Notify", function(text)
-        if type(text) ~= "string" or not lastClaimAt or not lastClaimIndex then return end
-        if os.clock() - lastClaimAt > 3 or rewards[lastClaimIndex] then return end
-        local clean = (string.gsub(text, "<[^>]+>", ""))
-        if string.find(clean, "Auto Sell", 1, true) then return end
-        rewards[lastClaimIndex] = string.sub(clean, 1, 60)
-    end)
-
-    renderGifts()
-    layoutGifts()
+    updateNote()
 
     local function popcount(mask)
         local n = 0
@@ -9045,7 +9030,6 @@ end)()
             backoff = 5
             if changed then
                 claimedCount = 0
-                rewards = {}
                 local mask = LocalPlayer:GetAttribute("PlaytimeGiftClaimed")
                 if type(mask) == "number" and popcount(mask) >= GIFT_COUNT then
                     staleMask = mask
@@ -9056,7 +9040,7 @@ end)()
         end
 
         syncFromGame()
-        renderGifts()
+        updateNote()
 
         if not run.claim then return 1 end
         if not day then
@@ -9080,7 +9064,6 @@ end)()
 
             if readGameDay() ~= day then break end
 
-            lastClaimAt, lastClaimIndex = os.clock(), giftIndex
             local ok, res = pcall(function()
                 return remote:InvokeServer(giftIndex, day)
             end)
@@ -9090,7 +9073,7 @@ end)()
             end
             if giftIndex < lastIdx then task.wait(0.5) end
         end
-        renderGifts()
+        updateNote()
 
         if claimedAny then
             backoff = 5
@@ -9116,6 +9099,10 @@ do
     local wasOn = false
 
     local feat = visualFeature(page, "Auto Claim Pass", "autoSeason", 0)
+    ui.addInfo(feat, "Auto Claim Pass", {
+        { text = "Auto claim pass" },
+        { text = "Auto claim pass Perm" },
+    })
 
     local function seasonData()
         local ok, res = invoke("GetData")
@@ -9180,7 +9167,12 @@ end
 
 do
     local page = tabs["AFK"].page
-    local feat = visualFeature(page, "Auto Claim Quests", "autoQuest", 0)
+    local feat = visualFeature(page, "Auto Claim Quest Reward", "autoQuest", 0)
+    ui.addInfo(feat, "Auto Claim Quest Reward", {
+        { text = "Auto claim reward quest Hourly / Daily / Weekly" },
+        { text = "Auto claim reward quest Halloween XP Easy / Hard" },
+        { text = "Auto claim global quest (coming soon)", dim = true },
+    })
 
     local tried = {}
 
@@ -10147,8 +10139,8 @@ local function layoutMini()
     local function tw(text, size)
         return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     end
-    TitleRow.Position = UDim2.new(0, 34 + (ui.titleDX or 0) + 8, 0, 0)
-    local x = 34 + (ui.titleDX or 0) + 8 + tw(TitleLabel.Text, 12)
+    TitleRow.Position = UDim2.new(0, 34 + (ui.titleDX or 0) + 12, 0, 0)
+    local x = 34 + (ui.titleDX or 0) + 12 + tw(TitleLabel.Text, 12) + 4
     if game.PlaceId ~= LOBBY_PLACE then
         local waveW = math.max(44, tw("00/00", 14) + 4)
         MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
@@ -10261,7 +10253,7 @@ function ui.decorRefresh()
     end
     local oldDX = ui.titleDX or 0
     ui.titleDX = (on and decor.gearBuddy == "Pumpkin") and 6 or 0
-    TitleRow.Position = UDim2.new(0, 34 + ui.titleDX + (ui.minimized and 8 or 0), 0, 0)
+    TitleRow.Position = UDim2.new(0, 34 + ui.titleDX + (ui.minimized and 12 or 0), 0, 0)
     if ui.minimized and oldDX ~= ui.titleDX and ui.relayoutMini then ui.relayoutMini() end
     if ui.gearTheme then ui.gearTheme(on, theme.name == "Golden") end
     for _, r in ipairs(decor.roots) do
@@ -10284,7 +10276,7 @@ do
     local themePass = 0
     -- colors the old palette used for text/arrows; frames painted with them (chevrons, gears,
     -- toggle knobs) must be remapped with the text ramp, not the background one
-    local txtSet = {}
+    local txtSet, genSet = {}, {}
     local function ckey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
     end
@@ -10294,6 +10286,9 @@ do
             if kind == "bg" and not d:IsA("GuiButton") and not d:IsA("TextLabel") and not d:IsA("TextBox")
                 and d.BackgroundTransparency < 1 and txtSet[ckey(d.BackgroundColor3)] then
                 kind = "txt"
+            elseif kind == "bg" and not d:IsA("GuiButton") and not d:IsA("TextLabel") and not d:IsA("TextBox")
+                and d.BackgroundTransparency < 1 and genSet[ckey(d.BackgroundColor3)] then
+                kind = "gen"
             end
             d.BackgroundColor3 = map(kind, d.BackgroundColor3)
             if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
@@ -10318,8 +10313,9 @@ do
         local old = theme.name
         theme.name = name
         settings.theme = name
-        txtSet = {}
+        txtSet, genSet = {}, {}
         for _, k in ipairs({ "text", "muted", "dim", "ink" }) do txtSet[ckey(C[k])] = true end
+        for _, k in ipairs({ "line", "controlLine" }) do genSet[ckey(C[k])] = true end
         setPalette(name)
 
         local skip = {}

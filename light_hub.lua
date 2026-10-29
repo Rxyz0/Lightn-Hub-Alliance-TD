@@ -131,23 +131,23 @@ do
     -- Golden: dark teal base with metallic gold used only as an accent
     -- (colors sampled from the Alliance Tower Defense key art)
     local G_BG = {
-        { 0, 24, 38, 32 }, { 10, 36, 52, 42 }, { 20, 54, 72, 50 },
-        { 28, 62, 80, 52 }, { 34, 70, 88, 54 }, { 48, 90, 106, 58 },
-        { 64, 118, 128, 62 }, { 96, 156, 148, 46 }, { 150, 194, 162, 28 },
-        { 196, 224, 188, 30 }, { 214, 251, 208, 12 }, { 255, 251, 208, 12 },
+        { 0, 8, 16, 15 }, { 10, 13, 23, 22 }, { 20, 23, 39, 37 },
+        { 28, 28, 46, 43 }, { 34, 32, 52, 49 }, { 48, 43, 68, 62 },
+        { 64, 58, 84, 68 }, { 96, 112, 106, 36 }, { 150, 168, 132, 16 },
+        { 196, 205, 168, 22 }, { 214, 251, 208, 12 }, { 255, 251, 208, 12 },
     }
     local G_TXT = {
-        { 0, 18, 30, 28 }, { 40, 22, 36, 33 }, { 60, 120, 124, 62 },
-        { 84, 178, 172, 108 }, { 130, 216, 208, 142 }, { 190, 238, 230, 172 },
-        { 232, 252, 246, 208 }, { 255, 255, 248, 170 },
+        { 0, 18, 30, 28 }, { 40, 22, 36, 33 }, { 60, 70, 76, 40 },
+        { 84, 98, 100, 52 }, { 130, 158, 152, 86 }, { 190, 212, 204, 138 },
+        { 232, 238, 230, 186 }, { 255, 255, 238, 140 },
     }
     local G_GEN = {
-        { 0, 28, 44, 36 }, { 8, 40, 58, 46 }, { 9, 42, 60, 46 },
-        { 24, 84, 92, 42 }, { 26, 88, 96, 42 }, { 34, 106, 108, 40 },
-        { 46, 116, 112, 36 }, { 54, 160, 134, 30 }, { 66, 146, 134, 38 },
-        { 70, 204, 166, 28 }, { 90, 196, 180, 54 }, { 120, 208, 190, 62 },
-        { 150, 232, 206, 64 }, { 185, 244, 226, 116 }, { 205, 252, 240, 164 },
-        { 215, 255, 247, 198 }, { 255, 255, 255, 238 },
+        { 0, 10, 20, 19 }, { 8, 14, 26, 25 }, { 9, 14, 26, 25 },
+        { 24, 22, 38, 36 }, { 26, 24, 40, 38 }, { 34, 34, 58, 52 },
+        { 46, 36, 60, 54 }, { 54, 84, 72, 22 }, { 66, 52, 84, 70 },
+        { 70, 150, 120, 24 }, { 90, 120, 110, 34 }, { 120, 144, 136, 41 },
+        { 150, 192, 149, 13 }, { 185, 237, 193, 32 }, { 205, 245, 225, 90 },
+        { 215, 241, 236, 131 }, { 255, 255, 248, 200 },
     }
     local function goldenFn(kind, l)
         if kind == "bg" then
@@ -220,8 +220,8 @@ do
     -- gradient used by the sliding bars/cards; the Golden header is a lit gold bar
     function theme.moverSeq(lo, hi, role)
         if theme.name == "Golden" and role == "header" then
-            local a, b = Color3.fromRGB(196, 150, 16), Color3.fromRGB(255, 214, 30)
-            local shine = Color3.fromRGB(255, 252, 232)
+            local a, b = Color3.fromRGB(226, 178, 16), Color3.fromRGB(255, 226, 36)
+            local shine = Color3.fromRGB(255, 252, 226)
             local soft = a:Lerp(b, 0.7)
             return ColorSequence.new({
                 ColorSequenceKeypoint.new(0, a),
@@ -265,7 +265,7 @@ local PLAYER_OPTIONS = {
     { label = "3", value = 3 },
     { label = "4", value = 4 },
 }
-local SPEED_MIN, SPEED_MAX, SPEED_STEP = 1.5, 3.5, 0.5
+local SPEED_MIN, SPEED_MAX, SPEED_STEP = 1.5, 5, 0.5
 local function snapSpeed(v)
     if type(v) ~= "number" then return SPEED_MIN end
     v = math.clamp(v, SPEED_MIN, SPEED_MAX)
@@ -288,6 +288,12 @@ local CRATE_AMOUNT_OPTIONS = {
     { label = "1", value = 1 },
     { label = "3", value = 3 },
     { label = "6", value = 6 },
+}
+CRATE_AMOUNT_OPTIONS.open = {
+    { label = "1", value = 1 },
+    { label = "3", value = 3 },
+    { label = "6", value = 6 },
+    { label = "10", value = 10 },
 }
 
 local LUCKY_OPTIONS = {
@@ -320,7 +326,7 @@ local FLAG_DEFAULTS = {
     autoLobby = false,
     lossReturn = false, lossStreak = 0, lossNotice = false,
     lossLimit = 4, lossNoticeN = 4,
-    autoSkip = false, skipStop = "",
+    autoSkip = false, skipStop = "", skipStopOn = false,
     autoSummon = false, summonAmount = 1,
     autoSpin = false,
     autoCrate = false, crateAmount = 1, crateType = "",
@@ -1197,7 +1203,7 @@ local function loadSettings()
     end
 
     if not inOptions(SUMMON_OPTIONS, flags.summonAmount) then flags.summonAmount = 1 end
-    if not inOptions(CRATE_AMOUNT_OPTIONS, flags.crateAmount) then flags.crateAmount = 1 end
+    if not inOptions(CRATE_AMOUNT_OPTIONS.open, flags.crateAmount) then flags.crateAmount = 1 end
     if not inOptions(CRATE_AMOUNT_OPTIONS, flags.luckyAmount) then flags.luckyAmount = 1 end
     flags.speedValue = snapSpeed(flags.speedValue)
     if flags.modeValue ~= "" and not inOptions(MODE_OPTIONS, flags.modeValue) then flags.modeValue = "" end
@@ -2817,7 +2823,7 @@ end
 
 -- Chevron on the left of a card title. Its hit area covers the left half of the header,
 -- so a tap near the arrow can't flip the card's own toggle by accident.
-function ui.dropArrow(card, title, startOpen, onToggle)
+function ui.dropArrow(card, title, startOpen, onToggle, makeGear)
     local api = { open = startOpen and true or false }
     local chev = createChevron(card, 0)
     chev.AnchorPoint = Vector2.new(0, 0.5)
@@ -2829,6 +2835,18 @@ function ui.dropArrow(card, title, startOpen, onToggle)
     else
         title.Size = UDim2.new(0, math.max(title.Size.X.Offset, 190), title.Size.Y.Scale, title.Size.Y.Offset)
     end
+    -- optional settings gear that takes the arrow's place (same spot, same wide hit area)
+    local gear
+    if makeGear then
+        chev.Visible = false
+        local slot = make("Frame", {
+            Size = UDim2.new(0, 16, 0, 16),
+            Position = UDim2.new(0, 12, 0, 9),
+            BackgroundTransparency = 1,
+        }, card)
+        local holder, parts = makeGear(slot)
+        gear = { holder = holder, parts = parts }
+    end
     local hit = make("TextButton", {
         Size = UDim2.new(0.5, 0, 0, 34),
         BackgroundTransparency = 1,
@@ -2837,16 +2855,21 @@ function ui.dropArrow(card, title, startOpen, onToggle)
         ZIndex = 4,
     }, card)
     local function tint(c)
+        if gear then
+            for _, f in ipairs(gear.parts) do tween(f, 0.12, { BackgroundColor3 = c }) end
+            return
+        end
         for _, f in ipairs(chev:GetChildren()) do
             if f:IsA("Frame") then tween(f, 0.12, { BackgroundColor3 = c }) end
         end
     end
     hit.MouseEnter:Connect(function() tint(C.text) end)
-    hit.MouseLeave:Connect(function() tint(C.muted) end)
+    hit.MouseLeave:Connect(function() tint(api.open and gear and C.text or C.muted) end)
     function api.set(v, instant)
         api.open = v and true or false
-        local rot = api.open and 180 or 0
-        if instant then chev.Rotation = rot else tween(chev, 0.12, { Rotation = rot }) end
+        local target = gear and gear.holder or chev
+        local rot = api.open and (gear and 45 or 180) or 0
+        if instant then target.Rotation = rot else tween(target, 0.15, { Rotation = rot }) end
     end
     hit.MouseButton1Click:Connect(function()
         api.set(not api.open)
@@ -3512,7 +3535,11 @@ local function createFloat(title, startPos)
         body.Size = UDim2.new(1, -16, 0, h)
         f.Size = UDim2.new(0, W, 0, 34 + h + 8)
     end
-    function api.toggle() f.Visible = not f.Visible end
+    -- every press brings the window back to the middle of the screen, so it can't get lost
+    function api.toggle()
+        f.Position = UDim2.new(0.5, -W / 2, 0.5, -f.AbsoluteSize.Y / 2)
+        f.Visible = true
+    end
     return api
 end
 
@@ -4628,8 +4655,8 @@ do
     end
 
     -- waves the skip must NOT fire on, typed as 10-20-30; skipping resumes once the wave moves on
-    local stopSet = {}
-    local function parseStops(text)
+    local SK = { set = {} }
+    function SK.parse(text)
         local set, list = {}, {}
         for n in string.gmatch(tostring(text or ""), "%d+") do
             local v = tonumber(n)
@@ -4641,34 +4668,101 @@ do
         table.sort(list)
         return set, table.concat(list, "-")
     end
-    stopSet = parseStops(flags.skipStop)
+    SK.set = SK.parse(flags.skipStop)
 
-    local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 28, function(body)
-        local box = createInput(body, {
-            Size = UDim2.new(1, 0, 1, 0),
+    local fSkip = visualFeature(page, "Auto Skip Wave", "autoSkip", 0)
+    SK.panel = function()
+        local TextService = game:GetService("TextService")
+        local panel = createCard(page, 40)
+        panel.Visible = false
+
+        local text = "Stop auto skip wave at"
+        local tw = TextService:GetTextSize(text, 10, Enum.Font.GothamMedium, Vector2.new(400, 20)).X
+        make("TextLabel", {
+            Size = UDim2.new(0, tw + 2, 0, 26),
+            Position = UDim2.new(0, 12, 0, 7),
+            BackgroundTransparency = 1,
+            Text = text,
+            TextColor3 = C.muted,
+            TextSize = 10,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, panel)
+        local box = createInput(panel, {
+            Size = UDim2.new(0, 96, 0, 18),
+            Position = UDim2.new(0, 12 + tw + 8, 0, 11),
+            TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Center,
-        }, "Stop skip at wave  (e.g. 10-20-30)")
-        local _, shown = parseStops(flags.skipStop)
+        }, "1-2-3-4")
+        local _, shown = SK.parse(flags.skipStop)
         box.Text = shown
         box.FocusLost:Connect(function()
-            local set, text = parseStops(box.Text)
-            stopSet = set
-            box.Text = text
-            setFlag("skipStop", text)
+            local set, t = SK.parse(box.Text)
+            SK.set = set
+            box.Text = t
+            setFlag("skipStop", t)
         end)
-    end)
 
-    local function skipWaveNow()
+        local state = flags.skipStopOn and true or false
+        local track = make("Frame", {
+            Size = UDim2.new(0, 26, 0, 14),
+            Position = UDim2.new(1, -38, 0, 13),
+            BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
+            BorderSizePixel = 0,
+        }, panel)
+        local stroke = make("UIStroke", { Color = C.controlLine, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, track)
+        local knob = make("Frame", {
+            Size = UDim2.new(0, 8, 0, 8),
+            Position = UDim2.new(0, 3, 0.5, -4),
+            BackgroundColor3 = C.muted,
+            BorderSizePixel = 0,
+        }, track)
+        local hit = make("TextButton", {
+            Size = UDim2.new(1, 8, 1, 8),
+            Position = UDim2.new(0, -4, 0, -4),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 2,
+        }, track)
+        local function render(animate)
+            local tc = state and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+            local kc = state and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
+            local kp = state and UDim2.new(1, -11, 0.5, -4) or UDim2.new(0, 3, 0.5, -4)
+            local sc = state and tc or C.controlLine
+            if animate then
+                tween(track, 0.12, { BackgroundColor3 = tc })
+                tween(stroke, 0.12, { Color = sc })
+                tween(knob, 0.12, { BackgroundColor3 = kc, Position = kp })
+            else
+                track.BackgroundColor3, stroke.Color = tc, sc
+                knob.BackgroundColor3, knob.Position = kc, kp
+            end
+        end
+        hit.MouseButton1Click:Connect(function()
+            state = not state
+            render(true)
+            setFlag("skipStopOn", state)
+        end)
+        render(false)
+
+        ui.dropArrow(fSkip.card, fSkip.title, false, function(open)
+            panel.Visible = open
+        end)
+    end
+    SK.panel()
+
+    function SK.wave()
         local ws = ReplicatedStorage:FindFirstChild("WaveState")
         local w = ws and ws:GetAttribute("CurrentWave")
         if type(w) ~= "number" then w = waveNow.cur end
         return w
     end
     -- true while the current wave is one of the stop waves
-    local function skipHeld()
-        if next(stopSet) == nil then return false, nil end
-        local w = skipWaveNow()
-        if w and stopSet[w] then return true, w end
+    function SK.held()
+        if not flags.skipStopOn or next(SK.set) == nil then return false, nil end
+        local w = SK.wave()
+        if w and SK.set[w] then return true, w end
         return false, w
     end
 
@@ -4728,7 +4822,7 @@ do
             return 1.5
         end
 
-        local hold, holdWave = skipHeld()
+        local hold, holdWave = SK.held()
         if hold then
             skipState.pressed = false
             fSkip.setNote("Holding at wave " .. holdWave, C.warn)
@@ -4802,7 +4896,7 @@ do
         if not flags.autoSkip then return end
         local b = skipState.btn
         if not (b and b.Parent) then return end
-        if skipHeld() then return end
+        if SK.held() then return end
         if isShown(b) then
             if not skipState.pressed and os.clock() >= (skipState.nextTry or 0)
                 and os.clock() - (skipState.lastAct or 0) >= 2 then
@@ -4821,7 +4915,7 @@ do
     function skipState.fireNow()
         local now = os.clock()
         if now - (skipState.lastAct or 0) < 2 then return end
-        if skipHeld() then return end
+        if SK.held() then return end
         local ev = RE("SkipWaveVote")
         if not ev then return end
 
@@ -5289,6 +5383,8 @@ do
     end)
 
     local fSpin = visualFeature(page, "Auto Spin", "autoSpin", 0)
+    fSpin.card.LayoutOrder = -3
+    fSummon.card.LayoutOrder = -2
     local spinFullNotified = false
 
     runLoop(function()
@@ -5411,13 +5507,13 @@ do
     local crateSel
     local fCrate = visualFeature(page, "Auto Open Crate", "autoCrate", 28, function(body)
         createSegmented(body, {
-            Size = UDim2.new(0, 96, 1, 0),
-        }, CRATE_AMOUNT_OPTIONS, flags.crateAmount, function(v)
+            Size = UDim2.new(0, 128, 1, 0),
+        }, CRATE_AMOUNT_OPTIONS.open, flags.crateAmount, function(v)
             setFlag("crateAmount", v)
         end)
         crateSel = createSelect(body, {
-            Size = UDim2.new(1, -104, 1, 0),
-            Position = UDim2.new(0, 104, 0, 0),
+            Size = UDim2.new(1, -136, 1, 0),
+            Position = UDim2.new(0, 136, 0, 0),
         }, {
             getOptions = function() return optionsFor("crate") end,
             labelOf = function(id) return labelFor("crate", id) end,
@@ -5869,7 +5965,7 @@ do
     end)
 end
 
-do
+;(function()
     local page = tabs["Endless"].page
     local TextService = game:GetService("TextService")
     local upg
@@ -5917,6 +6013,8 @@ do
 
     ui.dropArrow(upg.card, upg.title, false, function(open)
         panel.Visible = open
+    end, function(slot)
+        return gearIcon(slot, 12, C.muted, T(Color3.fromRGB(22, 22, 25), "bg"))
     end)
 
     local function miniToggle(pos, initial, onChange)
@@ -6117,21 +6215,31 @@ do
 
         if settings.upgradeAll then
             if #list == 0 then return showMaxed() end
-            table.sort(list, function(a, b) return a.price < b.price end)
-            local did = 0
+            table.sort(list, function(a, b)
+                local la, lb = lastUp[a.tower] or 0, lastUp[b.tower] or 0
+                if la ~= lb then return la < lb end
+                return a.price < b.price
+            end)
+            local did, short = 0, false
             for _, c in ipairs(list) do
-                if not run.upgrade or cash < c.price then break end
-                attempt(remote, c.tower)
-                cash = cash - c.price
-                did = did + 1
-                task.wait(0.05)
+                if not run.upgrade then break end
+                -- read the real balance each time: the server may not have charged the last upgrade yet
+                if getStat("Cash") < c.price then
+                    short = true
+                elseif attempt(remote, c.tower) then
+                    did = did + 1
+                    -- give the server a moment between upgrades, otherwise the extra ones get dropped
+                    task.wait(math.max(0.1, settings.upgradeDelay))
+                else
+                    task.wait(0.05)
+                end
             end
             if did > 0 then
                 upg.maxed = false
                 upg.setNote("")
-                return settings.upgradeDelay
+                return 0.05
             end
-            upg.setNote("Not enough cash", C.warn)
+            upg.setNote(short and "Not enough cash" or "", C.warn)
             return math.max(0.1, math.min(settings.upgradeDelay, 0.5))
         end
 
@@ -6147,12 +6255,12 @@ do
         upg.setNote("Not enough cash", C.warn)
         return math.max(0.1, math.min(settings.upgradeDelay, 0.5))
     end)
-end
+end)()
 
 local SPOTS_FILE = FS.data("Spots")
 local UTTM_NAME = "Upgraded Titan Cinema Man"
 
-do
+;(function()
     local page = tabs["Endless"].page
     local mouse = LocalPlayer:GetMouse()
 
@@ -6768,9 +6876,9 @@ do
         if isDroneOn(tw) == want then return true end
         return toggleDrone(tw, want)
     end
-end
+end)()
 
-do
+;(function()
     local page, spots, saveSpots = EP.page, EP.spots, EP.saveSpots
     local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
     local pushMacro = EP.pushMacro
@@ -7276,7 +7384,64 @@ do
             end
         end
 
+        local MU = { listOpen = true, delMode = false, delSel = {}, red = Color3.fromRGB(176, 44, 44) }
+
+        -- small trash can: handle + lid + hollow body; returns the holder and a recolor function
+        function MU.trash(par, x, color)
+            local holder = make("Frame", {
+                Size = UDim2.new(0, 11, 0, 12),
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, x, 0.5, 0),
+                BackgroundTransparency = 1,
+            }, par)
+            local bars = {
+                make("Frame", { Size = UDim2.new(0, 4, 0, 1), Position = UDim2.new(0, 3, 0, 0), BackgroundColor3 = color, BorderSizePixel = 0 }, holder),
+                make("Frame", { Size = UDim2.new(0, 11, 0, 2), Position = UDim2.new(0, 0, 0, 1), BackgroundColor3 = color, BorderSizePixel = 0 }, holder),
+            }
+            local body = make("Frame", {
+                Size = UDim2.new(0, 9, 0, 8), Position = UDim2.new(0, 1, 0, 4),
+                BackgroundTransparency = 1, BorderSizePixel = 0,
+            }, holder)
+            local stroke = make("UIStroke", { Color = color, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, body)
+            return function(c)
+                for _, b in ipairs(bars) do b.BackgroundColor3 = c end
+                stroke.Color = c
+            end
+        end
+
+        -- one rounded-off box with a thin "|" between two buttons
+        function MU.pair(x, y, w, leftText, leftFn, rightText, rightFn)
+            local box = make("Frame", {
+                Size = UDim2.new(0, w, 0, 28),
+                Position = UDim2.new(0, x, 0, y),
+                BackgroundColor3 = C.control,
+                BorderSizePixel = 0,
+            }, rows)
+            styleControl(box)
+            local half = math.floor(w / 2)
+            local l = createFxButton(box, {
+                Size = UDim2.new(0, half, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0),
+            }, leftText, leftFn, GREEN_A, GREEN_B, true)
+            local r = createFxButton(box, {
+                Size = UDim2.new(0, w - half - 1, 1, 0),
+                Position = UDim2.new(0, half + 1, 0, 0),
+            }, rightText, rightFn, GREEN_A, GREEN_B)
+            for _, b in ipairs({ l, r }) do
+                local st = b:FindFirstChildOfClass("UIStroke")
+                if st then st:Destroy() end
+            end
+            make("Frame", {
+                Size = UDim2.new(0, 1, 0.56, 0),
+                Position = UDim2.new(0, half, 0.22, 0),
+                BackgroundColor3 = C.controlLine,
+                BorderSizePixel = 0,
+            }, box)
+            return l, r
+        end
+
         rebuildMower = function()
+            local Y_BACK, Y_LIST, Y_REC, Y_ROWS = 0, 34, 76, 110
             for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
             rows.Visible = mowerOpen
             if not mowerOpen then
@@ -7284,29 +7449,11 @@ do
                 return
             end
 
-            rowLabel(0, "Record placement")
-            recSwitch = createMiniSwitch(rows, {
-                Position = UDim2.new(0, 110, 0, 6),
-            }, recOn, function(v)
-                if v then
-                    if not startRecording() then recSwitch.set(false, true) end
-                else
-                    stopRecording()
-                end
-            end)
-
-            rowLabel(32, "Back default")
-            createFxButton(rows, {
-                Size = UDim2.new(0, 60, 0, 28),
-                Position = UDim2.new(0, 110, 0, 32),
-            }, "Back", backHome, GREEN_A, GREEN_B, true)
+            -- back to default [ Back | Edit ]
+            rowLabel(Y_BACK, "Back to default")
             local hasHome = #spots.home > 0 or #spots.homeUttm > 0
-            local homeBtn
-            local confirmEdit
-            homeBtn = createFxButton(rows, {
-                Size = UDim2.new(0, 60, 0, 28),
-                Position = UDim2.new(0, 176, 0, 32),
-            }, hasHome and "Edit" or "Save", function()
+            local confirmEdit, homeBtn
+            local _, edit = MU.pair(110, Y_BACK, 128, "Back", backHome, hasHome and "Edit" or "Save", function()
                 if hasHome and not confirmEdit() then return end
                 local n, exact = snapshotHome()
                 local msg = n .. " units"
@@ -7316,27 +7463,15 @@ do
                 notify("Unit Replace", "Default saved: " .. msg, 4)
                 rebuildMower()
                 refreshMowerFloat()
-            end, GREEN_A, GREEN_B)
+            end)
+            homeBtn = edit
             confirmEdit = armed(homeBtn, "Edit")
             if hasHome then
                 make("TextLabel", {
                     Size = UDim2.new(1, -250, 0, 28),
-                    Position = UDim2.new(0, 246, 0, 32),
+                    Position = UDim2.new(0, 246, 0, Y_BACK),
                     BackgroundTransparency = 1,
                     Text = #spots.home .. " units" .. (#spots.homeUttm > 0 and (" + " .. #spots.homeUttm .. " UTTM") or ""),
-                    TextColor3 = C.dim,
-                    TextSize = 10,
-                    Font = Enum.Font.GothamMedium,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                }, rows)
-            end
-
-            if #spots.mowers == 0 then
-                make("TextLabel", {
-                    Size = UDim2.new(1, 0, 0, 28),
-                    Position = UDim2.new(0, 0, 0, 68),
-                    BackgroundTransparency = 1,
-                    Text = "No replaces yet. Turn on Record placement and place your units.",
                     TextColor3 = C.dim,
                     TextSize = 10,
                     Font = Enum.Font.GothamMedium,
@@ -7345,45 +7480,170 @@ do
                 }, rows)
             end
 
-            for i, m in ipairs(spots.mowers) do
-                local y = 68 + (i - 1) * 32
-                rowLabel(y, "Replace " .. m.id)
-                createFxButton(rows, {
-                    Size = UDim2.new(0, 60, 0, 28),
-                    Position = UDim2.new(0, 110, 0, y),
-                }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET, true)
-                local del
-                local confirmDel
-                del = createFxButton(rows, {
-                    Size = UDim2.new(0, 60, 0, 28),
-                    Position = UDim2.new(0, 176, 0, y),
-                }, "Delete", function()
-                    if not confirmDel() then return end
-                    for j, v in ipairs(spots.mowers) do
-                        if v == m then
-                            table.remove(spots.mowers, j)
-                            break
-                        end
-                    end
-                    saveSpots()
-                    rebuildMower()
-                    refreshMowerFloat()
-                    say("Replace " .. m.id .. " deleted", C.muted)
-                end, RED_A, RED_B)
-                confirmDel = armed(del, "Delete")
-                make("TextLabel", {
-                    Size = UDim2.new(1, -250, 0, 28),
-                    Position = UDim2.new(0, 246, 0, y),
-                    BackgroundTransparency = 1,
-                    Text = #m.units .. " units",
-                    TextColor3 = C.dim,
-                    TextSize = 10,
-                    Font = Enum.Font.GothamMedium,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                }, rows)
-            end
+            -- replace list [^]                       [trash Delete]
+            local listBtn = make("TextButton", {
+                Size = UDim2.new(0, 104, 0, 28),
+                Position = UDim2.new(0, 0, 0, Y_LIST),
+                BackgroundTransparency = 1,
+                Text = "",
+                AutoButtonColor = false,
+            }, rows)
+            make("TextLabel", {
+                Size = UDim2.new(1, -22, 1, 0),
+                BackgroundTransparency = 1,
+                Text = "Replace list (" .. #spots.mowers .. ")",
+                TextColor3 = C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, listBtn)
+            local lc = createChevron(listBtn, -4)
+            lc.Rotation = MU.listOpen and 180 or 0
+            listBtn.MouseButton1Click:Connect(function()
+                MU.listOpen = not MU.listOpen
+                rebuildMower()
+            end)
 
-            local h = 68 + math.max(1, #spots.mowers) * 32
+            local selCount = 0
+            for _, m in ipairs(spots.mowers) do
+                if MU.delSel[m.id] then selCount = selCount + 1 else MU.delSel[m.id] = nil end
+            end
+            local armedRed = MU.delMode and selCount > 0
+            local delBtn = make("TextButton", {
+                Size = UDim2.new(0, 118, 0, 28),
+                Position = UDim2.new(1, -118, 0, Y_LIST),
+                BackgroundColor3 = armedRed and MU.red or C.control,
+                BorderSizePixel = 0,
+                Text = armedRed and ("Delete (" .. selCount .. ")")
+                    or (MU.delMode and "Select replace" or "Delete"),
+                TextColor3 = armedRed and Color3.fromRGB(255, 255, 255) or C.text,
+                TextSize = 11,
+                Font = Enum.Font.GothamMedium,
+                AutoButtonColor = false,
+            }, rows)
+            make("UIPadding", { PaddingLeft = UDim.new(0, 16) }, delBtn)
+            styleControl(delBtn)
+            MU.trash(delBtn, -8, armedRed and Color3.fromRGB(255, 255, 255) or C.muted)
+            delBtn.MouseEnter:Connect(function()
+                if not armedRed then delBtn.BackgroundColor3 = C.hover end
+            end)
+            delBtn.MouseLeave:Connect(function()
+                delBtn.BackgroundColor3 = armedRed and MU.red or C.control
+            end)
+            delBtn.MouseButton1Click:Connect(function()
+                if not MU.delMode then
+                    MU.delMode, MU.delSel, MU.listOpen = true, {}, true
+                    say("Select the replaces to delete", C.muted)
+                elseif selCount == 0 then
+                    MU.delMode = false
+                    say("", C.muted)
+                else
+                    local kept = {}
+                    for _, m in ipairs(spots.mowers) do
+                        if not MU.delSel[m.id] then kept[#kept + 1] = m end
+                    end
+                    local gone = #spots.mowers - #kept
+                    spots.mowers = kept
+                    saveSpots()
+                    MU.delMode, MU.delSel = false, {}
+                    say(gone .. (gone == 1 and " replace deleted" or " replaces deleted"), C.muted)
+                    refreshMowerFloat()
+                end
+                rebuildMower()
+            end)
+
+            make("Frame", {
+                Size = UDim2.new(1, 0, 0, 1),
+                Position = UDim2.new(0, 0, 0, Y_REC - 8),
+                BackgroundColor3 = C.line,
+                BorderSizePixel = 0,
+            }, rows)
+
+            -- record placement [toggle]
+            rowLabel(Y_REC, "Record placement")
+            recSwitch = createMiniSwitch(rows, {
+                Position = UDim2.new(0, 110, 0, Y_REC + 6),
+            }, recOn, function(v)
+                if v then
+                    if not startRecording() then recSwitch.set(false, true) end
+                else
+                    stopRecording()
+                end
+            end)
+
+            -- Replace 1 [Place] ...
+            local h = Y_ROWS - 2
+            if MU.listOpen then
+                if #spots.mowers == 0 then
+                    make("TextLabel", {
+                        Size = UDim2.new(1, 0, 0, 28),
+                        Position = UDim2.new(0, 0, 0, Y_ROWS),
+                        BackgroundTransparency = 1,
+                        Text = "No replaces yet. Turn on Record placement and place your units.",
+                        TextColor3 = C.dim,
+                        TextSize = 10,
+                        Font = Enum.Font.GothamMedium,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                    }, rows)
+                end
+                for i, m in ipairs(spots.mowers) do
+                    local y = Y_ROWS + (i - 1) * 32
+                    if MU.delMode then
+                        local row = make("TextButton", {
+                            Size = UDim2.new(1, 0, 0, 28),
+                            Position = UDim2.new(0, 0, 0, y),
+                            BackgroundColor3 = C.control,
+                            BorderSizePixel = 0,
+                            Text = "",
+                            AutoButtonColor = false,
+                        }, rows)
+                        styleControl(row)
+                        local on = MU.delSel[m.id] and true or false
+                        local box = make("Frame", {
+                            Size = UDim2.new(0, 12, 0, 12),
+                            Position = UDim2.new(0, 10, 0.5, -6),
+                            BackgroundColor3 = on and MU.red or C.control,
+                            BorderSizePixel = 0,
+                        }, row)
+                        make("UIStroke", {
+                            Color = on and MU.red or C.controlLine, Thickness = 1,
+                            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                        }, box)
+                        make("TextLabel", {
+                            Size = UDim2.new(1, -36, 1, 0),
+                            Position = UDim2.new(0, 30, 0, 0),
+                            BackgroundTransparency = 1,
+                            Text = "Replace " .. m.id .. "   \u{00B7}   " .. #m.units .. " units",
+                            TextColor3 = on and C.hi or C.text,
+                            TextSize = 11,
+                            Font = Enum.Font.GothamMedium,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                        }, row)
+                        row.MouseButton1Click:Connect(function()
+                            MU.delSel[m.id] = (not MU.delSel[m.id]) or nil
+                            rebuildMower()
+                        end)
+                    else
+                        rowLabel(y, "Replace " .. m.id)
+                        createFxButton(rows, {
+                            Size = UDim2.new(0, 60, 0, 28),
+                            Position = UDim2.new(0, 110, 0, y),
+                        }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET, true)
+                        make("TextLabel", {
+                            Size = UDim2.new(1, -184, 0, 28),
+                            Position = UDim2.new(0, 178, 0, y),
+                            BackgroundTransparency = 1,
+                            Text = #m.units .. " units",
+                            TextColor3 = C.dim,
+                            TextSize = 10,
+                            Font = Enum.Font.GothamMedium,
+                            TextXAlignment = Enum.TextXAlignment.Left,
+                        }, rows)
+                    end
+                end
+                h = Y_ROWS + math.max(1, #spots.mowers) * 32
+            end
             rows.Size = UDim2.new(1, -24, 0, h)
             mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
         end
@@ -7489,9 +7749,9 @@ do
             codeBox.Text = ""
         end)
     end
-end
+end)()
 
-do
+;(function()
     local page = EP.page
     local UTTM_BLUE, UTTM_VIOLET = EP.UTTM_BLUE, EP.UTTM_VIOLET
     local findUttm = EP.findUttm
@@ -7682,9 +7942,9 @@ do
         return 1
     end)
     end
-end
+end)()
 
-do
+;(function()
     local page = tabs["Macro"].page
     local inMatch = (game.PlaceId == MATCH_PLACE)
     local MACRO_INDEX = FS.index()
@@ -8190,10 +8450,10 @@ do
 
     do
         local o = mk.card.LayoutOrder
-        fileCard.card.LayoutOrder = o
-        fRec.card.LayoutOrder = o + 1
-        fPlay.card.LayoutOrder = o + 2
-        mk.card.LayoutOrder = o + 3
+        mk.card.LayoutOrder = o
+        fileCard.card.LayoutOrder = o + 1
+        fRec.card.LayoutOrder = o + 2
+        fPlay.card.LayoutOrder = o + 3
     end
 
     local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
@@ -8466,9 +8726,9 @@ do
         end
         return 0.7
     end)
-end
+end)()
 
-do
+;(function()
     local page = tabs["AFK"].page
     local GIFT_COUNT = 9
     local claimedCount = 0
@@ -8757,7 +9017,7 @@ do
         end
         return 0.5
     end)
-end
+end)()
 
 do
     local page = tabs["AFK"].page
@@ -9109,7 +9369,7 @@ do
     end)
 end
 
-do
+;(function()
     local page = tabs["Settings"].page
 
     local themeCard = createFeature(page, "Theme", { noToggle = true, bodyHeight = 28 })
@@ -9423,7 +9683,7 @@ do
     })
 
     fAutoMin.card.LayoutOrder = 2
-    fSkipAnim.card.LayoutOrder = 100
+    fSkipAnim.card.LayoutOrder = -10
 
     createFeature(page, "Anti AFK", {
         initial = settings.antiAfk,
@@ -9525,7 +9785,7 @@ do
         r1[3].value.Text = tostring(attr("EndlessWeeklyBest") or "-")
         return 3
     end)
-end
+end)()
 
 local towerConns = {}
 
@@ -9796,7 +10056,8 @@ local function layoutMini()
     local function tw(text, size)
         return TS:GetTextSize(text, size, Enum.Font.GothamBold, Vector2.new(400, 40)).X
     end
-    local x = 34 + (ui.titleDX or 0) + tw(TitleLabel.Text, 12)
+    TitleRow.Position = UDim2.new(0, 34 + (ui.titleDX or 0) + 8, 0, 0)
+    local x = 34 + (ui.titleDX or 0) + 8 + tw(TitleLabel.Text, 12)
     if game.PlaceId ~= LOBBY_PLACE then
         local waveW = math.max(44, tw("00/00", 14) + 4)
         MiniWave.Position = UDim2.new(0, x + 14, 0, 0)
@@ -9822,6 +10083,7 @@ local function layoutMini()
 end
 
 local function restoreFull()
+    TitleRow.Position = UDim2.new(0, 34 + (ui.titleDX or 0), 0, 0)
     TimerLabel.Position = UDim2.new(1, -158, 0, 0)
     TimerLabel.Size = UDim2.new(0, 84, 1, 0)
     TimerLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -9908,7 +10170,7 @@ function ui.decorRefresh()
     end
     local oldDX = ui.titleDX or 0
     ui.titleDX = (on and decor.gearBuddy == "Pumpkin") and 6 or 0
-    TitleRow.Position = UDim2.new(0, 34 + ui.titleDX, 0, 0)
+    TitleRow.Position = UDim2.new(0, 34 + ui.titleDX + (ui.minimized and 8 or 0), 0, 0)
     if ui.minimized and oldDX ~= ui.titleDX and ui.relayoutMini then ui.relayoutMini() end
     if ui.gearTheme then ui.gearTheme(on, theme.name == "Golden") end
     for _, r in ipairs(decor.roots) do
@@ -10007,7 +10269,7 @@ do
         -- the title is tinted by its gradient, so the Golden title needs white text underneath
         TitleLabel.TextColor3 = (theme.defs[name] and theme.defs[name].whiteTitle) and C.white or C.hi
         fluid.titleGrad.Color = titleSeq(fluid.t)
-        -- the Golden backdrop keeps most of its swirl so the gold-white glow shows through
+        -- keep the backdrop swirl faint in Golden so text stays readable on the dark teal
         fluid.alpha0 = fluid.alpha0 or { fluid.gradA.Transparency, fluid.gradB.Transparency }
         local function faint(seq, f)
             if f == 1 then return seq end
@@ -10017,7 +10279,7 @@ do
             end
             return NumberSequence.new(kps)
         end
-        local keep = (name == "Golden") and 0.8 or 1
+        local keep = (name == "Golden") and 0.5 or 1
         fluid.gradA.Transparency = faint(fluid.alpha0[1], keep)
         fluid.gradB.Transparency = faint(fluid.alpha0[2], keep)
 

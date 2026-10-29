@@ -4649,8 +4649,8 @@ do
 
     do
         local o = fPlay.card.LayoutOrder
-        fMode.card.LayoutOrder = o
-        fPlay.card.LayoutOrder = o + 1
+        fPlay.card.LayoutOrder = o
+        fMode.card.LayoutOrder = o + 1
         fSpeed.card.LayoutOrder = o + 2
     end
 
@@ -4680,7 +4680,7 @@ do
         local tw = TextService:GetTextSize(text, 10, Enum.Font.GothamMedium, Vector2.new(400, 20)).X
         make("TextLabel", {
             Size = UDim2.new(0, tw + 2, 0, 26),
-            Position = UDim2.new(0, 12, 0, 7),
+            Position = UDim2.new(0, 46, 0, 7),
             BackgroundTransparency = 1,
             Text = text,
             TextColor3 = C.muted,
@@ -4690,7 +4690,7 @@ do
         }, panel)
         local box = createInput(panel, {
             Size = UDim2.new(0, 96, 0, 18),
-            Position = UDim2.new(0, 12 + tw + 8, 0, 11),
+            Position = UDim2.new(0, 46 + tw + 8, 0, 11),
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Center,
         }, "1-2-3-4")
@@ -4706,7 +4706,7 @@ do
         local state = flags.skipStopOn and true or false
         local track = make("Frame", {
             Size = UDim2.new(0, 26, 0, 14),
-            Position = UDim2.new(1, -38, 0, 13),
+            Position = UDim2.new(0, 12, 0, 13),
             BackgroundColor3 = T(Color3.fromRGB(34, 34, 37), "bg"),
             BorderSizePixel = 0,
         }, panel)
@@ -5082,6 +5082,8 @@ do
             panel.Visible = open
         end)
     end
+    -- Main order: ... Auto Skip Wave, Auto Lobby (+ its panel), Auto Replay last
+    fReplay.card.LayoutOrder = nextOrder(page)
 
     local function scanEndScreen()
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -6887,12 +6889,12 @@ end)()
         local GREEN_A, GREEN_B = UTTM_BLUE, UTTM_VIOLET
         local RED_A, RED_B = UTTM_BLUE, UTTM_VIOLET
 
-        local mowerCard = createCard(page, 140)
+        local mowerCard = createCard(page, 34)
         local mowerTitle = make("TextLabel", {
             Size = UDim2.new(0, 120, 0, 34),
             Position = UDim2.new(0, 12, 0, 0),
             BackgroundTransparency = 1,
-            Text = "Unit Replace",
+            Text = "Replace unit",
             TextColor3 = C.text,
             TextSize = 12,
             Font = Enum.Font.GothamMedium,
@@ -6900,7 +6902,7 @@ end)()
         }, mowerCard)
         local mowerNote = make("TextLabel", {
             Size = UDim2.new(0, 190, 0, 34),
-            Position = UDim2.new(1, -266, 0, 0),
+            Position = UDim2.new(1, -274, 0, 0),
             BackgroundTransparency = 1,
             Text = "",
             TextColor3 = C.muted,
@@ -6916,9 +6918,9 @@ end)()
 
         local mowerFloat
         createButton(mowerCard, {
-            Size = UDim2.new(0, 50, 0, 24),
-            Position = UDim2.new(1, -62, 0, 5),
-        }, "Popup", function()
+            Size = UDim2.new(0, 58, 0, 24),
+            Position = UDim2.new(1, -70, 0, 5),
+        }, "Pop up", function()
             if mowerFloat then mowerFloat.toggle() end
         end)
 
@@ -7344,14 +7346,16 @@ end)()
             saveSpots()
             rebuildMower()
             refreshMowerFloat()
-            say("Replace " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
+            say("Loc " .. m.id .. " saved (" .. #m.units .. " units)", C.text)
         end
 
+        local board = createCard(page, 100)
+        board.Visible = false
         local rows = make("Frame", {
             Size = UDim2.new(1, -24, 0, 64),
-            Position = UDim2.new(0, 12, 0, 34),
+            Position = UDim2.new(0, 12, 0, 10),
             BackgroundTransparency = 1,
-        }, mowerCard)
+        }, board)
 
         local function rowLabel(y, text)
             make("TextLabel", {
@@ -7440,20 +7444,46 @@ end)()
             return l, r
         end
 
-        rebuildMower = function()
-            local Y_BACK, Y_LIST, Y_REC, Y_ROWS = 0, 34, 76, 110
-            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
-            rows.Visible = mowerOpen
-            if not mowerOpen then
-                mowerCard.Size = UDim2.new(1, 0, 0, 34)
-                return
+        -- "Ranger x2, Mage" style summary of a unit list (entries carry the tower name in .n)
+        function MU.names(list, extra)
+            local order, count = {}, {}
+            for _, u in ipairs(list or {}) do
+                local n = u.n or u.name or "?"
+                if not count[n] then count[n] = 0; order[#order + 1] = n end
+                count[n] = count[n] + 1
             end
+            local parts = {}
+            for _, n in ipairs(order) do
+                parts[#parts + 1] = count[n] > 1 and (n .. " x" .. count[n]) or n
+            end
+            if extra and extra > 0 then parts[#parts + 1] = extra .. " UTTM" end
+            return table.concat(parts, ", ")
+        end
 
-            -- back to default [ Back | Edit ]
-            rowLabel(Y_BACK, "Back to default")
+        function MU.head(y, text)
+            make("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 22),
+                Position = UDim2.new(0, 0, 0, y),
+                BackgroundTransparency = 1,
+                Text = text,
+                TextColor3 = C.text,
+                TextSize = 13,
+                Font = Enum.Font.GothamBold,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, rows)
+        end
+
+        rebuildMower = function()
+            local Y_RET, Y_REP, Y_REC, Y_LIST, LX = 0, 64, 90, 128, 150
+            for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
+            board.Visible = mowerOpen
+            if not mowerOpen then return end
+
+            -- Return  [ Return | Edit ]  info
+            MU.head(Y_RET, "Return")
             local hasHome = #spots.home > 0 or #spots.homeUttm > 0
             local confirmEdit, homeBtn
-            local _, edit = MU.pair(110, Y_BACK, 128, "Back", backHome, hasHome and "Edit" or "Save", function()
+            local _, edit = MU.pair(0, Y_RET + 26, 128, "Return", backHome, hasHome and "Edit" or "Save", function()
                 if hasHome and not confirmEdit() then return end
                 local n, exact = snapshotHome()
                 local msg = n .. " units"
@@ -7466,42 +7496,29 @@ end)()
             end)
             homeBtn = edit
             confirmEdit = armed(homeBtn, "Edit")
-            if hasHome then
-                make("TextLabel", {
-                    Size = UDim2.new(1, -250, 0, 28),
-                    Position = UDim2.new(0, 246, 0, Y_BACK),
-                    BackgroundTransparency = 1,
-                    Text = #spots.home .. " units" .. (#spots.homeUttm > 0 and (" + " .. #spots.homeUttm .. " UTTM") or ""),
-                    TextColor3 = C.dim,
-                    TextSize = 10,
-                    Font = Enum.Font.GothamMedium,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    TextTruncate = Enum.TextTruncate.AtEnd,
-                }, rows)
-            end
-
-            -- replace list [^]                       [trash Delete]
-            local listBtn = make("TextButton", {
-                Size = UDim2.new(0, 104, 0, 28),
-                Position = UDim2.new(0, 0, 0, Y_LIST),
-                BackgroundTransparency = 1,
-                Text = "",
-                AutoButtonColor = false,
-            }, rows)
             make("TextLabel", {
-                Size = UDim2.new(1, -22, 1, 0),
+                Size = UDim2.new(1, -140, 0, 28),
+                Position = UDim2.new(0, 140, 0, Y_RET + 26),
                 BackgroundTransparency = 1,
-                Text = "Replace list (" .. #spots.mowers .. ")",
-                TextColor3 = C.text,
-                TextSize = 11,
+                Text = hasHome and (#spots.home .. " units" .. (#spots.homeUttm > 0 and (" + " .. #spots.homeUttm .. " UTTM") or "")) or "Not saved yet",
+                TextColor3 = C.dim,
+                TextSize = 10,
                 Font = Enum.Font.GothamMedium,
                 TextXAlignment = Enum.TextXAlignment.Left,
-            }, listBtn)
-            local lc = createChevron(listBtn, -4)
-            lc.Rotation = MU.listOpen and 180 or 0
-            listBtn.MouseButton1Click:Connect(function()
-                MU.listOpen = not MU.listOpen
-                rebuildMower()
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            }, rows)
+
+            -- Replace: record placement [toggle] [trash]
+            MU.head(Y_REP, "Replace")
+            rowLabel(Y_REC, "Record placement")
+            recSwitch = createMiniSwitch(rows, {
+                Position = UDim2.new(0, 110, 0, Y_REC + 6),
+            }, recOn, function(v)
+                if v then
+                    if not startRecording() then recSwitch.set(false, true) end
+                else
+                    stopRecording()
+                end
             end)
 
             local selCount = 0
@@ -7510,20 +7527,15 @@ end)()
             end
             local armedRed = MU.delMode and selCount > 0
             local delBtn = make("TextButton", {
-                Size = UDim2.new(0, 118, 0, 28),
-                Position = UDim2.new(1, -118, 0, Y_LIST),
+                Size = UDim2.new(0, 30, 0, 28),
+                Position = UDim2.new(0, 150, 0, Y_REC),
                 BackgroundColor3 = armedRed and MU.red or C.control,
                 BorderSizePixel = 0,
-                Text = armedRed and ("Delete (" .. selCount .. ")")
-                    or (MU.delMode and "Select replace" or "Delete"),
-                TextColor3 = armedRed and Color3.fromRGB(255, 255, 255) or C.text,
-                TextSize = 11,
-                Font = Enum.Font.GothamMedium,
+                Text = "",
                 AutoButtonColor = false,
             }, rows)
-            make("UIPadding", { PaddingLeft = UDim.new(0, 16) }, delBtn)
             styleControl(delBtn)
-            MU.trash(delBtn, -8, armedRed and Color3.fromRGB(255, 255, 255) or C.muted)
+            MU.trash(delBtn, 9, armedRed and Color3.fromRGB(255, 255, 255) or (MU.delMode and C.text or C.muted))
             delBtn.MouseEnter:Connect(function()
                 if not armedRed then delBtn.BackgroundColor3 = C.hover end
             end)
@@ -7533,7 +7545,7 @@ end)()
             delBtn.MouseButton1Click:Connect(function()
                 if not MU.delMode then
                     MU.delMode, MU.delSel, MU.listOpen = true, {}, true
-                    say("Select the replaces to delete", C.muted)
+                    say("Select the placements to delete", C.muted)
                 elseif selCount == 0 then
                     MU.delMode = false
                     say("", C.muted)
@@ -7546,63 +7558,80 @@ end)()
                     spots.mowers = kept
                     saveSpots()
                     MU.delMode, MU.delSel = false, {}
-                    say(gone .. (gone == 1 and " replace deleted" or " replaces deleted"), C.muted)
+                    say(gone .. (gone == 1 and " placement deleted" or " placements deleted"), C.muted)
                     refreshMowerFloat()
                 end
                 rebuildMower()
             end)
 
-            make("Frame", {
-                Size = UDim2.new(1, 0, 0, 1),
-                Position = UDim2.new(0, 0, 0, Y_REC - 8),
-                BackgroundColor3 = C.line,
+            -- List placement [3] [^] : Loc 1 ...
+            rowLabel(Y_LIST, "List placement")
+            local badge = make("TextLabel", {
+                Size = UDim2.new(0, 22, 0, 18),
+                Position = UDim2.new(0, 88, 0, Y_LIST + 5),
+                BackgroundColor3 = C.control,
                 BorderSizePixel = 0,
+                Text = tostring(#spots.mowers),
+                TextColor3 = C.text,
+                TextSize = 10,
+                Font = Enum.Font.GothamMedium,
             }, rows)
-
-            -- record placement [toggle]
-            rowLabel(Y_REC, "Record placement")
-            recSwitch = createMiniSwitch(rows, {
-                Position = UDim2.new(0, 110, 0, Y_REC + 6),
-            }, recOn, function(v)
-                if v then
-                    if not startRecording() then recSwitch.set(false, true) end
-                else
-                    stopRecording()
-                end
+            styleControl(badge)
+            local listBtn = make("TextButton", {
+                Size = UDim2.new(0, 28, 0, 28),
+                Position = UDim2.new(0, 112, 0, Y_LIST),
+                BackgroundTransparency = 1,
+                Text = "",
+                AutoButtonColor = false,
+            }, rows)
+            local lc = createChevron(listBtn, -6)
+            lc.Rotation = MU.listOpen and 180 or 0
+            listBtn.MouseButton1Click:Connect(function()
+                MU.listOpen = not MU.listOpen
+                rebuildMower()
             end)
 
-            -- Replace 1 [Place] ...
-            local h = Y_ROWS - 2
+            local h = Y_LIST + 28
             if MU.listOpen then
-                if #spots.mowers == 0 then
+                local n = #spots.mowers
+                make("Frame", {
+                    Size = UDim2.new(0, 1, 0, math.max(1, n) * 28 - 4),
+                    Position = UDim2.new(0, LX - 8, 0, Y_LIST + 2),
+                    BackgroundColor3 = C.line,
+                    BorderSizePixel = 0,
+                }, rows)
+                if n == 0 then
                     make("TextLabel", {
-                        Size = UDim2.new(1, 0, 0, 28),
-                        Position = UDim2.new(0, 0, 0, Y_ROWS),
+                        Size = UDim2.new(1, -LX, 0, 24),
+                        Position = UDim2.new(0, LX, 0, Y_LIST + 2),
                         BackgroundTransparency = 1,
-                        Text = "No replaces yet. Turn on Record placement and place your units.",
+                        Text = "No placements yet",
                         TextColor3 = C.dim,
                         TextSize = 10,
                         Font = Enum.Font.GothamMedium,
                         TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd,
                     }, rows)
                 end
                 for i, m in ipairs(spots.mowers) do
-                    local y = Y_ROWS + (i - 1) * 32
+                    local y = Y_LIST + 2 + (i - 1) * 28
+                    local info = #m.units .. " units"
+                    local row = make(MU.delMode and "TextButton" or "Frame", {
+                        Size = UDim2.new(1, -LX, 0, 24),
+                        Position = UDim2.new(0, LX, 0, y),
+                        BackgroundColor3 = C.control,
+                        BorderSizePixel = 0,
+                    }, rows)
                     if MU.delMode then
-                        local row = make("TextButton", {
-                            Size = UDim2.new(1, 0, 0, 28),
-                            Position = UDim2.new(0, 0, 0, y),
-                            BackgroundColor3 = C.control,
-                            BorderSizePixel = 0,
-                            Text = "",
-                            AutoButtonColor = false,
-                        }, rows)
-                        styleControl(row)
-                        local on = MU.delSel[m.id] and true or false
+                        row.Text = ""
+                        row.AutoButtonColor = false
+                    end
+                    styleControl(row)
+                    local on = MU.delSel[m.id] and true or false
+                    local tx = 8
+                    if MU.delMode then
                         local box = make("Frame", {
-                            Size = UDim2.new(0, 12, 0, 12),
-                            Position = UDim2.new(0, 10, 0.5, -6),
+                            Size = UDim2.new(0, 10, 0, 10),
+                            Position = UDim2.new(0, 8, 0.5, -5),
                             BackgroundColor3 = on and MU.red or C.control,
                             BorderSizePixel = 0,
                         }, row)
@@ -7610,49 +7639,55 @@ end)()
                             Color = on and MU.red or C.controlLine, Thickness = 1,
                             ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
                         }, box)
-                        make("TextLabel", {
-                            Size = UDim2.new(1, -36, 1, 0),
-                            Position = UDim2.new(0, 30, 0, 0),
-                            BackgroundTransparency = 1,
-                            Text = "Replace " .. m.id .. "   \u{00B7}   " .. #m.units .. " units",
-                            TextColor3 = on and C.hi or C.text,
-                            TextSize = 11,
-                            Font = Enum.Font.GothamMedium,
-                            TextXAlignment = Enum.TextXAlignment.Left,
-                        }, row)
+                        tx = 26
+                    end
+                    make("TextLabel", {
+                        Size = UDim2.new(0, 38, 1, 0),
+                        Position = UDim2.new(0, tx, 0, 0),
+                        BackgroundTransparency = 1,
+                        Text = "Loc " .. m.id,
+                        TextColor3 = on and C.hi or C.text,
+                        TextSize = 10,
+                        Font = Enum.Font.GothamMedium,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                    }, row)
+                    make("TextLabel", {
+                        Size = UDim2.new(1, -(tx + 38 + (MU.delMode and 8 or 56)), 1, 0),
+                        Position = UDim2.new(0, tx + 40, 0, 0),
+                        BackgroundTransparency = 1,
+                        Text = "- " .. info,
+                        TextColor3 = C.dim,
+                        TextSize = 10,
+                        Font = Enum.Font.GothamMedium,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd,
+                    }, row)
+                    if MU.delMode then
                         row.MouseButton1Click:Connect(function()
                             MU.delSel[m.id] = (not MU.delSel[m.id]) or nil
+                            local c = 0
+                            for _ in pairs(MU.delSel) do c = c + 1 end
+                            say(c > 0 and (c .. " selected - press the trash again") or "Select the placements to delete", C.muted)
                             rebuildMower()
                         end)
                     else
-                        rowLabel(y, "Replace " .. m.id)
-                        createFxButton(rows, {
-                            Size = UDim2.new(0, 60, 0, 28),
-                            Position = UDim2.new(0, 110, 0, y),
+                        createFxButton(row, {
+                            Size = UDim2.new(0, 46, 0, 18),
+                            Position = UDim2.new(1, -50, 0, 3),
                         }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET, true)
-                        make("TextLabel", {
-                            Size = UDim2.new(1, -184, 0, 28),
-                            Position = UDim2.new(0, 178, 0, y),
-                            BackgroundTransparency = 1,
-                            Text = #m.units .. " units",
-                            TextColor3 = C.dim,
-                            TextSize = 10,
-                            Font = Enum.Font.GothamMedium,
-                            TextXAlignment = Enum.TextXAlignment.Left,
-                        }, rows)
                     end
                 end
-                h = Y_ROWS + math.max(1, #spots.mowers) * 32
+                h = Y_LIST + 2 + math.max(1, n) * 28
             end
             rows.Size = UDim2.new(1, -24, 0, h)
-            mowerCard.Size = UDim2.new(1, 0, 0, 34 + h + 10)
+            board.Size = UDim2.new(1, 0, 0, h + 20)
         end
 
         mowerFloat = createFloat("Unit replace", UDim2.new(1, -190, 0, 90))
         refreshMowerFloat = function()
-            local items = { { text = "Bth", fn = backHome, c1 = GREEN_A, c2 = GREEN_B } }
+            local items = { { text = "Return", fn = backHome, c1 = GREEN_A, c2 = GREEN_B } }
             for _, m in ipairs(spots.mowers) do
-                items[#items + 1] = { text = "Rp-" .. m.id, fn = function() placeMower(m) end,
+                items[#items + 1] = { text = "Loc " .. m.id, fn = function() placeMower(m) end,
                     c1 = UTTM_BLUE, c2 = UTTM_VIOLET }
             end
             mowerFloat.setItems(items)
@@ -10191,9 +10226,19 @@ end))
 
 do
     local themePass = 0
+    -- colors the old palette used for text/arrows; frames painted with them (chevrons, gears,
+    -- toggle knobs) must be remapped with the text ramp, not the background one
+    local txtSet = {}
+    local function ckey(c)
+        return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
+    end
     local function recolor(d, map)
         if d:IsA("GuiObject") then
             local kind = d:FindFirstChildOfClass("UIGradient") and "base" or "bg"
+            if kind == "bg" and not d:IsA("GuiButton") and not d:IsA("TextLabel") and not d:IsA("TextBox")
+                and d.BackgroundTransparency < 1 and txtSet[ckey(d.BackgroundColor3)] then
+                kind = "txt"
+            end
             d.BackgroundColor3 = map(kind, d.BackgroundColor3)
             if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
                 d.TextColor3 = map("txt", d.TextColor3)
@@ -10217,6 +10262,8 @@ do
         local old = theme.name
         theme.name = name
         settings.theme = name
+        txtSet = {}
+        for _, k in ipairs({ "text", "muted", "dim", "ink" }) do txtSet[ckey(C[k])] = true end
         setPalette(name)
 
         local skip = {}

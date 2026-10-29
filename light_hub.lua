@@ -7464,7 +7464,7 @@ end)()
         local TS = game:GetService("TextService")
 
         -- bold section title (13 bold, like the hub title) with an optional dim info text beside it
-        function MU.head(x, y, text, info)
+        function MU.head(x, y, text, info, par)
             local w = TS:GetTextSize(text, 13, Enum.Font.GothamBold, Vector2.new(300, 20)).X
             make("TextLabel", {
                 Size = UDim2.new(0, w + 2, 0, 18),
@@ -7475,7 +7475,7 @@ end)()
                 TextSize = 13,
                 Font = Enum.Font.GothamBold,
                 TextXAlignment = Enum.TextXAlignment.Left,
-            }, rows)
+            }, par or rows)
             if info then
                 make("TextLabel", {
                     Size = UDim2.new(0, 150, 0, 18),
@@ -7487,7 +7487,7 @@ end)()
                     Font = Enum.Font.GothamMedium,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextTruncate = Enum.TextTruncate.AtEnd,
-                }, rows)
+                }, par or rows)
             end
             return w
         end
@@ -7534,8 +7534,7 @@ end)()
 
         rebuildMower = function()
             -- left column: Return / Replace.  right column: "Replace storage" list (scrolls, fixed height)
-            local LW, RH = 196, 124
-            local LX = LW + 22
+            local RH = 124
             for _, c in ipairs(rows:GetChildren()) do c:Destroy() end
             board.Visible = mowerOpen
             if not mowerOpen then return end
@@ -7562,7 +7561,7 @@ end)()
             confirmEdit = armed(edit, "Edit")
 
             make("Frame", {
-                Size = UDim2.new(0, LW, 0, 2),
+                Size = UDim2.new(0.5, -12, 0, 2),
                 Position = UDim2.new(0, 0, 0, 58),
                 BackgroundColor3 = C.line,
                 BorderSizePixel = 0,
@@ -7591,14 +7590,19 @@ end)()
             -- vertical divider
             make("Frame", {
                 Size = UDim2.new(0, 2, 0, RH),
-                Position = UDim2.new(0, LW + 8, 0, 0),
+                Position = UDim2.new(0.5, -1, 0, 0),
                 BackgroundColor3 = C.line,
                 BorderSizePixel = 0,
             }, rows)
 
             -- Replace storage [trash]
             local n = #spots.mowers
-            local hw = MU.head(LX, 0, "Replace storage")
+            local right = make("Frame", {
+                Size = UDim2.new(0.5, -12, 1, 0),
+                Position = UDim2.new(0.5, 12, 0, 0),
+                BackgroundTransparency = 1,
+            }, rows)
+            local hw = MU.head(0, 0, "Replace storage", nil, right)
             local selCount = 0
             for _, m in ipairs(spots.mowers) do
                 if MU.delSel[m.id] then selCount = selCount + 1 else MU.delSel[m.id] = nil end
@@ -7606,10 +7610,10 @@ end)()
             local armedRed = MU.delMode and selCount > 0
             local delBtn = make("Frame", {
                 Size = UDim2.new(0, 26, 0, 14),
-                Position = UDim2.new(0, LX + hw + 10, 0, 2),
+                Position = UDim2.new(0, hw + 10, 0, 2),
                 BackgroundColor3 = armedRed and MU.red or C.control,
                 BorderSizePixel = 0,
-            }, rows)
+            }, right)
             styleControl(delBtn)
             MU.trash(delBtn, armedRed and Color3.fromRGB(255, 255, 255) or (MU.delMode and C.text or C.muted))
             local delHit = make("TextButton", {
@@ -7650,15 +7654,15 @@ end)()
 
             -- saved placements: always visible, scrolls instead of growing the board
             local scroll = make("ScrollingFrame", {
-                Size = UDim2.new(1, -LX, 0, RH - 26),
-                Position = UDim2.new(0, LX, 0, 26),
+                Size = UDim2.new(1, 0, 0, RH - 26),
+                Position = UDim2.new(0, 0, 0, 26),
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
                 ScrollBarThickness = 2,
                 ScrollBarImageColor3 = C.controlLine,
                 CanvasSize = UDim2.new(0, 0, 0, math.max(1, n) * 26),
                 ScrollingDirection = Enum.ScrollingDirection.Y,
-            }, rows)
+            }, right)
             if n == 0 then
                 make("TextLabel", {
                     Size = UDim2.new(1, 0, 0, 24),
@@ -7672,7 +7676,7 @@ end)()
             end
             for i, m in ipairs(spots.mowers) do
                 local row = make(MU.delMode and "TextButton" or "Frame", {
-                    Size = UDim2.new(1, -6, 0, 24),
+                    Size = UDim2.new(1, -4, 0, 24),
                     Position = UDim2.new(0, 0, 0, (i - 1) * 26),
                     BackgroundColor3 = C.control,
                     BorderSizePixel = 0,
@@ -7708,7 +7712,7 @@ end)()
                     TextXAlignment = Enum.TextXAlignment.Left,
                 }, row)
                 make("TextLabel", {
-                    Size = UDim2.new(1, -(tx + 36 + (MU.delMode and 8 or 56)), 1, 0),
+                    Size = UDim2.new(1, -(tx + 36 + (MU.delMode and 8 or 64)), 1, 0),
                     Position = UDim2.new(0, tx + 36, 0, 0),
                     BackgroundTransparency = 1,
                     Text = "- " .. #m.units .. " units",
@@ -7728,8 +7732,8 @@ end)()
                     end)
                 else
                     createFxButton(row, {
-                        Size = UDim2.new(0, 46, 0, 18),
-                        Position = UDim2.new(1, -50, 0, 3),
+                        Size = UDim2.new(0, 54, 0, 18),
+                        Position = UDim2.new(1, -58, 0, 3),
                     }, "Place", function() placeMower(m) end, UTTM_BLUE, UTTM_VIOLET, true)
                 end
             end

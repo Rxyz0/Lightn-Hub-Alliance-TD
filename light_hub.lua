@@ -1292,6 +1292,32 @@ end
 
 ROT.q = {}
 
+-- prints (once per tag) what the PlayerGui / ReplicatedStorage look like, so a missing remote can be traced
+ROT.diagShown = {}
+function ROT.diag(tag)
+    if ROT.diagShown[tag] then return end
+    ROT.diagShown[tag] = true
+    local lines = { "[LightHub] remote tidak ketemu (" .. tostring(tag) .. ")" }
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        for _, c in ipairs(pg and pg:GetChildren() or {}) do
+            if c.ClassName == "Folder" then
+                local kids = c:GetChildren()
+                local first = kids[1] and kids[1].ClassName or "-"
+                lines[#lines + 1] = string.format("  PlayerGui.%s: Folder, %d anak, anak pertama=%s", c.Name, #kids, first)
+            end
+        end
+        local rf = ReplicatedStorage:FindFirstChild("RemoteFunctions")
+        lines[#lines + 1] = "  ReplicatedStorage.RemoteFunctions: " .. (rf and (#rf:GetChildren() .. " remote") or "tidak ada")
+        if rf then
+            local names = {}
+            for _, c in ipairs(rf:GetChildren()) do names[#names + 1] = c.Name end
+            lines[#lines + 1] = "  " .. table.concat(names, ", ")
+        end
+    end)
+    warn(table.concat(lines, "\n"))
+end
+
 local function rotCore(name, ...)
     local folder = ROT.folder()
     local kids = folder and folder:GetChildren()
@@ -1337,7 +1363,14 @@ end
 
 local function RF(name)
     if ROT.pos[name] then
-        if not ROT.folder() then return nil end
+        if not ROT.folder() then
+            -- no rotating remote folder found: fall back to the plain RemoteFunctions folder
+            local plain = ReplicatedStorage:FindFirstChild("RemoteFunctions")
+            local r = plain and plain:FindFirstChild(name)
+            if r then return r end
+            ROT.diag("RF " .. name)
+            return nil
+        end
         return {
             Name = name,
             ClassName = "RemoteFunction",
@@ -1567,9 +1600,11 @@ end
 function EP.placeToken(unit)
     local remote = RF("CanPlaceTower")
     if not remote then return nil, "remote tidak ada: CanPlaceTower" end
-    local ok, res = pcall(function() return remote:InvokeServer(unit) end)
-    if not ok then return nil, tostring(res) end
-    if res == false then return false end
+    local r = table.pack(pcall(function() return remote:InvokeServer(unit) end))
+    if not r[1] then return nil, tostring(r[2]) end
+    if r[2] == false then return false end
+    -- the server's 4th return value is the token PlaceTower expects as its 3rd argument
+    if type(r[5]) == "string" then return true, nil, r[5] end
     return true
 end
 
@@ -1587,9 +1622,51 @@ end
 local placeHook = { active = false, ready = false, handler = nil, install = nil,
     register = nil, registry = setmetatable({}, { __mode = "k" }) }
 
+-- Is this tower mine? Uses the OwnerUserId attribute, but also copes with the game naming it
+-- differently, and counts any tower this script placed itself.
+function EP.isMine(t)
+    local uid = LocalPlayer.UserId
+    local v = t:GetAttribute("OwnerUserId")
+    if v ~= nil then return v == uid or tostring(v) == tostring(uid) end
+    if placeHook.registry[t] then return true end
+    for name, val in pairs(t:GetAttributes()) do
+        local l = string.lower(name)
+        if string.find(l, "owner", 1, true) or l == "userid" or l == "player" then
+            if val == uid or tostring(val) == tostring(uid)
+                or val == LocalPlayer.Name or val == LocalPlayer.DisplayName then
+                return true
+            end
+        end
+    end
+    local o = t:FindFirstChild("Owner")
+    if o and o:IsA("ValueBase") then
+        local val = o.Value
+        if val == LocalPlayer or val == uid or val == LocalPlayer.Name then return true end
+    end
+    return false
+end
+
+-- one-time console dump of a tower's attributes, to see how the game marks ownership / upgrade cost
+function EP.towerDiag(why)
+    if EP.towerDiagDone then return end
+    local folder = workspace:FindFirstChild("Towers")
+    local t = folder and folder:GetChildren()[1]
+    if not t then return end
+    EP.towerDiagDone = true
+    local lines = { "[LightHub] tower diag (" .. tostring(why) .. "): " .. t.Name .. ", UserId=" .. LocalPlayer.UserId }
+    for k, v in pairs(t:GetAttributes()) do lines[#lines + 1] = "  " .. k .. " = " .. tostring(v) end
+    for _, c in ipairs(t:GetChildren()) do
+        if c:IsA("ValueBase") then lines[#lines + 1] = "  [" .. c.ClassName .. "] " .. c.Name .. " = " .. tostring(c.Value) end
+    end
+    warn(table.concat(lines, "\n"))
+end
+
 local function invoke(name, ...)
     local remote = RF(name)
-    if not remote then return false, "remote tidak ada: " .. name end
+    if not remote then
+        ROT.diag(name)
+        return false, "remote tidak ada: " .. name
+    end
     local args = table.pack(...)
 
     -- PlaceTower's 3rd argument is the server-issued token from CanPlaceTower (one per placement).
@@ -1597,13 +1674,18 @@ local function invoke(name, ...)
     if name == "PlaceTower" and type(args[3]) ~= "string" then
         EP.lockPlace()
         locked = true
-        local token, why = EP.placeToken(args[1])
+        local token, why, key = EP.placeToken(args[1])
         if not token then
             EP.unlockPlace()
             if token == false then return true, false end -- refused by the server (same as "not enough cash")
             return false, why
         end
-        args.n = 2
+        if key then
+            args[3] = key
+            args.n = 3
+        else
+            args.n = 2
+        end
     end
 
     local isPlace = (name == "PlaceTower" and typeof(args[2]) == "CFrame")
@@ -6542,7 +6624,7 @@ end
         local folder = workspace:FindFirstChild("Towers")
         if folder then
             for _, t in ipairs(folder:GetChildren()) do
-                if t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                if EP.isMine(t) then
                     table.insert(list, t)
                 end
             end
@@ -6556,10 +6638,24 @@ end
 
     local lastUp = {}
 
+    -- UpgradePrice, or any numeric attribute that looks like an upgrade cost if the game renamed it
+    local function priceOf(t)
+        local p = t:GetAttribute("UpgradePrice")
+        if type(p) == "number" then return p end
+        for name, val in pairs(t:GetAttributes()) do
+            local l = string.lower(name)
+            if type(val) == "number" and string.find(l, "upgrade", 1, true)
+                and (string.find(l, "price", 1, true) or string.find(l, "cost", 1, true)) then
+                return val
+            end
+        end
+        return nil
+    end
+
     local function gather(towers)
         local list = {}
         for _, t in ipairs(towers) do
-            local price = t:GetAttribute("UpgradePrice")
+            local price = priceOf(t)
             if type(price) == "number" and price > 0 then
                 local b = blocked[t]
                 local isBlocked = b and b.sig == signature(t) and (tick() - b.time) < 30
@@ -6643,6 +6739,7 @@ end
 
         local towers = getMyTowers()
         if #towers == 0 then
+            EP.towerDiag("auto upgrade: no own towers")
             upg.setNote("No towers placed", C.muted)
             return 1
         end
@@ -6810,7 +6907,7 @@ local UTTM_NAME = "Upgraded Titan Cinema Man"
         local folder = workspace:FindFirstChild("Towers")
         if not folder then return nil end
         for _, t in ipairs(folder:GetChildren()) do
-            if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+            if t.Name == name and EP.isMine(t) then
                 local ok, p = pcall(function() return t:GetPivot().Position end)
                 if ok and math.sqrt((p.X - x) ^ 2 + (p.Z - z) ^ 2) <= r then return t end
             end
@@ -6955,7 +7052,7 @@ local UTTM_NAME = "Upgraded Titan Cinema Man"
         local folder = workspace:FindFirstChild("Towers")
         if folder then
             for _, t in ipairs(folder:GetChildren()) do
-                if t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                if t.Name == UTTM_NAME and EP.isMine(t) then
                     alive[#alive + 1] = t
                 end
             end
@@ -6995,7 +7092,7 @@ local UTTM_NAME = "Upgraded Titan Cinema Man"
             local folder = workspace:FindFirstChild("Towers")
             if folder then
                 for _, t in ipairs(folder:GetChildren()) do
-                    if t ~= old and t.Name == UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId
+                    if t ~= old and t.Name == UTTM_NAME and EP.isMine(t)
                         and not uttmSlot[t] then
                         uttmSlot[t] = slot
                         uttmPos[t] = uttmPos[old]
@@ -7366,7 +7463,7 @@ end)()
             local folder = workspace:FindFirstChild("Towers")
             if folder then
                 for _, t in ipairs(folder:GetChildren()) do
-                    if t.Name ~= UTTM_NAME and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                    if t.Name ~= UTTM_NAME and EP.isMine(t) then
                         local ok, p = pcall(function() return t:GetPivot().Position end)
                         if ok then
                             local rec = placeHook.registry[t]
@@ -7425,7 +7522,12 @@ end)()
             if left == 0 then return end
             for _, item in ipairs(list) do
                 task.spawn(function()
-                    pcall(fn, item)
+                    local ok, err = pcall(fn, item)
+                    if not ok then
+                        -- errors used to vanish here; keep them so they show on the card and in the console
+                        if type(item) == "table" then item.err = tostring(err) end
+                        warn("[LightHub] Replace error: " .. tostring(err))
+                    end
                     left = left - 1
                 end)
             end
@@ -7540,7 +7642,12 @@ end)()
             inFlight[tw] = true
             m.level = tw:GetAttribute("Level")
             m.orig = locOf(u)
-            invoke("SellTower", tw)
+            local okS, resS = invoke("SellTower", tw)
+            if not okS then
+                inFlight[tw] = nil
+                m.failed, m.err = true, tostring(resS)
+                return
+            end
             do
                 local ts = os.clock()
                 while tw.Parent and os.clock() - ts < 3 do task.wait() end
@@ -7599,6 +7706,17 @@ end)()
             for _, m in ipairs(moves) do m.run = myRun end
             if #moves == 0 then
                 local msg = (same > 0) and "Already in place" or "No matching units"
+                if same == 0 then
+                    EP.towerDiag("replace: no matching units")
+                    -- show why: what the saved layout wants vs what you currently have placed
+                    local have = {}
+                    for _, u in ipairs(myTowers()) do have[#have + 1] = u.name end
+                    msg = msg .. " (need " .. #targets .. ", have " .. #have .. ")"
+                    local want = {}
+                    for _, tg in ipairs(targets) do want[#want + 1] = tg.n end
+                    warn("[LightHub] Replace: no matches. wanted: " .. table.concat(want, ", ")
+                        .. " | placed: " .. (#have > 0 and table.concat(have, ", ") or "none"))
+                end
                 say(msg, C.muted)
                 return
             end
@@ -7625,6 +7743,12 @@ end)()
                 end
             end
             local msg = label .. ": " .. moved .. "/" .. #moves .. " moved"
+            for _, m in ipairs(moves) do
+                if m.err then
+                    msg = msg .. " (" .. string.sub(m.err, 1, 40) .. ")"
+                    break
+                end
+            end
             if blocked > 0 then msg = msg .. ", " .. blocked .. " blocked" end
             if lost > 0 then msg = msg .. ", " .. lost .. " lost" end
             if missing > 0 then msg = msg .. ", " .. missing .. " missing" end
@@ -8322,7 +8446,7 @@ end)()
         local folder = workspace:FindFirstChild("Towers")
         if folder then
             for _, t in ipairs(folder:GetChildren()) do
-                if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+                if t.Name == name and EP.isMine(t) then
                     out[#out + 1] = t
                 end
             end
@@ -8700,7 +8824,7 @@ end)()
         if not folder then return nil end
         local best, bestD
         for _, t in ipairs(folder:GetChildren()) do
-            if t.Name == name and t:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
+            if t.Name == name and EP.isMine(t) then
                 local ok, p = pcall(function() return t:GetPivot().Position end)
                 if ok then
                     local d = math.sqrt((p.X - x) ^ 2 + (p.Z - z) ^ 2)
@@ -10311,7 +10435,7 @@ do
     local hookedFolder = nil
 
     local function isMine(t)
-        return t:GetAttribute("OwnerUserId") == LocalPlayer.UserId
+        return EP.isMine(t)
     end
 
     local function registerSell()

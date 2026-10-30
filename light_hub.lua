@@ -320,7 +320,7 @@ local settings = {
 local FLAG_DEFAULTS = {
     autoPlay = false, playMap = "", playPlayers = 1,
     macroSelected = "", macroRecord = false, macroPlay = false,
-    macroFace = false, macroWalk = false,
+    macroFocus = false,
     autoSpeed = false, speedValue = 1.5,
     autoMode = false, modeValue = "",
     autoReplay = false,
@@ -1290,18 +1290,14 @@ function ROT.nameOf(remote)
     return nil
 end
 
-function ROT.call(name, ...)
-    local t0 = os.clock()
-    while ROT.busy and os.clock() - t0 < 4 do task.wait(0.03) end
-    ROT.busy = true
+ROT.q = {}
+
+local function rotCore(name, ...)
     local folder = ROT.folder()
     local kids = folder and folder:GetChildren()
     local full = kids and (#kids - #kids % ROT.group) or 0
     local remote = full >= ROT.group and kids[full - ROT.group + ROT.pos[name]] or nil
-    if not remote then
-        ROT.busy = false
-        error("remote tidak ada: " .. name, 0)
-    end
+    if not remote then error("remote tidak ada: " .. name, 0) end
     local count = #kids
     local args = table.pack(...)
     local res = table.pack(pcall(function()
@@ -1312,7 +1308,25 @@ function ROT.call(name, ...)
         if #folder:GetChildren() > count then break end
         task.wait(0.05)
     end
-    ROT.busy = false
+    if not res[1] then error(res[2], 0) end
+    return table.unpack(res, 2, res.n)
+end
+
+function ROT.call(name, ...)
+    local me = {}
+    table.insert(ROT.q, me)
+    local t0 = os.clock()
+    while ROT.q[1] ~= me do
+        if os.clock() - t0 > 90 then
+            local i = table.find(ROT.q, me)
+            if i then table.remove(ROT.q, i) end
+            error("antrian remote terlalu lama", 0)
+        end
+        task.wait(0.03)
+    end
+    local res = table.pack(pcall(rotCore, name, ...))
+    local i = table.find(ROT.q, me)
+    if i then table.remove(ROT.q, i) end
     if not res[1] then error(res[2], 0) end
     return table.unpack(res, 2, res.n)
 end
@@ -1370,17 +1384,11 @@ function EP.sendPlaced(tower)
     local ev = RE("MacroTelemetry")
     local cam = workspace.CurrentCamera
     if not ev or not cam or typeof(tower) ~= "Instance" then return false end
-    if flags.macroFace then EP.trace("send") end
     local cf = cam.CFrame
     local p, l = cf.Position, cf.LookVector
-    local ok = pcall(function()
+    return pcall(function()
         ev:FireServer("Placed", tower, { Cam = { p.X, p.Y, p.Z, l.X, l.Y, l.Z } })
     end)
-    if flags.macroFace then
-        EP.trace("after-send")
-        EP.traceFlush()
-    end
-    return ok
 end
 
 EP.rng = Random.new()
@@ -1388,38 +1396,12 @@ EP.aimKey = nil
 
 local function flatVec(v) return Vector3.new(v.X, 0, v.Z) end
 
-EP.traceLog = {}
-function EP.trace(tag)
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    local p, l = cam.CFrame.Position, cam.CFrame.LookVector
-    local id = "?"
-    pcall(function() id = cam:GetDebugId() end)
-    local subj = cam.CameraSubject
-    EP.traceLog[#EP.traceLog + 1] = string.format(
-        "%.2f | %s | cam=%s | type=%s | subject=%s | pos(%.1f, %.1f, %.1f) look(%.2f, %.2f, %.2f) | aimKey=%s",
-        os.clock(), tag, id, cam.CameraType.Name, subj and subj.ClassName or "nil",
-        p.X, p.Y, p.Z, l.X, l.Y, l.Z, tostring(EP.aimKey))
-end
-
-function EP.traceFlush()
-    if #EP.traceLog == 0 then return end
-    local c = setclipboard or toclipboard
-    local text = table.concat(EP.traceLog, "\n")
-    EP.traceLog = {}
-    print("[FaceUnit trace]\n" .. text)
-    if c then
-        pcall(c, text)
-        notify("Face Unit", "Trace kamera disalin ke clipboard", 4)
-    end
-end
-
 EP.shown = {}
-function EP.once(k, msg)
+function EP.once(k, msg, loud)
     if EP.shown[k] then return end
     EP.shown[k] = true
     print("[FaceUnit] " .. msg)
-    notify("Face Unit", msg, 6)
+    if loud then notify("Face Unit", msg, 6) end
 end
 
 function EP.aimRelease()
@@ -1427,49 +1409,104 @@ function EP.aimRelease()
     pcall(function() RunService:UnbindFromRenderStep("LightHubAim") end)
 end
 
-function EP.aimAt(target, key)
+function EP.gauss(sd)
+    local rng = EP.rng
+    local u1, u2 = math.max(rng:NextNumber(), 1e-6), rng:NextNumber()
+    local z = math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
+    return math.clamp(z, -2.5, 2.5) * sd
+end
+
+function EP.camPack(cf)
+    if typeof(cf) ~= "CFrame" then return nil end
+    local p, l = cf.Position, cf.LookVector
+    return { p.X, p.Y, p.Z, l.X, l.Y, l.Z }
+end
+
+local function validCam(r)
+    if type(r) ~= "table" then return false end
+    for i = 1, 6 do
+        if type(r[i]) ~= "number" or r[i] ~= r[i] then return false end
+    end
+    return true
+end
+
+function EP.aimAt(target, key, rec)
     local cam = workspace.CurrentCamera
     if not cam or typeof(target) ~= "Vector3" then return false end
     if EP.aimKey == key then return true end
     local c = cam.CFrame
     local toT = target - c.Position
     if toT.Magnitude < 0.5 then return false end
-    local flatD = flatVec(toT).Magnitude
-    local ang = math.deg(math.acos(math.clamp(c.LookVector:Dot(toT.Unit), -1, 1)))
-    if ang <= 25 and flatD >= 6 and flatD <= 24 and c.Position.Y - target.Y >= 5 then
-        EP.aimKey = key
-        EP.once("framed", string.format("Kamera sudah menghadap unit (%.0f derajat, %.0f stud), tidak digerakkan", ang, flatD))
-        return true
-    end
     local rng = EP.rng
-    local away = -flatVec(toT)
-    if away.Magnitude < 1 then away = -flatVec(c.LookVector) end
-    if away.Magnitude < 0.1 then away = Vector3.new(0, 0, 1) end
-    away = CFrame.Angles(0, math.rad(rng:NextNumber(-8, 8)), 0):VectorToWorldSpace(away.Unit)
-    local dist = math.clamp(flatD, 9, 18) + rng:NextNumber(-1.5, 1.5)
-    local height = 13 + rng:NextNumber(-1.2, 1.2)
-    local eye = target + away * dist + Vector3.new(0, height, 0)
-    local focus = target + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2))
-    local goal = CFrame.lookAt(eye, focus)
-    EP.trace("aim-start")
-    local from, t0, dur = c, os.clock(), rng:NextNumber(0.3, 0.45)
+    local goal
+    if validCam(rec) then
+        local eye = Vector3.new(rec[1], rec[2], rec[3])
+        local look = Vector3.new(rec[4], rec[5], rec[6])
+        if look.Magnitude > 0.01 then
+            local base = CFrame.lookAt(eye, eye + look.Unit)
+            goal = base
+            local amp = rng:NextNumber(0.4, 1.4)
+            if rng:NextNumber() < 0.12 then amp = amp * 2.2 end
+            local jEye = eye + Vector3.new(EP.gauss(0.6) * amp, EP.gauss(0.35) * amp, EP.gauss(0.6) * amp)
+            local rot = base * CFrame.Angles(math.rad(EP.gauss(1.2) * amp), math.rad(EP.gauss(1.5) * amp), 0)
+            local cand = CFrame.fromMatrix(jEye, rot.RightVector, rot.UpVector)
+            local toTar = target - jEye
+            if toTar.Magnitude > 0.5 then
+                local a0 = math.deg(math.acos(math.clamp(base.LookVector:Dot((target - eye).Unit), -1, 1)))
+                local a1 = math.deg(math.acos(math.clamp(cand.LookVector:Dot(toTar.Unit), -1, 1)))
+                if a1 <= math.max(a0 + 6, 20) then goal = cand end
+            end
+            eye = goal.Position
+            local angGoal = math.deg(math.acos(math.clamp(c.LookVector:Dot(goal.LookVector), -1, 1)))
+            if (c.Position - eye).Magnitude < 0.5 and angGoal < 2 then
+                EP.aimKey = key
+                return true
+            end
+        end
+    end
+    if not goal then
+        local flatD = flatVec(toT).Magnitude
+        local ang = math.deg(math.acos(math.clamp(c.LookVector:Dot(toT.Unit), -1, 1)))
+        if ang <= 25 and flatD >= 6 and flatD <= 24 and c.Position.Y - target.Y >= 5 then
+            EP.aimKey = key
+            EP.once("framed", string.format("Kamera sudah menghadap unit (%.0f derajat, %.0f stud), tidak digerakkan", ang, flatD))
+            return true
+        end
+        local away = -flatVec(toT)
+        if away.Magnitude < 1 then away = -flatVec(c.LookVector) end
+        if away.Magnitude < 0.1 then away = Vector3.new(0, 0, 1) end
+        away = CFrame.Angles(0, math.rad(rng:NextNumber(-8, 8)), 0):VectorToWorldSpace(away.Unit)
+        local height = 13 + rng:NextNumber(-1.2, 1.2)
+        local pitch = math.rad(rng:NextNumber(46, 58))
+        local dist = height / math.tan(pitch)
+        local eye = target + away * dist + Vector3.new(0, height, 0)
+        local focus = target + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2))
+        goal = CFrame.lookAt(eye, focus)
+    end
+    local from, t0, dur = c, os.clock(), rng:NextNumber(0.28, 0.5)
+    local shape = rng:NextInteger(1, 3)
     pcall(function() RunService:UnbindFromRenderStep("LightHubAim") end)
     RunService:BindToRenderStep("LightHubAim", Enum.RenderPriority.Last.Value, function()
         local cm = workspace.CurrentCamera
         if not cm then return end
         local k = math.clamp((os.clock() - t0) / dur, 0, 1)
-        k = k * k * (3 - 2 * k)
+        if shape == 1 then
+            k = k * k * (3 - 2 * k)
+        elseif shape == 2 then
+            k = 1 - (1 - k) * (1 - k)
+        else
+            k = 0.5 - 0.5 * math.cos(math.pi * k)
+        end
         cm.CFrame = from:Lerp(goal, k)
     end)
     EP.aimKey = key
     task.wait(dur + rng:NextNumber(0.12, 0.25))
-    EP.trace("aim-end")
     local cm = workspace.CurrentCamera
     if cm then
         local err = math.deg(math.acos(math.clamp(cm.CFrame.LookVector:Dot(goal.LookVector), -1, 1)))
         local drift = (cm.CFrame.Position - goal.Position).Magnitude
         if err > 5 or drift > 3 then
-            EP.once("override", string.format("Kamera ditimpa game (selisih %.0f derajat, %.1f stud, type=%s)", err, drift, tostring(cm.CameraType)))
+            EP.once("override", string.format("Kamera ditimpa game (selisih %.0f derajat, %.1f stud, type=%s)", err, drift, tostring(cm.CameraType)), true)
         end
     end
     return true
@@ -1512,12 +1549,12 @@ function EP.walkWait(maxWait)
     EP.walkGoal = nil
 end
 
-function EP.humanize(target, idx, tag)
-    if flags.macroWalk then
+function EP.humanize(target, idx, tag, rec)
+    if flags.macroFocus then
         pcall(EP.approach, target, "m" .. idx)
         pcall(EP.walkWait, 3)
     end
-    if flags.macroFace then pcall(EP.aimAt, target, tag .. idx) end
+    if flags.macroFocus then pcall(EP.aimAt, target, tag .. idx, rec) end
 end
 
 -- PlaceTower needs a token that the SERVER hands out through CanPlaceTower(unitName):
@@ -7778,28 +7815,32 @@ end)()
         -- tiny trash can centered in its parent: handle, lid, outlined body with a center slot
         function MU.trash(par, color)
             local holder = make("Frame", {
-                Size = UDim2.new(0, 9, 0, 9),
+                Size = UDim2.new(0, 12, 0, 12),
                 AnchorPoint = Vector2.new(0.5, 0.5),
                 Position = UDim2.new(0.5, 0, 0.5, 0),
                 BackgroundTransparency = 1,
             }, par)
-            local fills = {
-                make("Frame", { Size = UDim2.new(0, 3, 0, 1), Position = UDim2.new(0, 3, 0, 0), BackgroundColor3 = color, BorderSizePixel = 0 }, holder),
-                make("Frame", { Size = UDim2.new(0, 9, 0, 1), Position = UDim2.new(0, 0, 0, 1), BackgroundColor3 = color, BorderSizePixel = 0 }, holder),
-            }
+            local function bar(x, y, w, h, parent)
+                return make("Frame", {
+                    Size = UDim2.new(0, w, 0, h), Position = UDim2.new(0, x, 0, y),
+                    BackgroundColor3 = color, BorderSizePixel = 0,
+                }, parent or holder)
+            end
+            local fills = { bar(4, 0, 4, 1), bar(0, 1, 12, 1) }
             local body = make("Frame", {
-                Size = UDim2.new(0, 7, 0, 7), Position = UDim2.new(0, 1, 0, 2),
+                Size = UDim2.new(0, 10, 0, 6), Position = UDim2.new(0, 1, 0, 4),
                 BackgroundTransparency = 1, BorderSizePixel = 0,
             }, holder)
-            make("UICorner", { CornerRadius = UDim.new(0, 1) }, body)
+            make("UICorner", { CornerRadius = UDim.new(0, 2) }, body)
             local stroke = make("UIStroke", { Color = color, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, body)
+            fills[#fills + 1] = bar(3, 1, 1, 4, body)
+            fills[#fills + 1] = bar(6, 1, 1, 4, body)
             return function(c)
                 for _, b in ipairs(fills) do b.BackgroundColor3 = c end
                 stroke.Color = c
             end
         end
 
-        -- one rounded-off box with a thin "|" between two buttons
         function MU.pair(x, y, w, leftText, leftFn, rightText, rightFn)
             local box = make("Frame", {
                 Size = UDim2.new(0, w, 0, 28),
@@ -8639,7 +8680,7 @@ end)()
         if not rec then return end
         local acts = {}
         for _, a in ipairs(rec.actions) do
-            acts[#acts + 1] = { t = a.t, n = a.n, w = a.w, cf = a.cf, p = a.p, on = a.on, m = a.m }
+            acts[#acts + 1] = { t = a.t, n = a.n, w = a.w, cf = a.cf, p = a.p, on = a.on, m = a.m, cam = a.cam }
         end
         saveMacro(rec.name, { v = 1, name = rec.name, actions = acts })
     end
@@ -8661,7 +8702,7 @@ end)()
         return nil
     end
 
-    local function onCall(nm, a1, a2)
+    local function onCall(nm, a1, a2, camCf)
         local rec = mstate.rec
         if not rec then return end
         local ts = os.clock()
@@ -8671,7 +8712,7 @@ end)()
         if nm == "PlaceTower" then
             if type(a1) ~= "string" or typeof(a2) ~= "CFrame" then return end
             local comps = { a2:GetComponents() }
-            act = { t = "place", n = a1, cf = comps, w = w }
+            act = { t = "place", n = a1, cf = comps, w = w, cam = EP.camPack(camCf) }
             local ok = false
             for _ = 1, 8 do
                 task.wait(0.25)
@@ -8715,7 +8756,7 @@ end)()
             if not okp then return end
             local lvl = a1:GetAttribute("Level")
             local up = (nm == "UpgradeTower")
-            act = { t = up and "up" or "sell", n = a1.Name, p = { pos.X, pos.Y, pos.Z }, w = w }
+            act = { t = up and "up" or "sell", n = a1.Name, p = { pos.X, pos.Y, pos.Z }, w = w, cam = EP.camPack(camCf) }
             local ok = false
             for _ = 1, 8 do
                 task.wait(0.25)
@@ -8764,10 +8805,15 @@ end)()
                         and not (checkcaller and checkcaller()) then
                         local ra1, ra2 = ...
                         local remote = self
+                        local camCf
+                        do
+                            local cm = workspace.CurrentCamera
+                            camCf = cm and cm.CFrame
+                        end
                         task.defer(function()
                             local key = ROT.nameOf(remote)
                             if not key or key == "CanPlaceTower" then return end
-                            if mstate.rec and mstate.handler then task.spawn(mstate.handler, key, ra1, ra2) end
+                            if mstate.rec and mstate.handler then task.spawn(mstate.handler, key, ra1, ra2, camCf) end
                             if placeHook.active and placeHook.handler then task.spawn(placeHook.handler, key, ra1, ra2) end
                         end)
                     end
@@ -8806,7 +8852,7 @@ end)()
     end
 
     local function preMove(a)
-        if not flags.macroWalk or not a.w or a.w <= 0 or not waveNow.cur then return end
+        if not flags.macroFocus or not a.w or a.w <= 0 or not waveNow.cur then return end
         local pos = actionPos(a)
         if not pos then return end
         play.lead = play.lead or {}
@@ -8965,24 +9011,14 @@ end)()
         fPlay.card.LayoutOrder = o + 3
     end
 
-    local fFace = createFeature(page, "Face Unit", {
-        initial = flags.macroFace,
+    local fFocus = createFeature(page, "Auto Walk To Unit", {
+        initial = flags.macroFocus,
         onToggle = function(v)
-            setFlag("macroFace", v)
+            setFlag("macroFocus", v)
             if not v then EP.aimRelease() end
         end,
     })
-    local fWalk = createFeature(page, "Walk To Unit", {
-        initial = flags.macroWalk,
-        onToggle = function(v)
-            setFlag("macroWalk", v)
-        end,
-    })
-    do
-        local o = fPlay.card.LayoutOrder
-        fFace.card.LayoutOrder = o + 1
-        fWalk.card.LayoutOrder = o + 2
-    end
+    fFocus.card.LayoutOrder = fPlay.card.LayoutOrder + 1
 
     local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
     share.card.LayoutOrder = 100
@@ -9176,9 +9212,8 @@ end)()
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true
             else
-                EP.humanize(Vector3.new(a.cf[1], a.cf[2], a.cf[3]), play.idx, "p")
+                EP.humanize(Vector3.new(a.cf[1], a.cf[2], a.cf[3]), play.idx, "p", a.cam)
                 local okP, resP = invoke("PlaceTower", a.n, CFrame.new(table.unpack(a.cf)))
-                if flags.macroFace then EP.trace("after-place") end
                 -- PlaceTower returns the placed model; fall back to a position search if it doesn't
                 local placed = (okP and typeof(resP) == "Instance" and resP.Parent) and resP or nil
                 if placed then
@@ -9241,7 +9276,7 @@ end)()
                     else
                         local lvl = tw:GetAttribute("Level")
                         local okPv, pv = pcall(function() return tw:GetPivot().Position end)
-                        if okPv then EP.humanize(pv, play.idx, "u") end
+                        if okPv then EP.humanize(pv, play.idx, "u", a.cam) end
                         local ok, res = invoke("UpgradeTower", tw)
                         task.wait(0.4)
                         local nl = tw:GetAttribute("Level")
@@ -9257,7 +9292,7 @@ end)()
                     done = true
                 else
                     local okPv, pv = pcall(function() return tw:GetPivot().Position end)
-                    if okPv then EP.humanize(pv, play.idx, "s") end
+                    if okPv then EP.humanize(pv, play.idx, "s", a.cam) end
                     invoke("SellTower", tw)
                     task.wait(0.4)
                     done = (tw.Parent == nil)
@@ -10640,7 +10675,36 @@ do
     local function ckey(c)
         return math.floor(c.R * 255 + 0.5) * 65536 + math.floor(c.G * 255 + 0.5) * 256 + math.floor(c.B * 255 + 0.5)
     end
+    local handled = {}
+    local function isToggleTrack(d)
+        if not d:IsA("Frame") then return false end
+        local sx, sy = d.Size.X, d.Size.Y
+        if sx.Scale ~= 0 or sy.Scale ~= 0 then return false end
+        if not ((sx.Offset == 34 and sy.Offset == 16) or (sx.Offset == 26 and sy.Offset == 14)) then return false end
+        return d:FindFirstChildOfClass("UIStroke") ~= nil and d:FindFirstChildOfClass("Frame") ~= nil
+    end
     local function recolor(d, map)
+        if handled[d] then
+            handled[d] = nil
+            return
+        end
+        if d:IsA("GuiObject") and isToggleTrack(d) then
+            local c = d.BackgroundColor3
+            local on = (c.R + c.G + c.B) / 3 * 255 > 90
+            local tc = on and T(Color3.fromRGB(232, 232, 234), "bg") or T(Color3.fromRGB(34, 34, 37), "bg")
+            d.BackgroundColor3 = tc
+            local st = d:FindFirstChildOfClass("UIStroke")
+            if st then
+                st.Color = on and tc or C.controlLine
+                handled[st] = true
+            end
+            local kn = d:FindFirstChildOfClass("Frame")
+            if kn then
+                kn.BackgroundColor3 = on and T(Color3.fromRGB(14, 14, 15), "bg") or C.muted
+                handled[kn] = true
+            end
+            return
+        end
         if d:IsA("GuiObject") then
             local kind = d:FindFirstChildOfClass("UIGradient") and "base" or "bg"
             if kind == "bg" and not d:IsA("GuiButton") and not d:IsA("TextLabel") and not d:IsA("TextBox")
@@ -10674,6 +10738,7 @@ do
         theme.name = name
         settings.theme = name
         txtSet, genSet = {}, {}
+        handled = {}
         for _, k in ipairs({ "text", "muted", "dim", "ink" }) do txtSet[ckey(C[k])] = true end
         for _, k in ipairs({ "line", "controlLine" }) do genSet[ckey(C[k])] = true end
         setPalette(name)

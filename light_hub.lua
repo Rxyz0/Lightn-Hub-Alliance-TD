@@ -1325,6 +1325,7 @@ local function rotCore(name, ...)
     local remote = full >= ROT.group and kids[full - ROT.group + ROT.pos[name]] or nil
     if not remote then error("remote tidak ada: " .. name, 0) end
     local count = #kids
+    ROT.last = string.format("%s -> grup %d/%d pos %d (%d anak)", name, full / ROT.group, full / ROT.group, ROT.pos[name], count)
     local args = table.pack(...)
     local res = table.pack(pcall(function()
         return remote:InvokeServer(table.unpack(args, 1, args.n))
@@ -7642,19 +7643,23 @@ end)()
             inFlight[tw] = true
             m.level = tw:GetAttribute("Level")
             m.orig = locOf(u)
-            local okS, resS = invoke("SellTower", tw)
-            if not okS then
-                inFlight[tw] = nil
-                m.failed, m.err = true, tostring(resS)
-                return
-            end
-            do
+            local sold, lastRes = false, nil
+            for _ = 1, 3 do
+                local okS, resS = invoke("SellTower", tw)
+                lastRes = okS and resS or ("error: " .. tostring(resS))
                 local ts = os.clock()
-                while tw.Parent and os.clock() - ts < 3 do task.wait() end
+                while tw.Parent and os.clock() - ts < 1.5 do task.wait() end
+                if not tw.Parent then
+                    sold = true
+                    break
+                end
             end
-            if tw.Parent then
+            if not sold then
                 inFlight[tw] = nil
                 m.failed = true
+                m.err = "sell ditolak: " .. tostring(lastRes)
+                warn("[LightHub] Replace: sell gagal untuk " .. tostring(u.name) .. " -> " .. tostring(lastRes)
+                    .. " | remote: " .. tostring(ROT.last))
                 return
             end
             pushMacro({ t = "sell", n = u.name, p = { u.pos.X, u.pos.Y, u.pos.Z } })
@@ -8951,8 +8956,29 @@ end)()
         saveCurrentRec()
     end
 
+    -- Threads started from inside the __namecall hook inherit the GAME's thread identity, which is
+    -- not allowed to touch this hub's UI ("lacking capability Plugin"). The hook only queues jobs;
+    -- this worker (started from the executor's own thread) runs them.
+    local hookQ, hookWorker = {}, false
+    local function startHookWorker()
+        if hookWorker then return end
+        hookWorker = true
+        task.spawn(function()
+            while ScreenGui.Parent do
+                local job = table.remove(hookQ, 1)
+                if job then
+                    local okJ, errJ = pcall(job)
+                    if not okJ then warn("[LightHub] hook job: " .. tostring(errJ)) end
+                else
+                    task.wait()
+                end
+            end
+        end)
+    end
+
     local function installHook()
         if not (hookmetamethod and newcclosure and getnamecallmethod) then return false end
+        startHookWorker()
         if mstate.hooked and mstate.hookV2 then return true end
 
         local full = not mstate.hooked
@@ -8972,12 +8998,12 @@ end)()
                             local cm = workspace.CurrentCamera
                             camCf = cm and cm.CFrame
                         end
-                        task.defer(function()
+                        hookQ[#hookQ + 1] = function()
                             local key = ROT.nameOf(remote)
                             if not key or key == "CanPlaceTower" then return end
                             if mstate.rec and mstate.handler then task.spawn(mstate.handler, key, ra1, ra2, camCf) end
                             if placeHook.active and placeHook.handler then task.spawn(placeHook.handler, key, ra1, ra2) end
-                        end)
+                        end
                     end
                     local nm = self.Name
                     local extra = (nm == "ChangeTargetMode") or (nm == "CinemaRelocate" and (...) == "Drones")
@@ -8986,9 +9012,9 @@ end)()
                         if not (checkcaller and checkcaller()) then
                             local key = (nm == "CinemaRelocate") and "Drones" or nm
                             local h = mstate.handler
-                            if mstate.rec and h then task.defer(h, key, a1, a2) end
+                            if mstate.rec and h then hookQ[#hookQ + 1] = function() task.spawn(h, key, a1, a2) end end
                             local ph = placeHook.handler
-                            if not extra and placeHook.active and ph then task.defer(ph, nm, a1, a2) end
+                            if not extra and placeHook.active and ph then hookQ[#hookQ + 1] = function() task.spawn(ph, nm, a1, a2) end end
                         end
                     end
                 end

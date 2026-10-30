@@ -1370,17 +1370,57 @@ function EP.sendPlaced(tower)
     local ev = RE("MacroTelemetry")
     local cam = workspace.CurrentCamera
     if not ev or not cam or typeof(tower) ~= "Instance" then return false end
+    if flags.macroFace then EP.trace("send") end
     local cf = cam.CFrame
     local p, l = cf.Position, cf.LookVector
-    return pcall(function()
+    local ok = pcall(function()
         ev:FireServer("Placed", tower, { Cam = { p.X, p.Y, p.Z, l.X, l.Y, l.Z } })
     end)
+    if flags.macroFace then
+        EP.trace("after-send")
+        EP.traceFlush()
+    end
+    return ok
 end
 
 EP.rng = Random.new()
 EP.aimKey = nil
 
 local function flatVec(v) return Vector3.new(v.X, 0, v.Z) end
+
+EP.traceLog = {}
+function EP.trace(tag)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local p, l = cam.CFrame.Position, cam.CFrame.LookVector
+    local id = "?"
+    pcall(function() id = cam:GetDebugId() end)
+    local subj = cam.CameraSubject
+    EP.traceLog[#EP.traceLog + 1] = string.format(
+        "%.2f | %s | cam=%s | type=%s | subject=%s | pos(%.1f, %.1f, %.1f) look(%.2f, %.2f, %.2f) | aimKey=%s",
+        os.clock(), tag, id, cam.CameraType.Name, subj and subj.ClassName or "nil",
+        p.X, p.Y, p.Z, l.X, l.Y, l.Z, tostring(EP.aimKey))
+end
+
+function EP.traceFlush()
+    if #EP.traceLog == 0 then return end
+    local c = setclipboard or toclipboard
+    local text = table.concat(EP.traceLog, "\n")
+    EP.traceLog = {}
+    print("[FaceUnit trace]\n" .. text)
+    if c then
+        pcall(c, text)
+        notify("Face Unit", "Trace kamera disalin ke clipboard", 4)
+    end
+end
+
+EP.shown = {}
+function EP.once(k, msg)
+    if EP.shown[k] then return end
+    EP.shown[k] = true
+    print("[FaceUnit] " .. msg)
+    notify("Face Unit", msg, 6)
+end
 
 function EP.aimRelease()
     EP.aimKey = nil
@@ -1398,6 +1438,7 @@ function EP.aimAt(target, key)
     local ang = math.deg(math.acos(math.clamp(c.LookVector:Dot(toT.Unit), -1, 1)))
     if ang <= 25 and flatD >= 6 and flatD <= 24 and c.Position.Y - target.Y >= 5 then
         EP.aimKey = key
+        EP.once("framed", string.format("Kamera sudah menghadap unit (%.0f derajat, %.0f stud), tidak digerakkan", ang, flatD))
         return true
     end
     local rng = EP.rng
@@ -1410,9 +1451,10 @@ function EP.aimAt(target, key)
     local eye = target + away * dist + Vector3.new(0, height, 0)
     local focus = target + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2))
     local goal = CFrame.lookAt(eye, focus)
+    EP.trace("aim-start")
     local from, t0, dur = c, os.clock(), rng:NextNumber(0.3, 0.45)
     pcall(function() RunService:UnbindFromRenderStep("LightHubAim") end)
-    RunService:BindToRenderStep("LightHubAim", Enum.RenderPriority.Camera.Value + 1, function()
+    RunService:BindToRenderStep("LightHubAim", Enum.RenderPriority.Last.Value, function()
         local cm = workspace.CurrentCamera
         if not cm then return end
         local k = math.clamp((os.clock() - t0) / dur, 0, 1)
@@ -1421,6 +1463,15 @@ function EP.aimAt(target, key)
     end)
     EP.aimKey = key
     task.wait(dur + rng:NextNumber(0.12, 0.25))
+    EP.trace("aim-end")
+    local cm = workspace.CurrentCamera
+    if cm then
+        local err = math.deg(math.acos(math.clamp(cm.CFrame.LookVector:Dot(goal.LookVector), -1, 1)))
+        local drift = (cm.CFrame.Position - goal.Position).Magnitude
+        if err > 5 or drift > 3 then
+            EP.once("override", string.format("Kamera ditimpa game (selisih %.0f derajat, %.1f stud, type=%s)", err, drift, tostring(cm.CameraType)))
+        end
+    end
     return true
 end
 
@@ -9081,6 +9132,7 @@ end)()
             play.lead = {}
             EP.walkKey = nil
             EP.walkGoal = nil
+            EP.shown = {}
             play.notified = nil
             play.skips = 0
             play.stepSince = nil
@@ -9126,6 +9178,7 @@ end)()
             else
                 EP.humanize(Vector3.new(a.cf[1], a.cf[2], a.cf[3]), play.idx, "p")
                 local okP, resP = invoke("PlaceTower", a.n, CFrame.new(table.unpack(a.cf)))
+                if flags.macroFace then EP.trace("after-place") end
                 -- PlaceTower returns the placed model; fall back to a position search if it doesn't
                 local placed = (okP and typeof(resP) == "Instance" and resP.Parent) and resP or nil
                 if placed then

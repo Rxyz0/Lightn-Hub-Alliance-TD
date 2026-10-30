@@ -1303,11 +1303,15 @@ local function rotCore(name, ...)
     local res = table.pack(pcall(function()
         return remote:InvokeServer(table.unpack(args, 1, args.n))
     end))
+    -- wake the moment the server adds the next remote group (no fixed 0.05s polling steps)
+    local grew = false
+    local sig = folder.ChildAdded:Connect(function() grew = true end)
     local t1 = os.clock()
-    while os.clock() - t1 < 1.5 do
+    while not grew and os.clock() - t1 < 1.5 do
         if #folder:GetChildren() > count then break end
-        task.wait(0.05)
+        task.wait()
     end
+    sig:Disconnect()
     if not res[1] then error(res[2], 0) end
     return table.unpack(res, 2, res.n)
 end
@@ -6587,8 +6591,23 @@ end
 
     local function attempt(remote, target)
         local sig = signature(target)
+        local lvl = target:GetAttribute("Level")
         local ok, res = pcall(function() return remote:InvokeServer(target) end)
-        if ok and res == true then
+        local good = ok and (res == true
+            or (type(res) == "table" and (res.Success == true or res.success == true)))
+        if not good and ok and res ~= false then
+            -- the server may answer with something other than `true`; judge by the level instead
+            local t0 = os.clock()
+            while os.clock() - t0 < 0.4 do
+                local nl = target:GetAttribute("Level")
+                if type(nl) == "number" and type(lvl) == "number" and nl > lvl then
+                    good = true
+                    break
+                end
+                task.wait(0.05)
+            end
+        end
+        if good then
             failures[target] = nil
             lastUp[target] = tick()
             return true
@@ -6618,7 +6637,7 @@ end
 
         local remote = RF("UpgradeTower")
         if not remote then
-            upg.setNote("")
+            upg.setNote("Remote not ready", C.warn)
             return 1
         end
 
@@ -6629,7 +6648,9 @@ end
         end
 
         local list = gather(towers)
-        local cash = getStat("Cash")
+        -- if the Cash stat can't be read, don't block on it: just try and let the server decide
+        local function cashNow() return getStatN("Cash") or math.huge end
+        local cash = cashNow()
 
         if settings.upgradeAll then
             if #list == 0 then return showMaxed() end
@@ -6642,7 +6663,7 @@ end
             for _, c in ipairs(list) do
                 if not run.upgrade then break end
                 -- read the real balance each time: the server may not have charged the last upgrade yet
-                if getStat("Cash") < c.price then
+                if cashNow() < c.price then
                     short = true
                 elseif attempt(remote, c.tower) then
                     did = did + 1
@@ -7520,9 +7541,9 @@ end)()
             m.level = tw:GetAttribute("Level")
             m.orig = locOf(u)
             invoke("SellTower", tw)
-            for _ = 1, 12 do
-                if not tw.Parent then break end
-                task.wait(0.25)
+            do
+                local ts = os.clock()
+                while tw.Parent and os.clock() - ts < 3 do task.wait() end
             end
             if tw.Parent then
                 inFlight[tw] = nil
@@ -7541,24 +7562,31 @@ end)()
             end
             m.placed = placed
             pending = pending - 1
+            -- upgrades are done in a second phase (see execute), so every unit gets placed first
+            -- instead of placements queueing behind other units' upgrade calls
+        end
 
-            local lvl = m.level
+        local function upgradeUnit(m)
+            local placed, lvl, u, tg = m.placed, m.level, m.unit, m.tg
             if placed and type(lvl) == "number" then
                 local t0 = os.clock()
                 while os.clock() - t0 < 12 do
                     local cur = placed:GetAttribute("Level")
                     local price = placed:GetAttribute("UpgradePrice")
-                    if type(cur) ~= "number" or cur >= lvl or type(price) ~= "number" or price <= 0 then
+                    if not placed.Parent or type(cur) ~= "number" or cur >= lvl
+                        or type(price) ~= "number" or price <= 0 then
                         break
                     end
                     local ok, res = invoke("UpgradeTower", placed)
                     if ok and res == true then
                         pushMacro({ t = "up", n = u.name, p = { tg.x, tg.y, tg.z } })
+                        task.wait() -- success: go straight to the next level
+                    else
+                        task.wait(0.3) -- not enough cash yet: retry shortly
                     end
-                    task.wait(0.35)
                 end
             end
-            inFlight[tw] = nil
+            inFlight[u.tower] = nil
         end
 
         local function execute(label, targets)
@@ -7576,6 +7604,17 @@ end)()
             end
             say(label .. ": moving " .. #moves, C.muted)
             parallel(moves, processUnit, 60)
+            do
+                local ups = {}
+                for _, m in ipairs(moves) do
+                    if m.placed then
+                        ups[#ups + 1] = m
+                    else
+                        inFlight[m.unit.tower] = nil
+                    end
+                end
+                parallel(ups, upgradeUnit, 60)
+            end
 
             local moved, blocked, lost = 0, 0, 0
             for _, m in ipairs(moves) do
@@ -7812,32 +7851,31 @@ end)()
 
         local MU = { listOpen = true, delMode = false, delSel = {}, red = Color3.fromRGB(176, 44, 44) }
 
-        -- tiny trash can centered in its parent: handle, lid, outlined body with a center slot
+        -- bold, square trash can (2px strokes, no rounding) centered in its parent:
+        -- handle, lid, solid-outlined body with a center slot
         function MU.trash(par, color)
             local holder = make("Frame", {
-                Size = UDim2.new(0, 12, 0, 12),
+                Size = UDim2.new(0, 12, 0, 13),
                 AnchorPoint = Vector2.new(0.5, 0.5),
                 Position = UDim2.new(0.5, 0, 0.5, 0),
                 BackgroundTransparency = 1,
             }, par)
-            local function bar(x, y, w, h, parent)
+            local function bar(x, y, w, h)
                 return make("Frame", {
                     Size = UDim2.new(0, w, 0, h), Position = UDim2.new(0, x, 0, y),
                     BackgroundColor3 = color, BorderSizePixel = 0,
-                }, parent or holder)
+                }, holder)
             end
-            local fills = { bar(4, 0, 4, 1), bar(0, 1, 12, 1) }
-            local body = make("Frame", {
-                Size = UDim2.new(0, 10, 0, 6), Position = UDim2.new(0, 1, 0, 4),
-                BackgroundTransparency = 1, BorderSizePixel = 0,
-            }, holder)
-            make("UICorner", { CornerRadius = UDim.new(0, 2) }, body)
-            local stroke = make("UIStroke", { Color = color, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, body)
-            fills[#fills + 1] = bar(3, 1, 1, 4, body)
-            fills[#fills + 1] = bar(6, 1, 1, 4, body)
+            local fills = {
+                bar(4, 0, 4, 2),   -- handle
+                bar(0, 2, 12, 2),  -- lid
+                bar(1, 4, 2, 9),   -- body left
+                bar(9, 4, 2, 9),   -- body right
+                bar(1, 11, 10, 2), -- body bottom
+                bar(5, 6, 2, 4),   -- center slot
+            }
             return function(c)
                 for _, b in ipairs(fills) do b.BackgroundColor3 = c end
-                stroke.Color = c
             end
         end
 
@@ -8035,8 +8073,8 @@ end)()
             end
             local armedRed = MU.delMode and selCount > 0
             local delBtn = make("Frame", {
-                Size = UDim2.new(0, 26, 0, 14),
-                Position = UDim2.new(0, hw + 10, 0, 2),
+                Size = UDim2.new(0, 30, 0, 18),
+                Position = UDim2.new(0, hw + 10, 0, 0),
                 BackgroundColor3 = armedRed and MU.red or C.control,
                 BorderSizePixel = 0,
             }, right)

@@ -320,6 +320,7 @@ local settings = {
 local FLAG_DEFAULTS = {
     autoPlay = false, playMap = "", playPlayers = 1,
     macroSelected = "", macroRecord = false, macroPlay = false,
+    macroFace = false, macroWalk = false,
     autoSpeed = false, speedValue = 1.5,
     autoMode = false, modeValue = "",
     autoReplay = false,
@@ -1374,6 +1375,98 @@ function EP.sendPlaced(tower)
     return pcall(function()
         ev:FireServer("Placed", tower, { Cam = { p.X, p.Y, p.Z, l.X, l.Y, l.Z } })
     end)
+end
+
+EP.rng = Random.new()
+EP.aimKey = nil
+
+local function flatVec(v) return Vector3.new(v.X, 0, v.Z) end
+
+function EP.aimRelease()
+    EP.aimKey = nil
+    pcall(function() RunService:UnbindFromRenderStep("LightHubAim") end)
+end
+
+function EP.aimAt(target, key)
+    local cam = workspace.CurrentCamera
+    if not cam or typeof(target) ~= "Vector3" then return false end
+    if EP.aimKey == key then return true end
+    local c = cam.CFrame
+    local toT = target - c.Position
+    if toT.Magnitude < 0.5 then return false end
+    local flatD = flatVec(toT).Magnitude
+    local ang = math.deg(math.acos(math.clamp(c.LookVector:Dot(toT.Unit), -1, 1)))
+    if ang <= 25 and flatD >= 6 and flatD <= 24 and c.Position.Y - target.Y >= 5 then
+        EP.aimKey = key
+        return true
+    end
+    local rng = EP.rng
+    local away = -flatVec(toT)
+    if away.Magnitude < 1 then away = -flatVec(c.LookVector) end
+    if away.Magnitude < 0.1 then away = Vector3.new(0, 0, 1) end
+    away = CFrame.Angles(0, math.rad(rng:NextNumber(-8, 8)), 0):VectorToWorldSpace(away.Unit)
+    local dist = math.clamp(flatD, 9, 18) + rng:NextNumber(-1.5, 1.5)
+    local height = 13 + rng:NextNumber(-1.2, 1.2)
+    local eye = target + away * dist + Vector3.new(0, height, 0)
+    local focus = target + Vector3.new(rng:NextNumber(-2, 2), 0, rng:NextNumber(-2, 2))
+    local goal = CFrame.lookAt(eye, focus)
+    local from, t0, dur = c, os.clock(), rng:NextNumber(0.3, 0.45)
+    pcall(function() RunService:UnbindFromRenderStep("LightHubAim") end)
+    RunService:BindToRenderStep("LightHubAim", Enum.RenderPriority.Camera.Value + 1, function()
+        local cm = workspace.CurrentCamera
+        if not cm then return end
+        local k = math.clamp((os.clock() - t0) / dur, 0, 1)
+        k = k * k * (3 - 2 * k)
+        cm.CFrame = from:Lerp(goal, k)
+    end)
+    EP.aimKey = key
+    task.wait(dur + rng:NextNumber(0.12, 0.25))
+    return true
+end
+
+EP.walkKey = nil
+EP.walkGoal = nil
+
+function EP.approach(target, key)
+    if EP.walkKey == key then return end
+    EP.walkKey = key
+    local ch = LocalPlayer.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if not hum or not hrp or hum.Health <= 0 then return end
+    local rng = EP.rng
+    local away = flatVec(hrp.Position - target)
+    local d = away.Magnitude
+    local dir = d > 0.1 and away.Unit or Vector3.new(0, 0, 1)
+    local goal
+    if d > 14 then
+        goal = target + dir * rng:NextNumber(8, 11)
+    elseif d < 5 then
+        goal = target + dir * rng:NextNumber(7, 9)
+    else
+        goal = hrp.Position - dir * 1.5
+    end
+    EP.walkGoal = Vector3.new(goal.X, hrp.Position.Y, goal.Z)
+    hum:MoveTo(EP.walkGoal)
+end
+
+function EP.walkWait(maxWait)
+    local t0 = os.clock()
+    while EP.walkGoal and os.clock() - t0 < maxWait do
+        local ch = LocalPlayer.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not hrp or flatVec(hrp.Position - EP.walkGoal).Magnitude <= 3 then break end
+        task.wait(0.1)
+    end
+    EP.walkGoal = nil
+end
+
+function EP.humanize(target, idx, tag)
+    if flags.macroWalk then
+        pcall(EP.approach, target, "m" .. idx)
+        pcall(EP.walkWait, 3)
+    end
+    if flags.macroFace then pcall(EP.aimAt, target, tag .. idx) end
 end
 
 -- PlaceTower needs a token that the SERVER hands out through CanPlaceTower(unitName):
@@ -8655,6 +8748,27 @@ end)()
     local fRec, fPlay
     local play = { idx = 1, macro = nil, name = nil, stepSince = nil }
 
+    local function actionPos(a)
+        if a.t == "place" and type(a.cf) == "table" then return Vector3.new(a.cf[1], a.cf[2], a.cf[3]) end
+        if (a.t == "up" or a.t == "sell") and type(a.p) == "table" then return Vector3.new(a.p[1], a.p[2], a.p[3]) end
+        return nil
+    end
+
+    local function preMove(a)
+        if not flags.macroWalk or not a.w or a.w <= 0 or not waveNow.cur then return end
+        local pos = actionPos(a)
+        if not pos then return end
+        play.lead = play.lead or {}
+        local lead = play.lead[play.idx]
+        if not lead then
+            lead = EP.rng:NextInteger(1, 3)
+            play.lead[play.idx] = lead
+        end
+        if waveNow.cur >= a.w - lead then
+            pcall(EP.approach, pos, "m" .. play.idx)
+        end
+    end
+
     if flags.macroSelected ~= "" and not (canFile and isfile(macroFile(flags.macroSelected))) then
         flags.macroSelected = ""
     end
@@ -8800,6 +8914,25 @@ end)()
         fPlay.card.LayoutOrder = o + 3
     end
 
+    local fFace = createFeature(page, "Face Unit", {
+        initial = flags.macroFace,
+        onToggle = function(v)
+            setFlag("macroFace", v)
+            if not v then EP.aimRelease() end
+        end,
+    })
+    local fWalk = createFeature(page, "Walk To Unit", {
+        initial = flags.macroWalk,
+        onToggle = function(v)
+            setFlag("macroWalk", v)
+        end,
+    })
+    do
+        local o = fPlay.card.LayoutOrder
+        fFace.card.LayoutOrder = o + 1
+        fWalk.card.LayoutOrder = o + 2
+    end
+
     local share = createFeature(tabs["Share"].page, "Share Macro", { noToggle = true, bodyHeight = 28 })
     share.card.LayoutOrder = 100
     local shareSel = createSelect(share.body, {
@@ -8928,10 +9061,12 @@ end)()
         if not flags.macroPlay then
             play.idx, play.macro = 1, nil
             fPlay.setNote("")
+            EP.aimRelease()
             return 0.5
         end
         if not inMatch then
             fPlay.setNote("")
+            EP.aimRelease()
             return 2
         end
         local sel = flags.macroSelected
@@ -8943,6 +9078,9 @@ end)()
             play.macro = loadMacro(sel)
             play.name = sel
             play.idx = 1
+            play.lead = {}
+            EP.walkKey = nil
+            EP.walkGoal = nil
             play.notified = nil
             play.skips = 0
             play.stepSince = nil
@@ -8957,6 +9095,7 @@ end)()
         local acts = play.macro.actions
         local a = acts[play.idx]
         if not a then
+            EP.aimRelease()
             fPlay.setNote("Macro finished", C.text)
             if not play.notified then
                 play.notified = true
@@ -8965,6 +9104,7 @@ end)()
             return 1.5
         end
 
+        preMove(a)
         if a.w and a.w > 0 and waveNow.cur and waveNow.cur < a.w then
             fPlay.setNote("Waiting for wave " .. a.w, C.muted)
             play.stepSince = nil
@@ -8984,6 +9124,7 @@ end)()
             if findTower(a.n, a.cf[1], a.cf[3], 4) then
                 done = true
             else
+                EP.humanize(Vector3.new(a.cf[1], a.cf[2], a.cf[3]), play.idx, "p")
                 local okP, resP = invoke("PlaceTower", a.n, CFrame.new(table.unpack(a.cf)))
                 -- PlaceTower returns the placed model; fall back to a position search if it doesn't
                 local placed = (okP and typeof(resP) == "Instance" and resP.Parent) and resP or nil
@@ -9046,6 +9187,8 @@ end)()
                         done = true
                     else
                         local lvl = tw:GetAttribute("Level")
+                        local okPv, pv = pcall(function() return tw:GetPivot().Position end)
+                        if okPv then EP.humanize(pv, play.idx, "u") end
                         local ok, res = invoke("UpgradeTower", tw)
                         task.wait(0.4)
                         local nl = tw:GetAttribute("Level")
@@ -9060,6 +9203,8 @@ end)()
                 if not tw then
                     done = true
                 else
+                    local okPv, pv = pcall(function() return tw:GetPivot().Position end)
+                    if okPv then EP.humanize(pv, play.idx, "s") end
                     invoke("SellTower", tw)
                     task.wait(0.4)
                     done = (tw.Parent == nil)
@@ -9068,6 +9213,10 @@ end)()
         end
 
         if done then
+            if EP.aimKey then
+                task.wait(0.2)
+                EP.aimRelease()
+            end
             play.idx = play.idx + 1
             play.stepSince = nil
             play.skips = 0

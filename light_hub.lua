@@ -1257,7 +1257,75 @@ local idledConn = LocalPlayer.Idled:Connect(function()
 end)
 env.AFKHubConn = idledConn
 
+local ROT = { pos = { CanPlaceTower = 7, PlaceTower = 3, UpgradeTower = 8, SellTower = 6 }, name = {}, group = 8, busy = false }
+for n, i in pairs(ROT.pos) do ROT.name[i] = n end
+
+function ROT.folder()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local best, bestN = nil, 0
+    for _, c in ipairs(pg:GetChildren()) do
+        if c.ClassName == "Folder" then
+            local kids = c:GetChildren()
+            local n = #kids
+            if n >= ROT.group and n > bestN then
+                local ok = true
+                for i = 1, ROT.group do
+                    if not (kids[i]:IsA("RemoteFunction") or kids[i]:IsA("RemoteEvent")) then ok = false break end
+                end
+                if ok then best, bestN = c, n end
+            end
+        end
+    end
+    return best
+end
+
+function ROT.nameOf(remote)
+    local par = remote and remote.Parent
+    if not par then return nil end
+    for i, c in ipairs(par:GetChildren()) do
+        if c == remote then return ROT.name[(i - 1) % ROT.group + 1] end
+    end
+    return nil
+end
+
+function ROT.call(name, ...)
+    local t0 = os.clock()
+    while ROT.busy and os.clock() - t0 < 4 do task.wait(0.03) end
+    ROT.busy = true
+    local folder = ROT.folder()
+    local kids = folder and folder:GetChildren()
+    local full = kids and (#kids - #kids % ROT.group) or 0
+    local remote = full >= ROT.group and kids[full - ROT.group + ROT.pos[name]] or nil
+    if not remote then
+        ROT.busy = false
+        error("remote tidak ada: " .. name, 0)
+    end
+    local count = #kids
+    local args = table.pack(...)
+    local res = table.pack(pcall(function()
+        return remote:InvokeServer(table.unpack(args, 1, args.n))
+    end))
+    local t1 = os.clock()
+    while os.clock() - t1 < 1.5 do
+        if #folder:GetChildren() > count then break end
+        task.wait(0.05)
+    end
+    ROT.busy = false
+    if not res[1] then error(res[2], 0) end
+    return table.unpack(res, 2, res.n)
+end
+
 local function RF(name)
+    if ROT.pos[name] then
+        if not ROT.folder() then return nil end
+        return {
+            Name = name,
+            ClassName = "RemoteFunction",
+            IsA = function(_, c) return c == "RemoteFunction" or c == "Instance" end,
+            InvokeServer = function(_, ...) return ROT.call(name, ...) end,
+        }
+    end
     local folder = ReplicatedStorage:FindFirstChild("RemoteFunctions")
     return folder and folder:FindFirstChild(name)
 end
@@ -1314,11 +1382,10 @@ end
 function EP.placeToken(unit)
     local remote = RF("CanPlaceTower")
     if not remote then return nil, "remote tidak ada: CanPlaceTower" end
-    local r = table.pack(pcall(function() return remote:InvokeServer(unit) end))
-    if not r[1] then return nil, tostring(r[2]) end
-    if r[2] ~= true then return false end
-    if type(r[5]) ~= "string" then return nil, "CanPlaceTower gave no token" end
-    return r[5]
+    local ok, res = pcall(function() return remote:InvokeServer(unit) end)
+    if not ok then return nil, tostring(res) end
+    if res == false then return false end
+    return true
 end
 
 -- The real client places one unit at a time; tokens of parallel placements could overwrite each other,
@@ -1351,8 +1418,7 @@ local function invoke(name, ...)
             if token == false then return true, false end -- refused by the server (same as "not enough cash")
             return false, why
         end
-        args[3] = token
-        args.n = 3
+        args.n = 2
     end
 
     local isPlace = (name == "PlaceTower" and typeof(args[2]) == "CFrame")
@@ -8549,6 +8615,18 @@ end)()
                 local method = getnamecallmethod()
                 if method == "InvokeServer" and (mstate.rec or placeHook.active)
                     and typeof(self) == "Instance" and self.ClassName == "RemoteFunction" then
+                    local par = self.Parent
+                    if full and par and par.ClassName == "Folder" and par.Parent == LocalPlayer.PlayerGui
+                        and not (checkcaller and checkcaller()) then
+                        local ra1, ra2 = ...
+                        local remote = self
+                        task.defer(function()
+                            local key = ROT.nameOf(remote)
+                            if not key or key == "CanPlaceTower" then return end
+                            if mstate.rec and mstate.handler then task.spawn(mstate.handler, key, ra1, ra2) end
+                            if placeHook.active and placeHook.handler then task.spawn(placeHook.handler, key, ra1, ra2) end
+                        end)
+                    end
                     local nm = self.Name
                     local extra = (nm == "ChangeTargetMode") or (nm == "CinemaRelocate" and (...) == "Drones")
                     if extra or (full and (nm == "PlaceTower" or nm == "UpgradeTower" or nm == "SellTower")) then

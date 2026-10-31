@@ -7612,8 +7612,9 @@ end)()
 
         local function tryPlace(target, tries, myRun)
             local cands = candidatesFor(target)
+            local why = "no attempt"
             for attempt = 1, tries do
-                if myRun and myRun ~= runId then return nil end
+                if myRun and myRun ~= runId then return nil, "superseded" end
                 local cand = cands[(attempt - 1) % #cands + 1]
                 local okP, resP = invoke("PlaceTower", target.n, cand.cf)
                 -- PlaceTower returns the placed model; otherwise look for it by position
@@ -7631,13 +7632,14 @@ end)()
                     pushMacro({ t = "place", n = target.n, cf = { cand.cf:GetComponents() } })
                     return pt
                 end
+                why = string.format("ok=%s res=%s", tostring(okP), tostring(resP))
                 task.wait(0.2)
             end
-            return nil
+            return nil, why
         end
 
-        local function processUnit(m)
-            local u, tg = m.unit, m.tg
+        local function sellUnit(m)
+            local u = m.unit
             local tw = u.tower
             if inFlight[tw] then return end
             inFlight[tw] = true
@@ -7662,20 +7664,25 @@ end)()
                     .. " | remote: " .. tostring(ROT.last))
                 return
             end
+            m.sold = true
             pushMacro({ t = "sell", n = u.name, p = { u.pos.X, u.pos.Y, u.pos.Z } })
+        end
 
+        local function placeUnit(m)
+            local tg = m.tg
             pending = pending + 1
-            local placed = tryPlace(tg, 8, m.run)
+            local placed, why = tryPlace(tg, 8, m.run)
             if placed then
                 m.atTarget = true
             else
+                m.err = "target: " .. tostring(why)
+                warn("[LightHub] Replace: target " .. tostring(tg.n) .. " (" .. string.format("%.1f, %.1f", tg.x or 0, tg.z or 0)
+                    .. ") gagal -> " .. tostring(why) .. " | remote: " .. tostring(ROT.last))
                 placed = tryPlace(m.orig, 8)
                 m.blocked = true
             end
             m.placed = placed
             pending = pending - 1
-            -- upgrades are done in a second phase (see execute), so every unit gets placed first
-            -- instead of placements queueing behind other units' upgrade calls
         end
 
         local function upgradeUnit(m)
@@ -7700,6 +7707,8 @@ end)()
             end
             inFlight[u.tower] = nil
         end
+
+        local REPLACE_GAP = 1
 
         local function execute(label, targets)
             runId = runId + 1
@@ -7726,7 +7735,16 @@ end)()
                 return
             end
             say(label .. ": moving " .. #moves, C.muted)
-            parallel(moves, processUnit, 60)
+            -- one unit at a time: sell it, place it at its target, wait a moment, then the next one
+            local function gap()
+                task.wait(REPLACE_GAP * EP.rng:NextNumber(0.85, 1.15))
+            end
+            for i, m in ipairs(moves) do
+                if myRun ~= runId then break end
+                sellUnit(m)
+                if m.sold then placeUnit(m) end
+                if i < #moves then gap() end
+            end
             do
                 local ups = {}
                 for _, m in ipairs(moves) do
